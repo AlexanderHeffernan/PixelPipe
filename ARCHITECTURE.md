@@ -183,6 +183,19 @@ The CLI is the complete scriptable interface. The desktop app is the focused
 visual interface for briefs, candidate selection, native/enlarged/family review,
 revision comparison, and operation editing. Neither frontend owns domain state.
 
+The M4 desktop adapter is a fifth outer workspace crate at
+`apps/desktop/src-tauri`; the four M1 crates remain the engine, store,
+application, and CLI boundaries. Tauri commands deserialize application request
+documents and return typed results. Verified PNG bytes cross the IPC boundary as
+base64 rather than frontend-selected filesystem paths. Vue owns only transient
+path, selection, form, loading, and error state; reopening or refreshing always
+reconciles from `pixelpipe-app`.
+
+Desktop operations are request/response commands in M4. There are no domain
+events yet because no approved operation is long-running, and introducing an
+event stream would create synchronization state without product value. Add typed
+events when generation or another asynchronous use case demonstrates the need.
+
 ## Project-root model
 
 PixelPipe discovers the game root by walking upward for `.pixelpipe/project.toml`.
@@ -344,6 +357,21 @@ Do not copy Shipyard's Git-centric information architecture, dark-only styling,
 private macOS APIs, fixed traffic-light measurements, raw DOM integration
 workarounds, or permissive CSP. PixelPipe is cross-platform; platform materials
 are optional progressive enhancement, never a layout dependency.
+
+### M4 command surface
+
+The Tauri shell exposes six thin commands: browse project, load verified
+revision, compare revisions, record review, patch revision, and remap revision.
+Browse/load/compare/review never move asset head. Patch/remap accept structured
+documents and always name the selected revision as explicit parent; only the
+application layer may create and advance to their immutable child.
+
+Native, nearest, and visual-diff PNGs are loaded and hash-verified by the project
+store before IPC. The webview cannot request arbitrary revision paths. Asset and
+revision ordering comes from the project store, not filesystem enumeration or
+frontend sorting. Error and empty states remain visible, command failures receive
+focus, list navigation supports arrow/Home/End keys, and reduced-motion/focus
+styles are part of the baseline rather than optional polish.
 
 ## Explicit non-goals for the first product arc
 

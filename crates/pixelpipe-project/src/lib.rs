@@ -145,6 +145,8 @@ pub struct RevisionSnapshot {
     pub validation: ValidationReport,
     pub provenance: Provenance,
     pub brief: String,
+    pub native_png: Vec<u8>,
+    pub preview_png: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -352,6 +354,52 @@ impl ProjectStore {
         Ok(asset)
     }
 
+    /// Lists initialized asset manifests in stable asset-ID order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when the asset directory or a manifest is invalid.
+    pub fn assets(&self) -> Result<Vec<AssetManifest>, ProjectError> {
+        let path = self.root.join(".pixelpipe/assets");
+        let mut ids = Vec::new();
+        for entry in fs::read_dir(&path).map_err(|source| io_at(&path, source))? {
+            let entry = entry.map_err(|source| io_at(&path, source))?;
+            if entry.path().join("asset.toml").is_file() {
+                ids.push(entry.file_name().to_string_lossy().into_owned());
+            }
+        }
+        ids.sort();
+        ids.into_iter().map(|id| self.asset(&id)).collect()
+    }
+
+    /// Lists revision manifests in stable revision-ID order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when the asset or revision manifests are invalid.
+    pub fn revisions(&self, asset_id: &str) -> Result<Vec<RevisionManifest>, ProjectError> {
+        validate_asset_id(asset_id)?;
+        self.asset(asset_id)?;
+        let path = self.asset_path(asset_id).join("revisions");
+        let mut revisions = Vec::new();
+        for entry in fs::read_dir(&path).map_err(|source| io_at(&path, source))? {
+            let entry = entry.map_err(|source| io_at(&path, source))?;
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let id = entry.file_name().to_string_lossy().into_owned();
+            validate_revision_id(&id)?;
+            let manifest: RevisionManifest = read_json(&entry.path().join("revision.json"))?;
+            ensure_schema(&manifest.schema, REVISION_SCHEMA)?;
+            if manifest.asset != asset_id || manifest.id != id {
+                return Err(ProjectError::RevisionIdentityMismatch);
+            }
+            revisions.push(manifest);
+        }
+        revisions.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(revisions)
+    }
+
     /// Imports original PNG bytes into the asset's content-addressed reference store.
     ///
     /// # Errors
@@ -437,6 +485,10 @@ impl ProjectStore {
                 .map_err(|source| io_at(&path.join("brief.md"), source))?,
         )
         .map_err(|_| ProjectError::InvalidBriefUtf8)?;
+        let native_png = fs::read(path.join("native.png"))
+            .map_err(|source| io_at(&path.join("native.png"), source))?;
+        let preview_png = fs::read(path.join("preview.png"))
+            .map_err(|source| io_at(&path.join("preview.png"), source))?;
         Ok(RevisionSnapshot {
             path,
             manifest,
@@ -445,6 +497,8 @@ impl ProjectStore {
             validation,
             provenance,
             brief,
+            native_png,
+            preview_png,
         })
     }
 

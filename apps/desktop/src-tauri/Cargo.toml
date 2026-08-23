@@ -1,0 +1,22 @@
+[package]
+name = "pixelpipe-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+base64.workspace = true
+pixelpipe-app = { path = "../../../crates/pixelpipe-app" }
+serde.workspace = true
+tauri.workspace = true
+
+[lints]
+workspace = true

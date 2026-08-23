@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+  build-essential \
+  libayatana-appindicator3-dev \
+  librsvg2-dev \
+  libssl-dev \
+  libwebkit2gtk-4.1-dev
+
 export PATH="$HOME/.cargo/bin:$PATH"
 if ! command -v cargo >/dev/null 2>&1; then
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
@@ -9,3 +17,4 @@ fi
 
 rustup component add rustfmt clippy
 cargo fetch --locked
+npm ci --prefix apps/desktop

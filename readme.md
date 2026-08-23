@@ -3,16 +3,17 @@
 PixelPipe is an AI-first, project-aware workstation for producing deterministic,
 game-ready pixel-art assets from selected visual references.
 
-**Milestone 3 is ready for review.** The headless Rust pipeline can initialize a
-project, deterministically convert references, branch immutable revisions with
-atomic pixel/palette operations, inspect and compare them, and record explicit
-human or agent visual-review events.
+**Milestone 4 is ready for review.** The deterministic Rust pipeline now has a
+Tauri 2 + Vue 3 desktop workstation for project navigation, native/nearest
+inspection, revision comparison, explicit review, and structured patch/remap
+submission.
 
 - [Architecture contract](ARCHITECTURE.md)
 - [Milestone 0 research and decision record](docs/milestones/M0-charter.md)
 - [Milestone 1 foundation record](docs/milestones/M1-foundation.md)
 - [Milestone 2 conversion record](docs/milestones/M2-conversion.md)
 - [Milestone 3 refinement/review record](docs/milestones/M3-review-and-refinement.md)
+- [Milestone 4 desktop review record](docs/milestones/M4-desktop-review.md)
 
 ## Try the M1 path
 
@@ -66,6 +67,22 @@ Patch/remap commands always require an explicit immutable parent. An empty patch
 from an older revision creates a new identical child and acts as undo without
 moving or rewriting history. Review events never change revision bytes or the
 separate approval pointer.
+
+## M4 desktop workstation
+
+Install the frontend dependencies, then run the Tauri app from the desktop
+directory:
+
+```sh
+cd apps/desktop
+npm install
+npm run build
+cargo run -p pixelpipe-desktop
+```
+
+The desktop uses the same `pixelpipe-app` use cases as the CLI. It receives only
+verified revision PNG bytes, keeps selection transient, and requires an explicit
+parent for every pixel patch or palette remap.
 
 ## License
 

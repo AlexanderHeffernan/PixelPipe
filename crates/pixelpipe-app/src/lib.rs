@@ -7,11 +7,13 @@ use pixelpipe_core::{
     convert_sheet, decode_rgba_png, inspect_raster, render, sha256_hex, stable_json,
 };
 use pixelpipe_project::{
-    AssetKind, ProjectError, ProjectStore, ReviewActorKind, ReviewDecision, ReviewRecord,
-    RevisionFiles, StoredRevision,
+    AssetKind, AssetManifest, ProjectError, ProjectManifest, ProjectStore, RevisionFiles,
+    RevisionManifest, StoredRevision,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+pub use pixelpipe_project::{ReviewActorKind, ReviewDecision, ReviewRecord};
 
 #[derive(Debug)]
 pub struct CreateRevision {
@@ -65,7 +67,29 @@ pub struct RemapRevision {
     pub actor: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+pub struct PatchRevisionDocument {
+    pub start: PathBuf,
+    pub asset: String,
+    pub parent: String,
+    pub patch: PixelPatchSet,
+    pub brief: Option<String>,
+    pub preview_scale: Option<u16>,
+    pub actor: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RemapRevisionDocument {
+    pub start: PathBuf,
+    pub asset: String,
+    pub parent: String,
+    pub remap: PaletteRemap,
+    pub brief: Option<String>,
+    pub preview_scale: Option<u16>,
+    pub actor: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct CompareRevisions {
     pub start: PathBuf,
     pub asset: String,
@@ -74,11 +98,29 @@ pub struct CompareRevisions {
     pub preview_scale: Option<u16>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct InspectRevision {
     pub start: PathBuf,
     pub asset: String,
     pub revision: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BrowseProject {
+    pub start: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectBrowser {
+    pub project_root: PathBuf,
+    pub project: ProjectManifest,
+    pub assets: Vec<AssetBrowser>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AssetBrowser {
+    pub asset: AssetManifest,
+    pub revisions: Vec<RevisionManifest>,
 }
 
 #[derive(Debug)]
@@ -95,6 +137,32 @@ pub struct RevisionComparisonResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RevisionComparisonMetadata {
+    pub project_root: PathBuf,
+    pub asset: String,
+    pub left: String,
+    pub right: String,
+    pub diff: RasterDiff,
+    pub visual_native_sha256: String,
+    pub visual_preview_sha256: String,
+}
+
+impl RevisionComparisonResult {
+    #[must_use]
+    pub fn metadata(&self) -> RevisionComparisonMetadata {
+        RevisionComparisonMetadata {
+            project_root: self.project_root.clone(),
+            asset: self.asset.clone(),
+            left: self.left.clone(),
+            right: self.right.clone(),
+            diff: self.diff.clone(),
+            visual_native_sha256: self.visual_native_sha256.clone(),
+            visual_preview_sha256: self.visual_preview_sha256.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RevisionInspectionResult {
     pub project_root: PathBuf,
     pub asset: String,
@@ -104,7 +172,27 @@ pub struct RevisionInspectionResult {
     pub review: Option<ReviewRecord>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RevisionViewMetadata {
+    pub project_root: PathBuf,
+    pub asset: String,
+    pub revision: String,
+    pub parent: Option<String>,
+    pub inspection: RasterInspection,
+    pub palette_name: String,
+    pub transparent_index: u8,
+    pub validation: pixelpipe_core::ValidationReport,
+    pub review: Option<ReviewRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionView {
+    pub metadata: RevisionViewMetadata,
+    pub native_png: Vec<u8>,
+    pub preview_png: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct RecordReview {
     pub start: PathBuf,
     pub asset: String,
@@ -290,16 +378,35 @@ pub fn convert_revision(request: ConvertRevision) -> Result<RevisionResult, AppE
 /// Returns an [`AppError`] when loading, patch validation, rendering, or atomic
 /// revision storage fails.
 pub fn patch_revision(request: PatchRevision) -> Result<RevisionResult, AppError> {
-    let store = ProjectStore::discover(&request.start)?;
-    let parent = store.revision(&request.asset, &request.parent)?;
     let operation_path = request.patch_path;
-    let mut patch: PixelPatchSet =
+    let patch: PixelPatchSet =
         serde_json::from_slice(&read(&operation_path)?).map_err(|source| {
             AppError::OperationJson {
                 path: operation_path.clone(),
                 source,
             }
         })?;
+    let brief = read_optional_brief(request.brief_path)?;
+    patch_revision_document(PatchRevisionDocument {
+        start: request.start,
+        asset: request.asset,
+        parent: request.parent,
+        patch,
+        brief,
+        preview_scale: request.preview_scale,
+        actor: request.actor,
+    })
+}
+
+/// Applies a typed patch document through the same application use case as the CLI.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when loading, validation, rendering, or storage fails.
+pub fn patch_revision_document(request: PatchRevisionDocument) -> Result<RevisionResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let parent = store.revision(&request.asset, &request.parent)?;
+    let mut patch = request.patch;
     inherit_structure(&mut patch.structure, component_rule(&parent.recipe))?;
     let raster = apply_pixel_patch(&parent.raster, &patch)?;
     let preview_scale = request
@@ -316,7 +423,7 @@ pub fn patch_revision(request: PatchRevision) -> Result<RevisionResult, AppError
             Operation::RenderIndexed { preview_scale },
         ],
     };
-    let brief = override_brief(request.brief_path, parent.brief)?;
+    let brief = request.brief.unwrap_or(parent.brief);
     let input_hashes = BTreeMap::from([
         ("palette".to_owned(), recipe.palette_sha256.clone()),
         ("parent_pixels".to_owned(), recipe.input_sha256.clone()),
@@ -350,14 +457,33 @@ pub fn patch_revision(request: PatchRevision) -> Result<RevisionResult, AppError
 /// Returns an [`AppError`] when loading, remap validation, rendering, or atomic
 /// revision storage fails.
 pub fn remap_revision(request: RemapRevision) -> Result<RevisionResult, AppError> {
-    let store = ProjectStore::discover(&request.start)?;
-    let parent = store.revision(&request.asset, &request.parent)?;
     let path = request.remap_path;
-    let mut remap: PaletteRemap =
+    let remap: PaletteRemap =
         serde_json::from_slice(&read(&path)?).map_err(|source| AppError::OperationJson {
             path: path.clone(),
             source,
         })?;
+    let brief = read_optional_brief(request.brief_path)?;
+    remap_revision_document(RemapRevisionDocument {
+        start: request.start,
+        asset: request.asset,
+        parent: request.parent,
+        remap,
+        brief,
+        preview_scale: request.preview_scale,
+        actor: request.actor,
+    })
+}
+
+/// Applies a typed palette remap through the same application use case as the CLI.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when loading, validation, rendering, or storage fails.
+pub fn remap_revision_document(request: RemapRevisionDocument) -> Result<RevisionResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let parent = store.revision(&request.asset, &request.parent)?;
+    let mut remap = request.remap;
     inherit_structure(&mut remap.structure, component_rule(&parent.recipe))?;
     let raster = apply_palette_remap(&parent.raster, &remap)?;
     let preview_scale = request
@@ -374,7 +500,7 @@ pub fn remap_revision(request: RemapRevision) -> Result<RevisionResult, AppError
             Operation::RenderIndexed { preview_scale },
         ],
     };
-    let brief = override_brief(request.brief_path, parent.brief)?;
+    let brief = request.brief.unwrap_or(parent.brief);
     let input_hashes = BTreeMap::from([
         ("palette".to_owned(), recipe.palette_sha256.clone()),
         ("parent_pixels".to_owned(), recipe.input_sha256.clone()),
@@ -401,30 +527,73 @@ pub fn remap_revision(request: RemapRevision) -> Result<RevisionResult, AppError
     )
 }
 
+/// Lists the discovered project, assets, and immutable revision history.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when discovery or any manifest is invalid.
+pub fn browse_project(request: &BrowseProject) -> Result<ProjectBrowser, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let project = store.manifest()?;
+    let assets = store
+        .assets()?
+        .into_iter()
+        .map(|asset| {
+            let revisions = store.revisions(&asset.id)?;
+            Ok(AssetBrowser { asset, revisions })
+        })
+        .collect::<Result<Vec<_>, ProjectError>>()?;
+    Ok(ProjectBrowser {
+        project_root: store.root().to_path_buf(),
+        project,
+        assets,
+    })
+}
+
+/// Loads verified revision metadata, inspection, review, and rendered PNG bytes.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when project, revision, review, or raster validation fails.
+pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let revision = resolve_revision(&store, &request.asset, request.revision)?;
+    let snapshot = store.revision(&request.asset, &revision)?;
+    let inspection = inspect_raster(&snapshot.raster)?;
+    let palette_name = snapshot.raster.palette.name.clone();
+    let transparent_index = snapshot.raster.palette.transparent_index;
+    let review = store.review(&request.asset, &revision)?;
+    Ok(RevisionView {
+        metadata: RevisionViewMetadata {
+            project_root: store.root().to_path_buf(),
+            asset: request.asset,
+            revision,
+            parent: snapshot.manifest.parent,
+            inspection,
+            palette_name,
+            transparent_index,
+            validation: snapshot.validation,
+            review,
+        },
+        native_png: snapshot.native_png,
+        preview_png: snapshot.preview_png,
+    })
+}
+
 /// Loads a revision inspection and its separate durable review history.
 ///
 /// # Errors
 ///
 /// Returns an [`AppError`] when project, revision, review, or raster validation fails.
 pub fn inspect_revision(request: InspectRevision) -> Result<RevisionInspectionResult, AppError> {
-    let store = ProjectStore::discover(&request.start)?;
-    let revision = match request.revision {
-        Some(revision) => revision,
-        None => store
-            .asset(&request.asset)?
-            .head
-            .ok_or_else(|| AppError::NoHead(request.asset.clone()))?,
-    };
-    let snapshot = store.revision(&request.asset, &revision)?;
-    let inspection = inspect_raster(&snapshot.raster)?;
-    let review = store.review(&request.asset, &revision)?;
+    let view = load_revision_view(request)?;
     Ok(RevisionInspectionResult {
-        project_root: store.root().to_path_buf(),
-        asset: request.asset,
-        revision,
-        parent: snapshot.manifest.parent,
-        inspection,
-        review,
+        project_root: view.metadata.project_root,
+        asset: view.metadata.asset,
+        revision: view.metadata.revision,
+        parent: view.metadata.parent,
+        inspection: view.metadata.inspection,
+        review: view.metadata.review,
     })
 }
 
@@ -496,6 +665,20 @@ fn component_rule(recipe: &Recipe) -> Option<ComponentRule> {
         })
 }
 
+fn resolve_revision(
+    store: &ProjectStore,
+    asset: &str,
+    revision: Option<String>,
+) -> Result<String, AppError> {
+    match revision {
+        Some(revision) => Ok(revision),
+        None => store
+            .asset(asset)?
+            .head
+            .ok_or_else(|| AppError::NoHead(asset.to_owned())),
+    }
+}
+
 fn inherit_structure(
     operation: &mut Option<ComponentRule>,
     inherited: Option<ComponentRule>,
@@ -512,10 +695,12 @@ fn inherit_structure(
     }
 }
 
-fn override_brief(path: Option<PathBuf>, inherited: String) -> Result<String, AppError> {
+fn read_optional_brief(path: Option<PathBuf>) -> Result<Option<String>, AppError> {
     match path {
-        Some(path) => String::from_utf8(read(&path)?).map_err(|_| AppError::BriefUtf8 { path }),
-        None => Ok(inherited),
+        Some(path) => String::from_utf8(read(&path)?)
+            .map(Some)
+            .map_err(|_| AppError::BriefUtf8 { path }),
+        None => Ok(None),
     }
 }
 
@@ -620,6 +805,44 @@ mod tests {
         );
         assert_eq!(first.native_sha256, second.native_sha256);
         assert_eq!(first.preview_sha256, second.preview_sha256);
+
+        let browser = browse_project(&BrowseProject {
+            start: temp.path().join("nested"),
+        })
+        .expect("browse project from descendant");
+        assert_eq!(browser.assets.len(), 1);
+        assert_eq!(browser.assets[0].revisions.len(), 2);
+        assert_eq!(browser.assets[0].asset.head.as_deref(), Some("r000002"));
+
+        let view = load_revision_view(InspectRevision {
+            start: temp.path().to_path_buf(),
+            asset: "test-sprite".to_owned(),
+            revision: Some("r000001".to_owned()),
+        })
+        .expect("verified revision view");
+        assert_eq!(view.metadata.revision, "r000001");
+        assert_eq!(view.metadata.palette_name, "fixture");
+        assert_eq!(view.native_png, first_native);
+
+        record_review(RecordReview {
+            start: temp.path().to_path_buf(),
+            asset: "test-sprite".to_owned(),
+            revision: "r000001".to_owned(),
+            actor: "reviewer".to_owned(),
+            actor_kind: ReviewActorKind::Human,
+            decision: ReviewDecision::Reviewed,
+            note: "native size inspected".to_owned(),
+        })
+        .expect("record review");
+        assert_eq!(
+            ProjectStore::discover(temp.path())
+                .expect("store")
+                .asset("test-sprite")
+                .expect("asset")
+                .head
+                .as_deref(),
+            Some("r000002")
+        );
 
         let manifest: RevisionManifest = serde_json::from_slice(
             &fs::read(first.revision_path.join("revision.json")).expect("revision manifest"),
