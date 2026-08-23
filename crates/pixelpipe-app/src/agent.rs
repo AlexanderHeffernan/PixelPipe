@@ -12,9 +12,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use pixelpipe_core::{
-    apply_palette_remap, apply_pixel_patch, decode_rgba_png, sha256_hex, stable_json,
-};
+use pixelpipe_core::{sha256_hex, stable_json};
 use pixelpipe_project::{
     AGENT_RUN_SCHEMA, AgentCandidate, AgentCapability, AgentIdentity, AgentOperation,
     AgentProposal, AgentRunRecord, AgentRunStatus, ProjectStore, ReferenceSelection,
@@ -23,7 +21,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
+mod attachments;
 mod connectors;
+mod response;
 
 pub use connectors::{
     AgentConnector, ApproveAgentConnector, approve_agent_connector, detect_agent_connectors,
@@ -142,30 +142,6 @@ struct ProtocolInput {
     sha256: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProtocolResponse {
-    schema: String,
-    adapter: AgentIdentity,
-    result: ProtocolResult,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-enum ProtocolResult {
-    GeneratedReferences { candidates: Vec<ProtocolCandidate> },
-    Critique { text: String },
-    Proposal { proposal: AgentProposal },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProtocolCandidate {
-    id: String,
-    path: PathBuf,
-    sha256: String,
-}
-
 #[derive(Debug)]
 struct ProcessCapture {
     exit_status: Option<i32>,
@@ -185,6 +161,17 @@ struct RunPayload {
     critique: Option<String>,
     proposal: Option<AgentProposal>,
     error: Option<String>,
+}
+
+struct InterpretationContext<'a> {
+    request: &'a AgentTaskRequest,
+    profile: &'a AgentProfile,
+    store: &'a ProjectStore,
+    output_directory: &'a Path,
+    environment: &'a BTreeMap<String, String>,
+    secrets: &'a [String],
+    cancel: &'a AtomicBool,
+    emitter: &'a EventEmitter,
 }
 
 #[derive(Debug, Deserialize)]
@@ -278,12 +265,7 @@ impl AgentRuntime {
         });
 
         let started_unix_ms = now_unix_ms()?;
-        let task_directory = tempfile::Builder::new()
-            .prefix("pixelpipe-agent-")
-            .tempdir()
-            .map_err(|source| {
-                AppError::AgentProcess(format!("cannot create isolated task workspace: {source}"))
-            })?;
+        let task_directory = create_task_workspace()?;
         let workspace = task_directory.path().to_path_buf();
         let output_directory = workspace.join("output");
         fs::create_dir_all(&output_directory).map_err(|source| {
@@ -316,13 +298,18 @@ impl AgentRuntime {
         let stdout_text = redact(&String::from_utf8_lossy(&capture.stdout), &secrets);
         let payload = interpret_capture(
             &capture,
-            &request,
-            &profile,
-            &store,
-            &output_directory,
-            &secrets,
+            &InterpretationContext {
+                request: &request,
+                profile: &profile,
+                store: &store,
+                output_directory: &output_directory,
+                environment: &environment,
+                secrets: &secrets,
+                cancel,
+                emitter: &emitter,
+            },
         );
-        let status = if capture.cancelled {
+        let status = if capture.cancelled || cancel.load(Ordering::Relaxed) {
             AgentRunStatus::Cancelled
         } else if payload.error.is_some() {
             AgentRunStatus::Failed
@@ -426,23 +413,6 @@ impl ProcessCapture {
             process_error: Some(message),
         }
     }
-}
-
-struct ProcessedResponse {
-    adapter: AgentIdentity,
-    candidates: Vec<AgentCandidate>,
-    candidate_bytes: BTreeMap<String, Vec<u8>>,
-    critique: Option<String>,
-    proposal: Option<AgentProposal>,
-}
-
-struct ResponseContext<'a> {
-    operation: AgentOperation,
-    asset: &'a str,
-    revision: Option<&'a str>,
-    store: &'a ProjectStore,
-    output_directory: &'a Path,
-    secrets: &'a [String],
 }
 
 struct EventEmitter {
@@ -629,14 +599,17 @@ fn execute(
     })
 }
 
-fn interpret_capture(
-    capture: &ProcessCapture,
-    request: &AgentTaskRequest,
-    profile: &AgentProfile,
-    store: &ProjectStore,
-    output_directory: &Path,
-    secrets: &[String],
-) -> RunPayload {
+fn interpret_capture(capture: &ProcessCapture, context: &InterpretationContext<'_>) -> RunPayload {
+    let InterpretationContext {
+        request,
+        profile,
+        store,
+        output_directory,
+        environment,
+        secrets,
+        cancel,
+        emitter,
+    } = context;
     let error = capture.process_error.clone().or_else(|| {
         if capture.cancelled {
             Some("task cancelled by user".to_owned())
@@ -661,15 +634,38 @@ fn interpret_capture(
     if let Some(error) = error {
         return failed_payload(redact(&error, secrets));
     }
-    let context = ResponseContext {
+    let amp_api_key = (profile.id == "amp")
+        .then(|| environment.get("AMP_API_KEY"))
+        .flatten()
+        .map(String::as_str);
+    let fetch_attachment = |url: &str, cancel: &AtomicBool| {
+        attachments::download_amp_attachment(
+            url,
+            amp_api_key.ok_or_else(|| {
+                AppError::AgentProfile("approved Amp connector is missing AMP_API_KEY".to_owned())
+            })?,
+            cancel,
+        )
+    };
+    let context = response::ResponseContext {
         operation: request.operation,
         asset: &request.asset,
         revision: request.revision.as_deref(),
         store,
         output_directory,
         secrets,
+        cancel,
+        attachment_fetcher: amp_api_key
+            .is_some()
+            .then_some(&fetch_attachment as &response::AttachmentFetcher<'_>),
+        progress: &|message| {
+            emitter.emit(AgentTaskEventKind::Progress {
+                stage: "importing_candidate".to_owned(),
+                message,
+            });
+        },
     };
-    match process_response(&capture.stdout, &context) {
+    match response::process_response(&capture.stdout, &context) {
         Ok(result) => RunPayload {
             adapter: Some(result.adapter),
             candidates: result.candidates,
@@ -691,158 +687,6 @@ fn failed_payload(error: String) -> RunPayload {
         proposal: None,
         error: Some(error),
     }
-}
-
-fn process_response(
-    bytes: &[u8],
-    context: &ResponseContext<'_>,
-) -> Result<ProcessedResponse, AppError> {
-    let mut response: ProtocolResponse = serde_json::from_slice(bytes)
-        .map_err(|source| AppError::AgentProtocol(format!("invalid JSON response: {source}")))?;
-    if response.schema != RESPONSE_SCHEMA {
-        return Err(AppError::AgentProtocol(format!(
-            "unsupported response schema '{}'",
-            response.schema
-        )));
-    }
-    if !response
-        .adapter
-        .capabilities
-        .contains(&required_capability(context.operation))
-    {
-        return Err(AppError::AgentProtocol(
-            "adapter did not report the requested capability".to_owned(),
-        ));
-    }
-    response.adapter.adapter = redact(&response.adapter.adapter, context.secrets);
-    response.adapter.provider = response
-        .adapter
-        .provider
-        .map(|value| redact(&value, context.secrets));
-    response.adapter.model = response
-        .adapter
-        .model
-        .map(|value| redact(&value, context.secrets));
-    let mut processed = ProcessedResponse {
-        adapter: response.adapter,
-        candidates: Vec::new(),
-        candidate_bytes: BTreeMap::new(),
-        critique: None,
-        proposal: None,
-    };
-    match (context.operation, response.result) {
-        (
-            AgentOperation::GenerateReferences,
-            ProtocolResult::GeneratedReferences { candidates },
-        ) => {
-            if candidates.is_empty() {
-                return Err(AppError::AgentProtocol(
-                    "generation returned no candidates".to_owned(),
-                ));
-            }
-            for candidate in candidates {
-                let (metadata, bytes) = validate_candidate(context.output_directory, candidate)?;
-                if processed.candidate_bytes.contains_key(&metadata.id)
-                    || processed
-                        .candidates
-                        .iter()
-                        .any(|candidate| candidate.sha256 == metadata.sha256)
-                {
-                    return Err(AppError::AgentProtocol(format!(
-                        "duplicate candidate id or content hash '{}'",
-                        metadata.id
-                    )));
-                }
-                processed.candidate_bytes.insert(metadata.id.clone(), bytes);
-                processed.candidates.push(metadata);
-            }
-        }
-        (AgentOperation::CritiqueAsset, ProtocolResult::Critique { text }) => {
-            if text.trim().is_empty() {
-                return Err(AppError::AgentProtocol("critique is empty".to_owned()));
-            }
-            processed.critique = Some(redact(&text, context.secrets));
-        }
-        (AgentOperation::ProposeRefinement, ProtocolResult::Proposal { proposal }) => {
-            let revision = context.revision.ok_or_else(|| {
-                AppError::AgentProtocol("proposal requires a revision".to_owned())
-            })?;
-            // Validation is intentionally read-only. Applying still requires the
-            // existing explicit-parent revision use case.
-            let snapshot = context.store.revision(context.asset, revision)?;
-            match &proposal {
-                AgentProposal::PixelPatch { patch } => {
-                    let mut patch = patch.clone();
-                    crate::inherit_structure(
-                        &mut patch.structure,
-                        crate::component_rule(&snapshot.recipe),
-                    )?;
-                    apply_pixel_patch(&snapshot.raster, &patch)?;
-                }
-                AgentProposal::PaletteRemap { remap } => {
-                    let mut remap = remap.clone();
-                    crate::inherit_structure(
-                        &mut remap.structure,
-                        crate::component_rule(&snapshot.recipe),
-                    )?;
-                    apply_palette_remap(&snapshot.raster, &remap)?;
-                }
-            }
-            processed.proposal = Some(proposal);
-        }
-        _ => {
-            return Err(AppError::AgentProtocol(
-                "response result does not match requested operation".to_owned(),
-            ));
-        }
-    }
-    Ok(processed)
-}
-
-fn validate_candidate(
-    output_directory: &Path,
-    candidate: ProtocolCandidate,
-) -> Result<(AgentCandidate, Vec<u8>), AppError> {
-    validate_local_id(&candidate.id)?;
-    if candidate.path.is_absolute() {
-        return Err(AppError::AgentCandidatePath(
-            "absolute paths are not accepted".to_owned(),
-        ));
-    }
-    let root = output_directory.canonicalize().map_err(|source| {
-        AppError::AgentCandidatePath(format!("cannot verify output directory: {source}"))
-    })?;
-    let path = output_directory.join(&candidate.path);
-    let canonical = path.canonicalize().map_err(|source| {
-        AppError::AgentCandidatePath(format!("cannot verify '{}': {source}", candidate.id))
-    })?;
-    if !canonical.starts_with(&root) || !canonical.is_file() {
-        return Err(AppError::AgentCandidatePath(format!(
-            "candidate '{}' escapes its assigned output directory",
-            candidate.id
-        )));
-    }
-    let bytes = fs::read(&canonical).map_err(|source| {
-        AppError::AgentCandidatePath(format!("cannot read '{}': {source}", candidate.id))
-    })?;
-    let actual_hash = sha256_hex(&bytes);
-    if actual_hash != candidate.sha256 {
-        return Err(AppError::AgentProtocol(format!(
-            "candidate '{}' hash does not match its bytes",
-            candidate.id
-        )));
-    }
-    let image = decode_rgba_png(&bytes)?;
-    Ok((
-        AgentCandidate {
-            id: candidate.id,
-            sha256: actual_hash.clone(),
-            width: image.width,
-            height: image.height,
-            png: format!("candidates/{actual_hash}.png"),
-        },
-        bytes,
-    ))
 }
 
 /// Loads verified candidate bytes for a short UI/CLI request.
@@ -1040,6 +884,15 @@ fn write_task_file(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
             path.display()
         ))
     })
+}
+
+fn create_task_workspace() -> Result<tempfile::TempDir, AppError> {
+    tempfile::Builder::new()
+        .prefix("pixelpipe-agent-")
+        .tempdir()
+        .map_err(|source| {
+            AppError::AgentProcess(format!("cannot create isolated task workspace: {source}"))
+        })
 }
 
 fn default_timeout_seconds() -> u64 {

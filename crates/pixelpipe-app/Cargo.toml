@@ -10,6 +10,7 @@ publish = false
 atomicwrites.workspace = true
 pixelpipe-core = { path = "../pixelpipe-core" }
 pixelpipe-project = { path = "../pixelpipe-project" }
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

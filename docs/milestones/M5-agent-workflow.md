@@ -65,6 +65,14 @@ reveals, uses an isolated working directory, and refuses to import absolute,
 missing, symlink-escaped, out-of-root, invalid-PNG, or hash-mismatched candidates.
 Cross-platform process sandboxing is deliberately not implied.
 
+The built-in Amp connector may return a private `ampcode.com/user-content/attachments`
+URL instead of a local path. PixelPipe, not the nested agent, imports that URL
+with the user-approved Amp credential. Other hosts, schemes, nested paths,
+queries, fragments, and mixed local/remote candidate descriptors are rejected.
+Imported bytes have a 32 MiB limit and pass the same local PNG decode,
+dimension, SHA-256, content-addressing, and all-candidates-before-publication
+checks. Failed or cancelled imports publish no candidates or project state.
+
 ## Workflow state contract
 
 1. Starting generation/critique/proposal allocates a task and immediately
