@@ -34,6 +34,7 @@ export function createWorkspace() {
   const busy = ref(false);
   const agentBusy = ref(false);
   const agentTask = ref("");
+  const agentStatus = ref("Preparing your agent…");
   const creatingAsset = ref(false);
   const error = ref("");
   const notice = ref("");
@@ -175,6 +176,7 @@ export function createWorkspace() {
     if (!project.value || !selectedAsset.value) return;
     error.value = "";
     agentBusy.value = true;
+    agentStatus.value = "Starting your agent…";
     try {
       agentTask.value = await api.startAgentTask(
         project.value.project_root,
@@ -258,7 +260,11 @@ export function createWorkspace() {
 
   async function handleAgent(event: AgentTaskEvent) {
     if (agentTask.value && event.task !== agentTask.value) return;
-    if (event.event.type === "completed") {
+    if (event.event.type === "progress") {
+      agentStatus.value = event.event.message;
+    } else if (event.event.type === "log" && event.event.message.trim()) {
+      agentStatus.value = event.event.message;
+    } else if (event.event.type === "completed") {
       agentBusy.value = false;
       agentTask.value = "";
       activeRun.value = event.event.run;
@@ -295,6 +301,7 @@ export function createWorkspace() {
     candidateImages,
     busy,
     agentBusy,
+    agentStatus,
     creatingAsset,
     error,
     notice,

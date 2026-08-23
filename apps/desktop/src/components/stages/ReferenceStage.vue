@@ -74,10 +74,10 @@ const approved = computed(
     <div v-if="workspace.agentBusy.value" class="generation-progress">
       <span class="spinner"></span>
       <div>
-        <strong>Your agent is creating references</strong>
+        <strong>{{ workspace.agentStatus.value }}</strong>
         <p>
-          This can take a few minutes. Candidate files are validated before they
-          appear.
+          This can take a few minutes. Only fully downloaded and validated PNGs
+          will appear. You can cancel safely at any time.
         </p>
       </div>
     </div>
