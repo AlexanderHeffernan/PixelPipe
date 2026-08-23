@@ -3,9 +3,9 @@
 PixelPipe is an AI-first, project-aware workstation for producing deterministic,
 game-ready pixel-art assets from selected visual references.
 
-**Milestone 5 is ready for review.** PixelPipe now has a provider-neutral,
-user-approved one-shot agent workflow for asynchronous reference generation,
-candidate selection, critique, and validated-but-unapplied refinements.
+**Milestone 6 is ready for review.** PixelPipe now supports stable assets before
+a revision exists and the complete brief → generate → select → deterministic
+conversion → first immutable revision handoff.
 
 - [Architecture contract](ARCHITECTURE.md)
 - [Milestone 0 research and decision record](docs/milestones/M0-charter.md)
@@ -14,6 +14,7 @@ candidate selection, critique, and validated-but-unapplied refinements.
 - [Milestone 3 refinement/review record](docs/milestones/M3-review-and-refinement.md)
 - [Milestone 4 desktop review record](docs/milestones/M4-desktop-review.md)
 - [Milestone 5 configured agent record](docs/milestones/M5-agent-workflow.md)
+- [Milestone 6 pre-revision asset record](docs/milestones/M6-pre-revision-assets.md)
 
 ## Try the M1 path
 
@@ -95,6 +96,26 @@ proposals must pass through the existing explicit-parent patch/remap use cases.
 
 See the [M5 record](docs/milestones/M5-agent-workflow.md) for profile locations,
 the strict JSON protocol, safety limits, and CLI examples.
+
+## M6 pre-revision assets
+
+```sh
+pixelpipe asset init --root /path/to/game --asset signal-flare \
+  --kind sprite --brief "Strict overhead signal flare"
+pixelpipe project set-palette --root /path/to/game \
+  --id synthetic-flare --file fixtures/m6/palette.json
+pixelpipe project set-recipe --root /path/to/game \
+  --file fixtures/m6/recipe.json
+# Generate with an approved user-local agent, then explicitly select a candidate.
+pixelpipe revision convert-selected --root /path/to/game \
+  --asset signal-flare --recipe synthetic-flare
+```
+
+Assets serialize `draft`, `awaiting_reference`, `selected_reference`, and
+`revisioned` lifecycle states. Patch, remap, compare, and review remain
+revision-only. First conversion resolves project resources and snapshots their
+content and hashes into `r000001`; editing those resources later never rewrites
+the revision.
 
 ## License
 

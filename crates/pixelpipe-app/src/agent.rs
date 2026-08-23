@@ -313,7 +313,6 @@ impl AgentRuntime {
             &store,
             &output_directory,
             &secrets,
-            &emitter,
         );
         let status = if capture.cancelled {
             AgentRunStatus::Cancelled
@@ -344,6 +343,7 @@ impl AgentRuntime {
             proposal: payload.proposal,
         };
         store.store_agent_run(&record, &payload.candidate_bytes)?;
+        emit_published_candidates(&record, &emitter);
         match record.status {
             AgentRunStatus::Completed => emitter.emit(AgentTaskEventKind::Completed {
                 run: record.clone(),
@@ -395,6 +395,16 @@ impl AgentRuntime {
     }
 }
 
+fn emit_published_candidates(record: &AgentRunRecord, emitter: &EventEmitter) {
+    if record.status == AgentRunStatus::Completed {
+        for candidate in &record.candidates {
+            emitter.emit(AgentTaskEventKind::CandidateReady {
+                candidate: candidate.clone(),
+            });
+        }
+    }
+}
+
 impl ProcessCapture {
     fn failed(message: String) -> Self {
         Self {
@@ -425,7 +435,6 @@ struct ResponseContext<'a> {
     store: &'a ProjectStore,
     output_directory: &'a Path,
     secrets: &'a [String],
-    emitter: &'a EventEmitter,
 }
 
 struct EventEmitter {
@@ -460,12 +469,21 @@ fn prepare_request(
     workspace: &Path,
     output_directory: &Path,
 ) -> Result<ProtocolRequest, AppError> {
+    let asset = store.asset(&request.asset)?;
     let (native_png, preview_png, pixels_json) = match request.operation {
         AgentOperation::GenerateReferences => {
             if request.revision.is_some() {
                 return Err(AppError::AgentProtocol(
                     "generation must not name a revision".to_owned(),
                 ));
+            }
+            if asset.head.is_none() && asset.brief.text.trim().is_empty() {
+                return Err(pixelpipe_project::ProjectError::AssetNotReady {
+                    asset: request.asset.clone(),
+                    operation: "generate references",
+                    reason: "write a non-empty brief first",
+                }
+                .into());
             }
             (None, None, None)
         }
@@ -610,7 +628,6 @@ fn interpret_capture(
     store: &ProjectStore,
     output_directory: &Path,
     secrets: &[String],
-    emitter: &EventEmitter,
 ) -> RunPayload {
     let error = capture.process_error.clone().or_else(|| {
         if capture.cancelled {
@@ -643,7 +660,6 @@ fn interpret_capture(
         store,
         output_directory,
         secrets,
-        emitter,
     };
     match process_response(&capture.stdout, &context) {
         Ok(result) => RunPayload {
@@ -718,9 +734,17 @@ fn process_response(
             }
             for candidate in candidates {
                 let (metadata, bytes) = validate_candidate(context.output_directory, candidate)?;
-                context.emitter.emit(AgentTaskEventKind::CandidateReady {
-                    candidate: metadata.clone(),
-                });
+                if processed.candidate_bytes.contains_key(&metadata.id)
+                    || processed
+                        .candidates
+                        .iter()
+                        .any(|candidate| candidate.sha256 == metadata.sha256)
+                {
+                    return Err(AppError::AgentProtocol(format!(
+                        "duplicate candidate id or content hash '{}'",
+                        metadata.id
+                    )));
+                }
                 processed.candidate_bytes.insert(metadata.id.clone(), bytes);
                 processed.candidates.push(metadata);
             }
@@ -1243,11 +1267,19 @@ mod tests {
             ("fixture-malformed", "malformed", "invalid JSON response"),
             ("fixture-exit", "exit-failure", "status 7"),
             ("fixture-hash", "bad-hash", "hash does not match"),
+            (
+                "fixture-later-hash",
+                "later-bad-hash",
+                "hash does not match",
+            ),
             ("fixture-escape", "escape", "assigned output directory"),
         ] {
             let fixture = FixtureProject::new();
             fixture.profile(id, mode, true);
-            let (result, _) = fixture.run(fixture.request(id, AgentOperation::GenerateReferences));
+            let store = ProjectStore::discover(fixture.root.path()).expect("store");
+            let before = store.asset("signal-flare").expect("asset");
+            let (result, events) =
+                fixture.run(fixture.request(id, AgentOperation::GenerateReferences));
             assert_eq!(result.run.status, AgentRunStatus::Failed, "{mode}");
             assert!(
                 result
@@ -1259,25 +1291,39 @@ mod tests {
                 result.run.error
             );
             assert!(result.run.candidates.is_empty());
-            let stored = ProjectStore::discover(fixture.root.path())
-                .expect("store")
-                .agent_run(&result.run.id)
-                .expect("failed run");
+            assert!(
+                !events
+                    .lock()
+                    .expect("events")
+                    .iter()
+                    .any(|event| matches!(event.event, AgentTaskEventKind::CandidateReady { .. }))
+            );
+            assert_eq!(store.asset("signal-flare").expect("asset"), before);
+            let stored = store.agent_run(&result.run.id).expect("failed run");
             assert_eq!(stored.status, AgentRunStatus::Failed);
+            assert!(stored.candidates.is_empty());
         }
     }
 
     #[test]
     fn cancellation_kills_the_process_and_records_cancelled_lifecycle() {
         let fixture = FixtureProject::new();
-        fixture.profile("fixture-cancel", "cancel", true);
+        fixture.profile("fixture-cancel", "cancel-partial", true);
+        let store = ProjectStore::discover(fixture.root.path()).expect("store");
+        let before = store.asset("signal-flare").expect("asset");
         let runtime = AgentRuntime::with_profile_directory(fixture.profiles.path().to_path_buf());
         let request = fixture.request("fixture-cancel", AgentOperation::GenerateReferences);
         let cancel = Arc::new(AtomicBool::new(false));
         let worker_cancel = Arc::clone(&cancel);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let worker_events = Arc::clone(&events);
         let worker = thread::spawn(move || {
             runtime
-                .run(request, worker_cancel.as_ref(), Arc::new(|_| {}))
+                .run(
+                    request,
+                    worker_cancel.as_ref(),
+                    Arc::new(move |event| worker_events.lock().expect("events").push(event)),
+                )
                 .expect("cancelled result")
         });
         thread::sleep(Duration::from_millis(100));
@@ -1286,6 +1332,22 @@ mod tests {
 
         assert_eq!(result.run.status, AgentRunStatus::Cancelled);
         assert!(result.run.duration_ms < 2_000);
+        assert!(result.run.candidates.is_empty());
+        assert!(
+            !events
+                .lock()
+                .expect("events")
+                .iter()
+                .any(|event| matches!(event.event, AgentTaskEventKind::CandidateReady { .. }))
+        );
+        assert_eq!(store.asset("signal-flare").expect("asset"), before);
+        assert!(
+            store
+                .agent_run(&result.run.id)
+                .expect("stored run")
+                .candidates
+                .is_empty()
+        );
     }
 
     fn fixture_path(relative: &str) -> PathBuf {

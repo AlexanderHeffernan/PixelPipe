@@ -8,10 +8,13 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 use pixelpipe_app::{
     AgentOperation, AgentRunStatus, AgentRuntime, AgentTaskRequest, BrowseAgentRuns,
-    CompareRevisions, ConversionMode, ConvertRevision, CreateRevision, InspectRevision,
-    LoadAgentCandidate, PatchRevision, RecordReview, RemapRevision, SelectAgentCandidate,
-    browse_agent_runs, compare_revisions, convert_revision, create_revision, inspect_revision,
-    load_agent_candidate, patch_revision, record_review, remap_revision, select_agent_candidate,
+    CompareRevisions, ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision,
+    InitializeAsset, InspectRevision, LoadAgentCandidate, PatchRevision, RecordReview,
+    RemapRevision, SelectAgentCandidate, StoreProjectPalette, StoreProjectRecipe, UpdateAssetBrief,
+    browse_agent_runs, compare_revisions, convert_revision, convert_selected_reference,
+    create_revision, initialize_asset, inspect_revision, load_agent_candidate, patch_revision,
+    record_review, remap_revision, select_agent_candidate, store_project_palette,
+    store_project_recipe, update_asset_brief,
 };
 use pixelpipe_core::{ConversionSettings, SheetSettings};
 use pixelpipe_project::{
@@ -68,6 +71,20 @@ enum ProjectCommand {
         #[arg(long, default_value = ".")]
         root: PathBuf,
     },
+    SetPalette {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        file: PathBuf,
+    },
+    SetRecipe {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        file: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -107,6 +124,16 @@ enum RevisionCommand {
         brief: Option<PathBuf>,
         #[arg(long)]
         preview_scale: Option<u16>,
+        #[arg(long, default_value = "cli")]
+        actor: String,
+    },
+    ConvertSelected {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        recipe: String,
         #[arg(long, default_value = "cli")]
         actor: String,
     },
@@ -186,6 +213,24 @@ enum RevisionCommand {
 
 #[derive(Debug, Subcommand)]
 enum AssetCommand {
+    Init {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long, value_enum, default_value_t = Kind::Sprite)]
+        kind: Kind,
+        #[arg(long, default_value = "")]
+        brief: String,
+    },
+    SetBrief {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        brief: String,
+    },
     Inspect {
         #[arg(long, default_value = ".")]
         root: PathBuf,
@@ -346,27 +391,9 @@ fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
                 "schema": store.manifest()?.schema,
             }))
         }
-        Command::Project {
-            command: ProjectCommand::Show { root },
-        } => {
-            let store = ProjectStore::discover(&root)?;
-            Ok(json!({
-                "ok": true,
-                "project_root": store.root(),
-                "project": store.manifest()?,
-            }))
-        }
+        Command::Project { command } => run_project(command),
         Command::Revision { command } => run_revision(command),
-        Command::Asset {
-            command: AssetCommand::Inspect { root, asset },
-        } => {
-            let store = ProjectStore::discover(&root)?;
-            Ok(json!({
-                "ok": true,
-                "project_root": store.root(),
-                "asset": store.asset(&asset)?,
-            }))
-        }
+        Command::Asset { command } => run_asset(command),
         Command::Agent { command } => run_agent(command),
         Command::Reference {
             command:
@@ -385,6 +412,67 @@ fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
                 candidate,
             })?,
         })),
+    }
+}
+
+fn run_project(command: ProjectCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    match command {
+        ProjectCommand::Show { root } => {
+            let store = ProjectStore::discover(&root)?;
+            Ok(json!({
+                "ok": true,
+                "project_root": store.root(),
+                "project": store.manifest()?,
+                "recipes": store.conversion_recipes()?,
+            }))
+        }
+        ProjectCommand::SetPalette { root, id, file } => {
+            store_project_palette(StoreProjectPalette {
+                start: root,
+                id: id.clone(),
+                file,
+            })?;
+            Ok(json!({ "ok": true, "palette": id }))
+        }
+        ProjectCommand::SetRecipe { root, file } => {
+            let recipe = store_project_recipe(StoreProjectRecipe { start: root, file })?;
+            Ok(json!({ "ok": true, "recipe": recipe.id }))
+        }
+    }
+}
+
+fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    match command {
+        AssetCommand::Init {
+            root,
+            asset,
+            kind,
+            brief,
+        } => Ok(json!({
+            "ok": true,
+            "asset": initialize_asset(InitializeAsset {
+                start: root,
+                asset,
+                kind: kind.into(),
+                brief,
+            })?,
+        })),
+        AssetCommand::SetBrief { root, asset, brief } => Ok(json!({
+            "ok": true,
+            "asset": update_asset_brief(UpdateAssetBrief {
+                start: root,
+                asset,
+                brief,
+            })?,
+        })),
+        AssetCommand::Inspect { root, asset } => {
+            let store = ProjectStore::discover(&root)?;
+            Ok(json!({
+                "ok": true,
+                "project_root": store.root(),
+                "asset": store.asset(&asset)?,
+            }))
+        }
     }
 }
 
@@ -465,6 +553,20 @@ fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn s
         })? }),
         ),
         command @ RevisionCommand::Convert { .. } => convert_command(command),
+        RevisionCommand::ConvertSelected {
+            root,
+            asset,
+            recipe,
+            actor,
+        } => Ok(json!({
+            "ok": true,
+            "revision": convert_selected_reference(ConvertSelectedReference {
+                start: root,
+                asset,
+                recipe,
+                actor,
+            })?,
+        })),
         RevisionCommand::Patch {
             root,
             asset,

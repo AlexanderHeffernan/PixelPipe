@@ -6,6 +6,8 @@ import {
   browseProject,
   cancelAgentTask,
   compareRevisions,
+  convertSelectedReference,
+  initializeAsset,
   loadAgentCandidate,
   loadRevision,
   patchRevision,
@@ -14,11 +16,15 @@ import {
   remapRevision,
   selectAgentCandidate,
   startAgentTask,
+  storeProjectPalette,
+  storeProjectRecipe,
+  updateAssetBrief,
 } from "./api";
 import type {
   AgentOperation,
   AgentRunRecord,
   AgentTaskEvent,
+  AssetKind,
   PaletteDraft,
   PixelEdit,
   ProjectBrowser,
@@ -58,12 +64,24 @@ const activeAgentRun = ref<AgentRunRecord>();
 const candidateImages = ref<Record<string, string>>({});
 const selectedCandidate = ref("");
 const proposalSource = ref("");
+const assetBrief = ref("");
+const conversionRecipe = ref("");
+const newAssetId = ref("");
+const newAssetKind = ref<AssetKind>("sprite");
+const newAssetBrief = ref("");
+const paletteResourceId = ref("");
+const paletteResourceFile = ref("");
+const recipeResourceFile = ref("");
 let unlistenAgent: UnlistenFn | undefined;
 
 const selectedAsset = computed(() =>
   project.value?.assets.find(({ asset }) => asset.id === assetId.value),
 );
 const revisions = computed(() => selectedAsset.value?.revisions ?? []);
+const assetState = computed(() =>
+  selectedAsset.value?.asset.state ?? (selectedAsset.value?.asset.head ? "revisioned" : "draft"),
+);
+const conversionRecipes = computed(() => project.value?.recipes ?? []);
 const nativeUrl = computed(() =>
   view.value ? pngDataUrl(view.value.native_png_base64) : "",
 );
@@ -135,6 +153,14 @@ async function openProject() {
 async function selectAsset(id: string) {
   assetId.value = id;
   const asset = project.value?.assets.find((entry) => entry.asset.id === id);
+  assetBrief.value = asset?.asset.brief?.text ?? "";
+  agentPrompt.value = assetBrief.value;
+  selectedCandidate.value = asset?.asset.selected_reference?.candidate ?? "";
+  conversionRecipe.value = conversionRecipes.value.find(({ kind }) => kind === asset?.asset.kind)?.id ?? "";
+  if (project.value) {
+    agentRuns.value = await browseAgentRuns(project.value.project_root, id);
+    activeAgentRun.value = agentRuns.value.at(-1);
+  }
   const target = asset?.asset.head ?? asset?.revisions.at(-1)?.id;
   if (!target) {
     revisionId.value = "";
@@ -143,10 +169,70 @@ async function selectAsset(id: string) {
     return;
   }
   await selectRevision(target);
-  if (project.value) {
-    agentRuns.value = await browseAgentRuns(project.value.project_root, id);
-    activeAgentRun.value = agentRuns.value.at(-1);
-  }
+}
+
+async function createAsset() {
+  if (!project.value || !newAssetId.value.trim()) return;
+  await run(async () => {
+    await initializeAsset(
+      project.value!.project_root,
+      newAssetId.value.trim(),
+      newAssetKind.value,
+      newAssetBrief.value,
+    );
+    project.value = await browseProject(project.value!.project_root);
+    const id = newAssetId.value.trim();
+    newAssetId.value = "";
+    newAssetBrief.value = "";
+    await selectAsset(id);
+    notice.value = `Created ${id} as a pre-revision asset.`;
+  });
+}
+
+async function importPaletteResource() {
+  if (!project.value || !paletteResourceId.value.trim() || !paletteResourceFile.value.trim()) return;
+  await run(async () => {
+    await storeProjectPalette(
+      project.value!.project_root,
+      paletteResourceId.value.trim(),
+      paletteResourceFile.value.trim(),
+    );
+    project.value = await browseProject(project.value!.project_root);
+    notice.value = `Stored project palette ${paletteResourceId.value.trim()}.`;
+  });
+}
+
+async function importRecipeResource() {
+  if (!project.value || !recipeResourceFile.value.trim()) return;
+  await run(async () => {
+    await storeProjectRecipe(project.value!.project_root, recipeResourceFile.value.trim());
+    project.value = await browseProject(project.value!.project_root);
+    notice.value = "Stored and validated the project conversion recipe.";
+  });
+}
+
+async function saveBrief() {
+  if (!project.value || !selectedAsset.value) return;
+  await run(async () => {
+    await updateAssetBrief(project.value!.project_root, assetId.value, assetBrief.value);
+    project.value = await browseProject(project.value!.project_root);
+    agentPrompt.value = assetBrief.value;
+    notice.value = "Saved the project-owned brief. Revision history was unchanged.";
+  });
+}
+
+async function convertSelection() {
+  if (!project.value || !conversionRecipe.value || !actor.value.trim()) return;
+  await run(async () => {
+    const result = await convertSelectedReference(
+      project.value!.project_root,
+      assetId.value,
+      conversionRecipe.value,
+      actor.value.trim(),
+    );
+    await refreshAndSelect(result.revision);
+    notice.value = `Created first immutable revision ${result.revision} from the selected reference.`;
+  });
 }
 
 async function selectRevision(id: string) {
@@ -321,6 +407,7 @@ async function chooseCandidate(candidate: string) {
       candidate,
     );
     selectedCandidate.value = selection.candidate;
+    project.value = await browseProject(project.value!.project_root);
     notice.value = `Selected ${selection.candidate} (${selection.sha256.slice(0, 12)}…). Head was unchanged.`;
   });
 }
@@ -423,8 +510,29 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
           <h1>{{ project.project.name }}</h1>
           <code>{{ project.project_root }}</code>
         </div>
+        <details class="project-resources">
+          <summary>Project resources</summary>
+          <form class="stack-form" @submit.prevent="importPaletteResource">
+            <label>Palette ID<input v-model="paletteResourceId" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="game-main" /></label>
+            <label>Palette JSON path<input v-model="paletteResourceFile" required placeholder="/path/to/palette.json" /></label>
+            <button :disabled="busy">Store palette</button>
+          </form>
+          <form class="stack-form" @submit.prevent="importRecipeResource">
+            <label>Recipe JSON path<input v-model="recipeResourceFile" required placeholder="/path/to/recipe.json" /></label>
+            <button :disabled="busy">Store recipe</button>
+          </form>
+        </details>
         <section>
           <h2>Assets <span>{{ project.assets.length }}</span></h2>
+          <details class="new-asset">
+            <summary>New asset</summary>
+            <form class="stack-form" @submit.prevent="createAsset">
+              <label>Asset ID<input v-model="newAssetId" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="player-idle" /></label>
+              <label>Kind<select v-model="newAssetKind"><option value="sprite">Sprite</option><option value="sheet">Sheet</option><option value="tile">Tile</option><option value="ui">UI</option></select></label>
+              <label>Brief<textarea v-model="newAssetBrief" rows="3" placeholder="Optional draft; write the intent before generation."></textarea></label>
+              <button class="primary" :disabled="busy || !newAssetId.trim()">Create draft</button>
+            </form>
+          </details>
           <div v-if="project.assets.length" class="nav-list" @keydown="moveListFocus">
             <button
               v-for="entry in project.assets"
@@ -438,7 +546,7 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
               <span>{{ entry.asset.id }}</span><small>{{ entry.asset.kind }}</small>
             </button>
           </div>
-          <p v-else class="empty">No assets. Create one with the CLI, then reopen this project.</p>
+          <p v-else class="empty">No assets yet. Create a stable draft identity above.</p>
         </section>
         <section v-if="selectedAsset">
           <h2>Revisions <span>{{ revisions.length }}</span></h2>
@@ -460,8 +568,8 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
         </section>
       </aside>
 
-      <section v-if="view" class="canvas-area" aria-label="Revision review">
-        <div class="revision-heading">
+      <section v-if="selectedAsset" class="canvas-area" aria-label="Asset workstation">
+        <div v-if="view" class="revision-heading">
           <div>
             <small>{{ selectedAsset?.asset.kind }} · immutable revision</small>
             <h2>{{ assetId }} <span>/ {{ revisionId }}</span></h2>
@@ -473,7 +581,7 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
           </div>
         </div>
 
-        <div class="image-grid">
+        <div v-if="view" class="image-grid">
           <figure class="image-card native-card">
             <figcaption><strong>Native</strong><span>{{ view.metadata.inspection.width }}×{{ view.metadata.inspection.height }}</span></figcaption>
             <div class="checker native-stage">
@@ -487,6 +595,29 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
             </div>
           </figure>
         </div>
+
+        <section v-if="!view" class="panel prerevision" aria-labelledby="prerevision-title">
+          <div class="panel-title">
+            <div><small>Pre-revision asset · {{ assetState.replaceAll("_", " ") }}</small><h2 id="prerevision-title">{{ assetId }}</h2></div>
+            <span class="badge">{{ selectedAsset.asset.kind }}</span>
+          </div>
+          <form class="stack-form" @submit.prevent="saveBrief">
+            <label>Project-owned brief<textarea v-model="assetBrief" rows="5" placeholder="Describe the asset, camera, silhouette, family, and constraints."></textarea></label>
+            <button :disabled="busy">Save brief</button>
+            <p class="form-note">Brief edits are project resources. Conversion snapshots the resolved text; existing revisions never change.</p>
+          </form>
+          <form class="stack-form conversion-form" @submit.prevent="convertSelection">
+            <label>Conversion recipe
+              <select v-model="conversionRecipe" required>
+                <option value="">Choose project recipe</option>
+                <option v-for="recipe in conversionRecipes.filter(({ kind }) => kind === selectedAsset?.asset.kind)" :key="recipe.id" :value="recipe.id">{{ recipe.id }} · {{ recipe.palette }}</option>
+              </select>
+            </label>
+            <button class="primary" :disabled="busy || assetState !== 'selected_reference' || !conversionRecipe || !actor.trim()">Create first revision</button>
+            <p v-if="assetState !== 'selected_reference'" class="form-note">Write a brief, generate candidates, and explicitly select one before conversion is enabled.</p>
+            <p v-else class="form-note">Creates the first immutable revision from the selected content-addressed reference.</p>
+          </form>
+        </section>
 
         <section class="agent-workflow panel" aria-labelledby="agent-workflow-title">
           <div class="panel-title agent-title">
@@ -505,9 +636,9 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
             </div>
             <label>Brief or review prompt<textarea v-model="agentPrompt" required rows="3" placeholder="Describe the smooth reference, critique goal, or focused refinement you want."></textarea></label>
             <div class="agent-actions">
-              <button class="primary" :disabled="agentBusy || !agentProfile.trim() || !agentPrompt.trim()">Generate references</button>
-              <button type="button" :disabled="agentBusy || !agentProfile.trim() || !agentPrompt.trim()" @click="startAgent('critique_asset')">Critique revision</button>
-              <button type="button" :disabled="agentBusy || !agentProfile.trim() || !agentPrompt.trim()" @click="startAgent('propose_refinement')">Propose refinement</button>
+              <button class="primary" :disabled="agentBusy || assetState === 'draft' || !agentProfile.trim() || !agentPrompt.trim()">Generate references</button>
+              <button type="button" :disabled="agentBusy || !view || !agentProfile.trim() || !agentPrompt.trim()" @click="startAgent('critique_asset')">Critique revision</button>
+              <button type="button" :disabled="agentBusy || !view || !agentProfile.trim() || !agentPrompt.trim()" @click="startAgent('propose_refinement')">Propose refinement</button>
               <button v-if="agentBusy" type="button" class="danger" @click="cancelAgent">Cancel task</button>
             </div>
             <p class="form-note">Profiles live in user settings and must explicitly allowlist an absolute executable. Project files cannot choose a command. Completion never selects, applies, reviews, or approves.</p>
@@ -537,7 +668,7 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
           <details v-if="agentLogs.length" class="agent-logs"><summary>Task log (redacted) · {{ agentLogs.length }}</summary><pre>{{ agentLogs.join("\n") }}</pre></details>
         </section>
 
-        <section class="comparison panel">
+        <section v-if="view" class="comparison panel">
           <div class="panel-title">
             <div><small>Revision comparison</small><h3>Visual and machine diff</h3></div>
             <form @submit.prevent="submitComparison">
@@ -561,7 +692,7 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
           <p v-else class="empty inline">Choose another revision to produce a deterministic comparison.</p>
         </section>
 
-        <div class="action-grid">
+        <div v-if="view" class="action-grid">
           <section class="panel">
             <div class="panel-title"><div><small>Review state</small><h3>Record judgement</h3></div></div>
             <form class="stack-form" @submit.prevent="submitReview">
@@ -597,7 +728,7 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
           </section>
         </div>
 
-        <section v-if="paletteDraft" class="panel remap-panel">
+        <section v-if="view && paletteDraft" class="panel remap-panel">
           <div class="panel-title"><div><small>Structured operation</small><h3>Palette remap</h3></div><button type="button" @click="addPaletteColor">Add color</button></div>
           <form class="stack-form" @submit.prevent="submitRemap">
             <div class="form-row compact">
@@ -631,7 +762,7 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
       </section>
 
       <section v-else class="empty-workspace" aria-label="Empty project">
-        <div><small>No revision selected</small><h2>{{ project.assets.length ? "Choose an asset revision" : "This project has no assets" }}</h2><p>{{ project.assets.length ? "Select an immutable revision from the navigator." : "Create an asset with the CLI, then open the project again." }}</p></div>
+        <div><small>No asset selected</small><h2>{{ project.assets.length ? "Choose an asset" : "This project has no assets" }}</h2><p>{{ project.assets.length ? "Select an asset from the navigator." : "Create a draft asset in the navigator to begin." }}</p></div>
       </section>
 
       <aside v-if="view" class="inspector" aria-label="Revision inspector">

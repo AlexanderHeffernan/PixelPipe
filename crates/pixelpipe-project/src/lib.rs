@@ -9,20 +9,23 @@ use std::{
 use atomicwrites::{AllowOverwrite, AtomicFile};
 use fs2::FileExt;
 use pixelpipe_core::{
-    IndexedRaster, PaletteRemap, PixelPatchSet, RECIPE_SCHEMA, Recipe, VALIDATION_SCHEMA,
-    ValidationReport, sha256_hex, stable_json,
+    ConversionSettings, IndexedRaster, Palette, PaletteRemap, PixelPatchSet, RECIPE_SCHEMA, Recipe,
+    SheetSettings, VALIDATION_SCHEMA, ValidationReport, sha256_hex, stable_json,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub const PROJECT_SCHEMA: &str = "pixelpipe.project/v1";
-pub const ASSET_SCHEMA: &str = "pixelpipe.asset/v1";
+pub const ASSET_SCHEMA: &str = "pixelpipe.asset/v2";
+const LEGACY_ASSET_SCHEMA: &str = "pixelpipe.asset/v1";
 pub const REVISION_SCHEMA: &str = "pixelpipe.revision/v1";
 pub const PROVENANCE_SCHEMA: &str = "pixelpipe.provenance/v1";
 pub const REVIEW_SCHEMA: &str = "pixelpipe.review/v1";
 pub const AGENT_RUN_SCHEMA: &str = "pixelpipe.agent-run/v1";
 pub const REFERENCE_SELECTION_SCHEMA: &str = "pixelpipe.reference-selection/v1";
+pub const ASSET_BRIEF_SCHEMA: &str = "pixelpipe.asset-brief/v1";
+pub const CONVERSION_RECIPE_SCHEMA: &str = "pixelpipe.conversion-recipe/v1";
 const REVISION_PAYLOADS: [&str; 7] = [
     "brief.md",
     "native.png",
@@ -60,10 +63,42 @@ pub struct AssetManifest {
     pub schema: String,
     pub id: String,
     pub kind: AssetKind,
+    #[serde(default)]
+    pub state: AssetState,
+    #[serde(default)]
+    pub brief: AssetBrief,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_reference: Option<ReferenceSelection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approved: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetState {
+    #[default]
+    Draft,
+    AwaitingReference,
+    SelectedReference,
+    Revisioned,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssetBrief {
+    pub schema: String,
+    pub text: String,
+}
+
+impl Default for AssetBrief {
+    fn default() -> Self {
+        Self {
+            schema: ASSET_BRIEF_SCHEMA.to_owned(),
+            text: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +108,24 @@ pub enum AssetKind {
     Sheet,
     Tile,
     Ui,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversionRecipeDocument {
+    pub schema: String,
+    pub id: String,
+    pub kind: AssetKind,
+    pub palette: String,
+    pub preview_scale: u16,
+    pub mode: StoredConversionMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum StoredConversionMode {
+    Reference { settings: ConversionSettings },
+    Sheet { settings: SheetSettings },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -138,7 +191,7 @@ pub struct StoredReference {
     pub path: PathBuf,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevisionSnapshot {
     pub path: PathBuf,
     pub manifest: RevisionManifest,
@@ -307,6 +360,20 @@ pub enum ProjectError {
         existing: AssetKind,
         requested: AssetKind,
     },
+    #[error("asset '{0}' already exists")]
+    AssetExists(String),
+    #[error("asset '{asset}' is not ready for {operation}: {reason}")]
+    AssetNotReady {
+        asset: String,
+        operation: &'static str,
+        reason: &'static str,
+    },
+    #[error("project resource id '{0}' is invalid")]
+    InvalidResourceId(String),
+    #[error("project resource '{kind}/{id}' does not exist")]
+    ResourceNotFound { kind: &'static str, id: String },
+    #[error("project resource identity does not match its path")]
+    ResourceIdentityMismatch,
     #[error("revision directory already exists: {0}")]
     RevisionExists(PathBuf),
     #[error("revision '{revision}' does not exist for asset '{asset}'")]
@@ -374,6 +441,8 @@ impl ProjectStore {
 
         fs::create_dir_all(pixelpipe.join("assets")).map_err(|source| io_at(&pixelpipe, source))?;
         fs::create_dir_all(pixelpipe.join("palettes"))
+            .map_err(|source| io_at(&pixelpipe, source))?;
+        fs::create_dir_all(pixelpipe.join("recipes"))
             .map_err(|source| io_at(&pixelpipe, source))?;
         fs::create_dir_all(pixelpipe.join("tmp")).map_err(|source| io_at(&pixelpipe, source))?;
 
@@ -449,15 +518,219 @@ impl ProjectStore {
         validate_asset_id(id)?;
         let path = self.asset_path(id).join("asset.toml");
         let contents = fs::read_to_string(&path).map_err(|source| io_at(&path, source))?;
-        let asset: AssetManifest = toml::from_str(&contents)?;
-        ensure_schema(&asset.schema, ASSET_SCHEMA)?;
+        let mut asset: AssetManifest = toml::from_str(&contents)?;
+        if asset.schema != ASSET_SCHEMA && asset.schema != LEGACY_ASSET_SCHEMA {
+            return Err(ProjectError::Schema {
+                expected: ASSET_SCHEMA,
+                actual: asset.schema,
+            });
+        }
         if asset.id != id {
             return Err(ProjectError::AssetIdentityMismatch {
                 expected: id.to_owned(),
                 actual: asset.id,
             });
         }
+        if asset.schema == LEGACY_ASSET_SCHEMA {
+            asset.state = if asset.head.is_some() {
+                AssetState::Revisioned
+            } else {
+                AssetState::Draft
+            };
+        } else {
+            validate_asset_state(&asset)?;
+        }
         Ok(asset)
+    }
+
+    /// Loads an asset when its manifest exists without treating absence as corruption.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the ID or an existing manifest is invalid.
+    pub fn optional_asset(&self, id: &str) -> Result<Option<AssetManifest>, ProjectError> {
+        validate_asset_id(id)?;
+        if self.asset_path(id).join("asset.toml").is_file() {
+            self.asset(id).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Creates a stable asset identity before any revision exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an invalid/duplicate ID or failed atomic storage.
+    pub fn create_asset(
+        &self,
+        id: &str,
+        kind: AssetKind,
+        brief: &str,
+    ) -> Result<AssetManifest, ProjectError> {
+        validate_asset_id(id)?;
+        let _lock = self.lock()?;
+        let path = self.asset_path(id);
+        if path.exists() {
+            return Err(ProjectError::AssetExists(id.to_owned()));
+        }
+        let staging = self
+            .root
+            .join(".pixelpipe/tmp")
+            .join(format!("asset-{id}-{}", std::process::id()));
+        if staging.exists() {
+            fs::remove_dir_all(&staging).map_err(|source| io_at(&staging, source))?;
+        }
+        fs::create_dir_all(staging.join("revisions")).map_err(|source| io_at(&staging, source))?;
+        let asset = AssetManifest {
+            schema: ASSET_SCHEMA.to_owned(),
+            id: id.to_owned(),
+            kind,
+            state: state_for(brief, None, None),
+            brief: AssetBrief {
+                schema: ASSET_BRIEF_SCHEMA.to_owned(),
+                text: brief.to_owned(),
+            },
+            selected_reference: None,
+            head: None,
+            approved: None,
+        };
+        write_file(
+            &staging.join("asset.toml"),
+            toml::to_string_pretty(&asset)?.as_bytes(),
+        )?;
+        fs::rename(&staging, &path).map_err(|source| io_at(&path, source))?;
+        Ok(asset)
+    }
+
+    /// Replaces the project-owned brief without changing a revision or head.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the asset cannot be loaded, validated, or stored.
+    pub fn set_asset_brief(&self, id: &str, brief: &str) -> Result<AssetManifest, ProjectError> {
+        let _lock = self.lock()?;
+        let mut asset = self.asset(id)?;
+        if asset.head.is_none() && asset.selected_reference.is_some() && brief.trim().is_empty() {
+            return Err(ProjectError::AssetNotReady {
+                asset: id.to_owned(),
+                operation: "update brief",
+                reason: "a selected reference requires a non-empty brief",
+            });
+        }
+        ASSET_SCHEMA.clone_into(&mut asset.schema);
+        asset.brief = AssetBrief {
+            schema: ASSET_BRIEF_SCHEMA.to_owned(),
+            text: brief.to_owned(),
+        };
+        asset.state = state_for(
+            brief,
+            asset.selected_reference.as_ref(),
+            asset.head.as_deref(),
+        );
+        atomic_write(
+            &self.asset_path(id).join("asset.toml"),
+            toml::to_string_pretty(&asset)?.as_bytes(),
+        )?;
+        Ok(asset)
+    }
+
+    /// Atomically stores a versioned project palette resource.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when identity, palette validation, or storage fails.
+    pub fn store_palette(&self, id: &str, palette: &Palette) -> Result<(), ProjectError> {
+        validate_resource_id(id)?;
+        palette.validate()?;
+        let _lock = self.lock()?;
+        atomic_write(&self.resource_path("palettes", id), &stable_json(palette)?)
+    }
+
+    /// Loads and validates a project palette resource.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the resource is missing, malformed, or invalid.
+    pub fn palette(&self, id: &str) -> Result<Palette, ProjectError> {
+        validate_resource_id(id)?;
+        let path = self.resource_path("palettes", id);
+        if !path.is_file() {
+            return Err(ProjectError::ResourceNotFound {
+                kind: "palettes",
+                id: id.to_owned(),
+            });
+        }
+        let palette: Palette = read_json(&path)?;
+        palette.validate()?;
+        Ok(palette)
+    }
+
+    /// Atomically stores a complete project conversion recipe.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when identity, recipe validation, or storage fails.
+    pub fn store_conversion_recipe(
+        &self,
+        recipe: &ConversionRecipeDocument,
+    ) -> Result<(), ProjectError> {
+        validate_conversion_recipe(recipe)?;
+        let _lock = self.lock()?;
+        let recipes = self.root.join(".pixelpipe/recipes");
+        fs::create_dir_all(&recipes).map_err(|source| io_at(&recipes, source))?;
+        atomic_write(
+            &self.resource_path("recipes", &recipe.id),
+            &stable_json(recipe)?,
+        )
+    }
+
+    /// Loads and validates a project conversion recipe.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the resource is missing, malformed, or invalid.
+    pub fn conversion_recipe(&self, id: &str) -> Result<ConversionRecipeDocument, ProjectError> {
+        validate_resource_id(id)?;
+        let path = self.resource_path("recipes", id);
+        if !path.is_file() {
+            return Err(ProjectError::ResourceNotFound {
+                kind: "recipes",
+                id: id.to_owned(),
+            });
+        }
+        let recipe: ConversionRecipeDocument = read_json(&path)?;
+        validate_conversion_recipe(&recipe)?;
+        if recipe.id != id {
+            return Err(ProjectError::ResourceIdentityMismatch);
+        }
+        Ok(recipe)
+    }
+
+    /// Lists validated conversion recipes in stable ID order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the resource directory or any recipe is invalid.
+    pub fn conversion_recipes(&self) -> Result<Vec<ConversionRecipeDocument>, ProjectError> {
+        let path = self.root.join(".pixelpipe/recipes");
+        if !path.is_dir() {
+            return Ok(Vec::new());
+        }
+        let mut recipes = Vec::new();
+        for entry in fs::read_dir(&path).map_err(|source| io_at(&path, source))? {
+            let entry = entry.map_err(|source| io_at(&path, source))?;
+            if entry.path().extension().and_then(|value| value.to_str()) == Some("json") {
+                let id = entry
+                    .file_name()
+                    .to_string_lossy()
+                    .trim_end_matches(".json")
+                    .to_owned();
+                recipes.push(self.conversion_recipe(&id)?);
+            }
+        }
+        recipes.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(recipes)
     }
 
     /// Lists initialized asset manifests in stable asset-ID order.
@@ -803,6 +1076,14 @@ impl ProjectStore {
     ) -> Result<ReferenceSelection, ProjectError> {
         validate_asset_id(asset)?;
         validate_agent_id(candidate_id)?;
+        let asset_manifest = self.asset(asset)?;
+        if asset_manifest.head.is_none() && asset_manifest.brief.text.trim().is_empty() {
+            return Err(ProjectError::AssetNotReady {
+                asset: asset.to_owned(),
+                operation: "select reference",
+                reason: "write a non-empty brief first",
+            });
+        }
         let record = self.agent_run(run)?;
         if record.asset != asset {
             return Err(ProjectError::InvalidAgentRun);
@@ -830,9 +1111,55 @@ impl ProjectStore {
             sha256: stored.sha256,
             selected_unix_ms: now_unix_ms()?,
         };
-        let selection_path = self.asset_path(asset).join("references/selection.json");
-        atomic_write(&selection_path, &stable_json(&selection)?)?;
+        let _lock = self.lock()?;
+        let mut asset_manifest = self.asset(asset)?;
+        if asset_manifest.head.is_none() && asset_manifest.brief.text.trim().is_empty() {
+            return Err(ProjectError::AssetNotReady {
+                asset: asset.to_owned(),
+                operation: "select reference",
+                reason: "write a non-empty brief first",
+            });
+        }
+        ASSET_SCHEMA.clone_into(&mut asset_manifest.schema);
+        asset_manifest.selected_reference = Some(selection.clone());
+        asset_manifest.state = state_for(
+            &asset_manifest.brief.text,
+            asset_manifest.selected_reference.as_ref(),
+            asset_manifest.head.as_deref(),
+        );
+        atomic_write(
+            &self.asset_path(asset).join("asset.toml"),
+            toml::to_string_pretty(&asset_manifest)?.as_bytes(),
+        )?;
         Ok(selection)
+    }
+
+    /// Loads the selected reference only after verifying its content-addressed bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no selection exists or its stored bytes/hash are invalid.
+    pub fn selected_reference(
+        &self,
+        asset: &str,
+    ) -> Result<(ReferenceSelection, Vec<u8>), ProjectError> {
+        let manifest = self.asset(asset)?;
+        let selection = manifest
+            .selected_reference
+            .ok_or_else(|| ProjectError::AssetNotReady {
+                asset: asset.to_owned(),
+                operation: "convert selected reference",
+                reason: "select a validated reference first",
+            })?;
+        let path = self
+            .asset_path(asset)
+            .join("references/selected")
+            .join(format!("{}.png", selection.sha256));
+        let bytes = fs::read(&path).map_err(|source| io_at(&path, source))?;
+        if sha256_hex(&bytes) != selection.sha256 {
+            return Err(ProjectError::ReferenceHashMismatch(path));
+        }
+        Ok((selection, bytes))
     }
 
     /// Atomically publishes a complete immutable revision and advances asset head.
@@ -891,6 +1218,12 @@ impl ProjectStore {
                 schema: ASSET_SCHEMA.to_owned(),
                 id: asset_id.to_owned(),
                 kind,
+                state: AssetState::Draft,
+                brief: AssetBrief {
+                    schema: ASSET_BRIEF_SCHEMA.to_owned(),
+                    text: files.brief.clone(),
+                },
+                selected_reference: None,
                 head: None,
                 approved: None,
             }
@@ -916,6 +1249,7 @@ impl ProjectStore {
             return Err(ProjectError::RevisionExists(revision_path));
         }
         let created_unix_ms = now_unix_ms()?;
+        let project_brief = files.brief.clone();
         let prepared = prepare_revision(
             asset_id,
             &revision,
@@ -934,7 +1268,15 @@ impl ProjectStore {
         write_prepared_revision(&staging, &prepared)?;
 
         fs::rename(&staging, &revision_path).map_err(|source| io_at(&revision_path, source))?;
+        ASSET_SCHEMA.clone_into(&mut asset.schema);
+        if asset.brief.text.is_empty() {
+            asset.brief = AssetBrief {
+                schema: ASSET_BRIEF_SCHEMA.to_owned(),
+                text: project_brief,
+            };
+        }
         asset.head = Some(revision.clone());
+        asset.state = AssetState::Revisioned;
         atomic_write(&manifest_path, toml::to_string_pretty(&asset)?.as_bytes())?;
         drop(lock);
 
@@ -949,6 +1291,13 @@ impl ProjectStore {
 
     fn asset_path(&self, id: &str) -> PathBuf {
         self.root.join(".pixelpipe/assets").join(id)
+    }
+
+    fn resource_path(&self, kind: &str, id: &str) -> PathBuf {
+        self.root
+            .join(".pixelpipe")
+            .join(kind)
+            .join(format!("{id}.json"))
     }
 
     fn review_path(&self, asset_id: &str, revision: &str) -> PathBuf {
@@ -1066,6 +1415,78 @@ fn validate_asset_id(id: &str) -> Result<(), ProjectError> {
     } else {
         Err(ProjectError::InvalidAssetId(id.to_owned()))
     }
+}
+
+fn validate_resource_id(id: &str) -> Result<(), ProjectError> {
+    if validate_asset_id(id).is_ok() {
+        Ok(())
+    } else {
+        Err(ProjectError::InvalidResourceId(id.to_owned()))
+    }
+}
+
+fn state_for(
+    brief: &str,
+    selection: Option<&ReferenceSelection>,
+    head: Option<&str>,
+) -> AssetState {
+    if head.is_some() {
+        AssetState::Revisioned
+    } else if selection.is_some() {
+        AssetState::SelectedReference
+    } else if brief.trim().is_empty() {
+        AssetState::Draft
+    } else {
+        AssetState::AwaitingReference
+    }
+}
+
+fn validate_asset_state(asset: &AssetManifest) -> Result<(), ProjectError> {
+    ensure_schema(&asset.brief.schema, ASSET_BRIEF_SCHEMA)?;
+    if asset.head.is_none()
+        && asset.brief.text.trim().is_empty()
+        && asset.selected_reference.is_some()
+    {
+        return Err(ProjectError::AssetNotReady {
+            asset: asset.id.clone(),
+            operation: "load asset",
+            reason: "a selected reference requires a non-empty brief",
+        });
+    }
+    let expected = state_for(
+        &asset.brief.text,
+        asset.selected_reference.as_ref(),
+        asset.head.as_deref(),
+    );
+    if asset.state != expected {
+        return Err(ProjectError::AssetNotReady {
+            asset: asset.id.clone(),
+            operation: "load asset",
+            reason: "serialized lifecycle state does not match brief, selection, and head",
+        });
+    }
+    if let Some(selection) = &asset.selected_reference {
+        ensure_schema(&selection.schema, REFERENCE_SELECTION_SCHEMA)?;
+        if selection.asset != asset.id {
+            return Err(ProjectError::AssetIdentityMismatch {
+                expected: asset.id.clone(),
+                actual: selection.asset.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_conversion_recipe(recipe: &ConversionRecipeDocument) -> Result<(), ProjectError> {
+    ensure_schema(&recipe.schema, CONVERSION_RECIPE_SCHEMA)?;
+    validate_resource_id(&recipe.id)?;
+    validate_resource_id(&recipe.palette)?;
+    if recipe.preview_scale == 0 {
+        return Err(ProjectError::Core(
+            pixelpipe_core::CoreError::InvalidPreviewScale,
+        ));
+    }
+    Ok(())
 }
 
 fn validate_revision_id(id: &str) -> Result<(), ProjectError> {

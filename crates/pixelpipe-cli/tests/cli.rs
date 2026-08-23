@@ -54,6 +54,72 @@ fn cli_init_create_and_inspect_share_json_contract() {
     assert_eq!(inspect["asset"]["kind"], "sprite");
 }
 
+#[test]
+fn cli_initializes_pre_revision_asset_and_project_resources() {
+    let project = tempdir().expect("project tempdir");
+    run(&[
+        "init",
+        "--root",
+        project.path().to_str().expect("UTF-8 project path"),
+        "--name",
+        "M6 CLI Fixture",
+    ]);
+    let root = project.path().to_str().expect("UTF-8 project path");
+    let draft = run(&[
+        "asset",
+        "init",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--kind",
+        "sprite",
+    ]);
+    assert_eq!(draft["asset"]["state"], "draft");
+    assert!(draft["asset"].get("head").is_none());
+    let awaiting = run(&[
+        "asset",
+        "set-brief",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--brief",
+        "Strict overhead synthetic flare",
+    ]);
+    assert_eq!(awaiting["asset"]["state"], "awaiting_reference");
+
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/m6");
+    let palette = fixtures.join("palette.json");
+    let recipe = fixtures.join("recipe.json");
+    assert_eq!(
+        run(&[
+            "project",
+            "set-palette",
+            "--root",
+            root,
+            "--id",
+            "synthetic-flare",
+            "--file",
+            palette.to_str().expect("palette path"),
+        ])["palette"],
+        "synthetic-flare"
+    );
+    assert_eq!(
+        run(&[
+            "project",
+            "set-recipe",
+            "--root",
+            root,
+            "--file",
+            recipe.to_str().expect("recipe path"),
+        ])["recipe"],
+        "synthetic-flare"
+    );
+    let show = run(&["project", "show", "--root", root]);
+    assert_eq!(show["recipes"][0]["id"], "synthetic-flare");
+}
+
 #[derive(Deserialize)]
 struct RgbaFixture {
     width: u32,

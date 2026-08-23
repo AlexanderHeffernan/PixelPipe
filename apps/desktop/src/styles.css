@@ -77,6 +77,10 @@ code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
 .navigator section { padding-top: 18px; }
 .navigator h2, .inspector h2 { display: flex; justify-content: space-between; align-items: center; margin: 0 8px 8px; color: #9ba1ae; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
 .navigator h2 span { color: #9096a3; }
+.project-resources, .new-asset { margin: 12px 6px 0; border: 1px solid var(--line); border-radius: 7px; }
+.project-resources summary, .new-asset summary { padding: 8px; color: #b6bbc5; cursor: pointer; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.project-resources .stack-form, .new-asset .stack-form { padding: 8px; border-top: 1px solid var(--line); }
+.project-resources input, .project-resources select, .new-asset input, .new-asset select, .new-asset textarea { width: 100%; min-width: 0; }
 .nav-list { display: grid; gap: 3px; }
 .nav-list button {
   display: flex; justify-content: space-between; align-items: center; width: 100%; border-color: transparent;
@@ -232,6 +236,7 @@ details pre { max-height: 260px; overflow: auto; color: #858b98; font-size: 8px;
   .navigator, .inspector { background: #f7f8fa; }
   .navigator h2, .inspector h2 { color: #535b67; }
   .inspector h2 span, details summary { color: #535b67; }
+  .project-resources summary, .new-asset summary { color: #535b67; }
   .empty { color: #5f6672; }
   .project-title code, .revision-links, .image-card figcaption span, .form-note { color: #626a77; }
   .nav-list button.selected { color: #20280f; border-color: #afbf89; background: #e8efd7; }

@@ -206,15 +206,15 @@ PixelPipe discovers the game root by walking upward for `.pixelpipe/project.toml
 game-root/
   .pixelpipe/
     project.toml                 schema, art direction, defaults, export maps
-    palettes/<palette>.toml      ordered RGBA colours and transparent index
+    palettes/<palette>.json      versioned ordered RGBA colours and transparent index
+    recipes/<recipe>.json        complete conversion settings + palette resource ID
     runs/<task-id>/              ignored local agent run/candidate capture
       run.json
       candidates/<sha256>.png
     assets/<asset-id>/
-      asset.toml                 brief identity, kind, head, approved revision
+      asset.toml                 kind, lifecycle, brief, selection, head/approved
       references/
         selected/<sha256>.png    immutable selected reference bytes
-        selection.json           explicit run/candidate/hash selection
       revisions/r000001/
         brief.md                 brief snapshot used for this revision
         recipe.json              selected reference + deterministic operations
@@ -241,6 +241,21 @@ escape the root. Asset IDs are stable lowercase slugs. Revision IDs are
 monotonic per asset (`r000001`); each revision records zero or one parent in M1.
 Creating from an older revision naturally branches without needing a separate
 branch entity. A later need for merges must be demonstrated before adding them.
+
+M6 makes `pixelpipe.asset/v2` an explicit pre-revision state machine. `draft`
+has no usable brief; a non-empty brief moves it to `awaiting_reference`; explicit
+selection of a validated run candidate moves it to `selected_reference`; only
+successful selected-reference conversion may create the first head and move it
+to `revisioned`. The brief and selected run/candidate/reference hash live in the
+single atomically written asset manifest. Legacy `pixelpipe.asset/v1` manifests
+remain readable and are upgraded when a later mutation writes them.
+
+Palettes (`pixelpipe.palette/v1`) and complete recipes
+(`pixelpipe.conversion-recipe/v1`) are mutable, Git-versioned project resources.
+Conversion resolves them once and freezes the brief text, embedded ordered
+palette, exact deterministic operation settings, selected reference hash, and
+resource-content hashes into the new revision. Later resource edits cannot
+change revision bytes.
 
 ## Revision and provenance contract
 
@@ -402,6 +417,23 @@ import, explicit selected-reference mutation, critique, proposal, and revision
 application remain separate states. Proposals validate read-only against their
 named revision; accepting one still invokes the existing explicit-parent
 patch/remap use case and creates a child revision.
+
+Candidate-ready is a post-validation event: all candidates in the response must
+decode, hash, remain path-contained, and have unique IDs before any candidate is
+announced or durably stored. Failed and cancelled runs retain redacted provenance
+but always have an empty candidate list and cannot change selection, lifecycle,
+head, review, or approval.
+
+### M6 pre-revision command surface
+
+CLI and desktop both invoke application use cases for asset initialization,
+brief update, file-oriented palette/recipe import, selected-reference conversion,
+and browsing assets without heads. Both frontends consume the same validated
+resources through a recipe picker. Revision-only controls are absent or disabled
+before head exists, and their application endpoints continue to reject a missing
+explicit revision.
+Browsing, brief edits, generation, and selection never move head. A successful
+conversion is the only pre-revision transition that creates `r000001`.
 
 ## Explicit non-goals for the first product arc
 

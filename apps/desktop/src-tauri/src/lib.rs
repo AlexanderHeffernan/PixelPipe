@@ -9,9 +9,10 @@ use std::{
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use pixelpipe_app::{
     AgentRuntime, AgentTaskEvent, AgentTaskEventKind, AgentTaskRequest, BrowseAgentRuns,
-    BrowseProject, CompareRevisions, InspectRevision, LoadAgentCandidate, PatchRevisionDocument,
-    ProjectBrowser, RecordReview, RemapRevisionDocument, ReviewRecord, RevisionComparisonMetadata,
-    RevisionResult, RevisionViewMetadata, SelectAgentCandidate,
+    BrowseProject, CompareRevisions, ConvertSelectedReference, InitializeAsset, InspectRevision,
+    LoadAgentCandidate, PatchRevisionDocument, ProjectBrowser, RecordReview, RemapRevisionDocument,
+    ReviewRecord, RevisionComparisonMetadata, RevisionResult, RevisionViewMetadata,
+    SelectAgentCandidate, StoreProjectPalette, StoreProjectRecipe, UpdateAssetBrief,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -46,6 +47,33 @@ type CommandResult<T> = Result<T, String>;
 fn browse_project(request: BrowseProject) -> CommandResult<ProjectBrowser> {
     let BrowseProject { start } = request;
     pixelpipe_app::browse_project(&BrowseProject { start }).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+fn initialize_asset(request: InitializeAsset) -> CommandResult<pixelpipe_app::AssetManifest> {
+    pixelpipe_app::initialize_asset(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+fn update_asset_brief(request: UpdateAssetBrief) -> CommandResult<pixelpipe_app::AssetManifest> {
+    pixelpipe_app::update_asset_brief(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+fn convert_selected_reference(request: ConvertSelectedReference) -> CommandResult<RevisionResult> {
+    pixelpipe_app::convert_selected_reference(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+fn store_project_palette(request: StoreProjectPalette) -> CommandResult<pixelpipe_app::Palette> {
+    pixelpipe_app::store_project_palette(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+fn store_project_recipe(
+    request: StoreProjectRecipe,
+) -> CommandResult<pixelpipe_app::ConversionRecipeDocument> {
+    pixelpipe_app::store_project_recipe(request).map_err(|error| command_error(&error))
 }
 
 #[tauri::command]
@@ -182,6 +210,11 @@ pub fn run() {
         .manage(AgentTasks::default())
         .invoke_handler(tauri::generate_handler![
             browse_project,
+            initialize_asset,
+            update_asset_brief,
+            convert_selected_reference,
+            store_project_palette,
+            store_project_recipe,
             load_revision,
             compare_revisions,
             record_review,

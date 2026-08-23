@@ -14,6 +14,9 @@ export interface AssetManifest {
   schema: string;
   id: string;
   kind: AssetKind;
+  state: "draft" | "awaiting_reference" | "selected_reference" | "revisioned";
+  brief: { schema: string; text: string };
+  selected_reference?: ReferenceSelection;
   head?: string;
   approved?: string;
 }
@@ -36,6 +39,16 @@ export interface ProjectBrowser {
   project_root: string;
   project: ProjectManifest;
   assets: AssetBrowser[];
+  recipes: ConversionRecipeDocument[];
+}
+
+export interface ConversionRecipeDocument {
+  schema: string;
+  id: string;
+  kind: AssetKind;
+  palette: string;
+  preview_scale: number;
+  mode: { type: "reference" | "sheet"; settings: unknown };
 }
 
 export interface RasterBounds {

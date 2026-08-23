@@ -32,6 +32,7 @@ const project = {
       ],
     },
   ],
+  recipes: [],
 };
 
 const revision = {
@@ -71,6 +72,52 @@ afterEach(() => {
 });
 
 describe("desktop review workstation", () => {
+  it("presents a keyboard-accessible draft state and disables revision-only actions", async () => {
+    const commands: string[] = [];
+    const draftProject = {
+      ...project,
+      assets: [{
+        asset: {
+          schema: "pixelpipe.asset/v2",
+          id: "new-flare",
+          kind: "sprite",
+          state: "draft",
+          brief: { schema: "pixelpipe.asset-brief/v1", text: "" },
+        },
+        revisions: [],
+      }],
+      recipes: [],
+    };
+    mockIPC((command) => {
+      commands.push(command);
+      if (command === "browse_project") return draftProject;
+      if (command === "browse_agent_runs") return [];
+      if (command === "update_asset_brief") return {
+        ...draftProject.assets[0].asset,
+        state: "awaiting_reference",
+      };
+      throw new Error(`unexpected command ${command}`);
+    });
+
+    render(App);
+    await fireEvent.update(screen.getByLabelText("Project path"), "/game");
+    await fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(await screen.findByRole("heading", { name: "new-flare" })).toBeVisible();
+    expect(screen.getByText(/Pre-revision asset · draft/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Critique revision" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Propose refinement" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Record review" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create first revision" })).toBeDisabled();
+
+    const brief = screen.getByLabelText("Project-owned brief");
+    await fireEvent.update(brief, "Strict overhead synthetic flare");
+    await fireEvent.submit(brief.closest("form")!);
+    await waitFor(() => expect(commands).toContain("update_asset_brief"));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("Revision history was unchanged"),
+    );
+  });
+
   it("opens verified project data, supports keyboard navigation, and records review without mutation", async () => {
     const commands: string[] = [];
     mockIPC((command) => {

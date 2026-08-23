@@ -58,12 +58,20 @@ if operation == "generate_references":
     image = synthetic_png()
     with open(path, "wb") as candidate:
         candidate.write(image)
+    if mode == "cancel-partial":
+        print('{"schema":"pixelpipe.agent-response/v1","adapter":', end="", flush=True)
+        time.sleep(10)
     digest = hashlib.sha256(image).hexdigest()
     if mode == "bad-hash":
         digest = "0" * 64
+    candidates = [{"id": "candidate-one", "path": returned_path, "sha256": digest}]
+    if mode == "later-bad-hash":
+        with open(os.path.join(output, "candidate-two.png"), "wb") as candidate:
+            candidate.write(image)
+        candidates.append({"id": "candidate-two", "path": "candidate-two.png", "sha256": "0" * 64})
     result = {
         "type": "generated_references",
-        "candidates": [{"id": "candidate-one", "path": returned_path, "sha256": digest}],
+        "candidates": candidates,
     }
 elif operation == "critique_asset":
     result = {"type": "critique", "text": f"Silhouette reads clearly. secret={secret}"}

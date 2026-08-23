@@ -1,14 +1,14 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use pixelpipe_core::{
-    ComponentRule, ConversionSettings, IndexedRaster, Operation, Palette, PaletteRemap,
-    PixelPatchSet, RECIPE_SCHEMA, RasterDiff, RasterInspection, Recipe, SheetSettings,
-    ValidationCheck, apply_palette_remap, apply_pixel_patch, compare_rasters, convert_reference,
-    convert_sheet, decode_rgba_png, inspect_raster, render, sha256_hex, stable_json,
+    ComponentRule, ConversionSettings, IndexedRaster, Operation, PaletteRemap, PixelPatchSet,
+    RECIPE_SCHEMA, RasterDiff, RasterInspection, Recipe, SheetSettings, ValidationCheck,
+    apply_palette_remap, apply_pixel_patch, compare_rasters, convert_reference, convert_sheet,
+    decode_rgba_png, inspect_raster, render, sha256_hex, stable_json,
 };
 use pixelpipe_project::{
-    AssetKind, AssetManifest, ProjectError, ProjectManifest, ProjectStore, RevisionFiles,
-    RevisionManifest, StoredRevision,
+    AssetKind, ProjectError, ProjectManifest, ProjectStore, RevisionFiles, RevisionManifest,
+    StoredConversionMode, StoredRevision,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -21,9 +21,10 @@ pub use agent::{
     load_agent_candidate, select_agent_candidate,
 };
 
+pub use pixelpipe_core::Palette;
 pub use pixelpipe_project::{
-    AgentCandidate, AgentOperation, AgentProposal, AgentRunRecord, AgentRunStatus,
-    ReferenceSelection, ReviewActorKind, ReviewDecision, ReviewRecord,
+    AgentCandidate, AgentOperation, AgentProposal, AgentRunRecord, AgentRunStatus, AssetManifest,
+    ConversionRecipeDocument, ReferenceSelection, ReviewActorKind, ReviewDecision, ReviewRecord,
 };
 
 #[derive(Debug)]
@@ -54,6 +55,43 @@ pub struct ConvertRevision {
     pub brief_path: Option<PathBuf>,
     pub preview_scale: Option<u16>,
     pub actor: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InitializeAsset {
+    pub start: PathBuf,
+    pub asset: String,
+    pub kind: AssetKind,
+    #[serde(default)]
+    pub brief: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateAssetBrief {
+    pub start: PathBuf,
+    pub asset: String,
+    pub brief: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConvertSelectedReference {
+    pub start: PathBuf,
+    pub asset: String,
+    pub recipe: String,
+    pub actor: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StoreProjectPalette {
+    pub start: PathBuf,
+    pub id: String,
+    pub file: PathBuf,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StoreProjectRecipe {
+    pub start: PathBuf,
+    pub file: PathBuf,
 }
 
 #[derive(Debug)]
@@ -126,6 +164,7 @@ pub struct ProjectBrowser {
     pub project_root: PathBuf,
     pub project: ProjectManifest,
     pub assets: Vec<AssetBrowser>,
+    pub recipes: Vec<ConversionRecipeDocument>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -269,6 +308,12 @@ pub enum AppError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("invalid project resource JSON in {path}: {source}")]
+    ProjectResourceJson {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
     #[error("asset '{0}' has no head revision")]
     NoHead(String),
     #[error("operation structure rule conflicts with its inherited revision rule")]
@@ -293,6 +338,7 @@ pub enum AppError {
 /// rendering, or revision storage fails.
 pub fn create_revision(request: CreateRevision) -> Result<RevisionResult, AppError> {
     let store = ProjectStore::discover(&request.start)?;
+    reject_pre_revision_asset(&store, &request.asset, "create revision")?;
     let raster_bytes = read(&request.raster_path)?;
     let raster: IndexedRaster =
         serde_json::from_slice(&raster_bytes).map_err(|source| AppError::RasterJson {
@@ -340,6 +386,7 @@ pub fn create_revision(request: CreateRevision) -> Result<RevisionResult, AppErr
 /// conversion/rendering, or revision storage fails.
 pub fn convert_revision(request: ConvertRevision) -> Result<RevisionResult, AppError> {
     let store = ProjectStore::discover(&request.start)?;
+    reject_pre_revision_asset(&store, &request.asset, "convert unselected reference")?;
     let source_bytes = read(&request.source_path)?;
     let source = decode_rgba_png(&source_bytes)?;
     let palette_bytes = read(&request.palette_path)?;
@@ -382,6 +429,163 @@ pub fn convert_revision(request: ConvertRevision) -> Result<RevisionResult, AppE
             recipe,
             preview_scale,
             brief,
+            actor: request.actor,
+            input_hashes,
+            additional_checks: converted.checks,
+            parent: None,
+        },
+    )
+}
+
+/// Creates a stable project asset before any revision exists.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when discovery, validation, or atomic creation fails.
+pub fn initialize_asset(request: InitializeAsset) -> Result<AssetManifest, AppError> {
+    let InitializeAsset {
+        start,
+        asset,
+        kind,
+        brief,
+    } = request;
+    let store = ProjectStore::discover(&start)?;
+    Ok(store.create_asset(&asset, kind, &brief)?)
+}
+
+/// Updates the project-owned brief without changing revision history.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when discovery, asset validation, or storage fails.
+pub fn update_asset_brief(request: UpdateAssetBrief) -> Result<AssetManifest, AppError> {
+    let UpdateAssetBrief {
+        start,
+        asset,
+        brief,
+    } = request;
+    let store = ProjectStore::discover(&start)?;
+    Ok(store.set_asset_brief(&asset, &brief)?)
+}
+
+/// Imports a validated palette into project-owned resources.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when the file, JSON, palette, or storage is invalid.
+pub fn store_project_palette(request: StoreProjectPalette) -> Result<Palette, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let palette: Palette = serde_json::from_slice(&read(&request.file)?).map_err(|source| {
+        AppError::ProjectResourceJson {
+            path: request.file,
+            source,
+        }
+    })?;
+    store.store_palette(&request.id, &palette)?;
+    Ok(palette)
+}
+
+/// Imports a complete validated conversion recipe into project-owned resources.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when the file, JSON, recipe, or storage is invalid.
+pub fn store_project_recipe(
+    request: StoreProjectRecipe,
+) -> Result<ConversionRecipeDocument, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let recipe: ConversionRecipeDocument =
+        serde_json::from_slice(&read(&request.file)?).map_err(|source| {
+            AppError::ProjectResourceJson {
+                path: request.file,
+                source,
+            }
+        })?;
+    store.store_conversion_recipe(&recipe)?;
+    Ok(recipe)
+}
+
+/// Resolves project resources and converts the selected reference into a revision.
+///
+/// The resolved brief, palette, conversion settings, and their content hashes are
+/// frozen into the immutable revision. Resource edits after this call cannot alter it.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when lifecycle/resources/input/conversion or storage fails.
+pub fn convert_selected_reference(
+    request: ConvertSelectedReference,
+) -> Result<RevisionResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let asset = store.asset(&request.asset)?;
+    if asset.brief.text.trim().is_empty() {
+        return Err(ProjectError::AssetNotReady {
+            asset: request.asset,
+            operation: "convert selected reference",
+            reason: "write a non-empty brief first",
+        }
+        .into());
+    }
+    let (selection, source_bytes) = store.selected_reference(&asset.id)?;
+    let source = decode_rgba_png(&source_bytes)?;
+    let resource_recipe = store.conversion_recipe(&request.recipe)?;
+    if resource_recipe.kind != asset.kind {
+        return Err(ProjectError::AssetKindMismatch {
+            asset: asset.id,
+            existing: asset.kind,
+            requested: resource_recipe.kind,
+        }
+        .into());
+    }
+    let palette = store.palette(&resource_recipe.palette)?;
+    let canonical_palette = stable_json(&palette)?;
+    let (converted, operation) = match resource_recipe.mode.clone() {
+        StoredConversionMode::Reference { settings } => {
+            let converted = convert_reference(&source, &palette, &settings)?;
+            (converted, Operation::ConvertReference { settings })
+        }
+        StoredConversionMode::Sheet { settings } => {
+            let converted = convert_sheet(&source, &palette, &settings)?;
+            (converted, Operation::ConvertSheet { settings })
+        }
+    };
+    let recipe_hash = sha256_hex(&stable_json(&resource_recipe)?);
+    let brief_hash = sha256_hex(&stable_json(&asset.brief)?);
+    let selection_hash = sha256_hex(&stable_json(&selection)?);
+    let recipe = Recipe {
+        schema: RECIPE_SCHEMA.to_owned(),
+        input_sha256: selection.sha256.clone(),
+        palette_sha256: sha256_hex(&canonical_palette),
+        operations: vec![
+            operation,
+            Operation::RenderIndexed {
+                preview_scale: resource_recipe.preview_scale,
+            },
+        ],
+    };
+    let input_hashes = BTreeMap::from([
+        ("brief".to_owned(), brief_hash),
+        ("palette".to_owned(), recipe.palette_sha256.clone()),
+        (
+            format!("project_palette:{}", resource_recipe.palette),
+            recipe.palette_sha256.clone(),
+        ),
+        (
+            format!("project_recipe:{}", resource_recipe.id),
+            recipe_hash,
+        ),
+        ("reference".to_owned(), selection.sha256.clone()),
+        ("reference_selection".to_owned(), selection_hash),
+    ]);
+    commit_raster(
+        &store,
+        CommitRaster {
+            asset: asset.id,
+            kind: asset.kind,
+            raster: converted.raster,
+            recipe,
+            preview_scale: resource_recipe.preview_scale,
+            brief: asset.brief.text,
             actor: request.actor,
             input_hashes,
             additional_checks: converted.checks,
@@ -566,6 +770,7 @@ pub fn browse_project(request: &BrowseProject) -> Result<ProjectBrowser, AppErro
         project_root: store.root().to_path_buf(),
         project,
         assets,
+        recipes: store.conversion_recipes()?,
     })
 }
 
@@ -698,6 +903,25 @@ fn resolve_revision(
     }
 }
 
+fn reject_pre_revision_asset(
+    store: &ProjectStore,
+    asset: &str,
+    operation: &'static str,
+) -> Result<(), AppError> {
+    if store
+        .optional_asset(asset)?
+        .is_some_and(|manifest| manifest.head.is_none())
+    {
+        return Err(ProjectError::AssetNotReady {
+            asset: asset.to_owned(),
+            operation,
+            reason: "selected-reference conversion is the only first-revision operation",
+        }
+        .into());
+    }
+    Ok(())
+}
+
 fn inherit_structure(
     operation: &mut Option<ComponentRule>,
     inherited: Option<ComponentRule>,
@@ -780,8 +1004,14 @@ fn read(path: &PathBuf) -> Result<Vec<u8>, AppError> {
 
 #[cfg(test)]
 mod tests {
-    use pixelpipe_core::{IndexedRaster, Palette, RASTER_SCHEMA};
-    use pixelpipe_project::RevisionManifest;
+    use pixelpipe_core::{
+        BackdropPolicy, ComponentExpectation, IndexedRaster, Palette, RASTER_SCHEMA, Registration,
+    };
+    use pixelpipe_project::{
+        AGENT_RUN_SCHEMA, AgentCandidate, AgentCapability, AgentIdentity, AgentOperation,
+        AgentRunRecord, AgentRunStatus, AssetState, CONVERSION_RECIPE_SCHEMA,
+        ConversionRecipeDocument, RevisionManifest, StoredConversionMode,
+    };
     use tempfile::tempdir;
 
     use super::*;
@@ -871,5 +1101,216 @@ mod tests {
             let contents = fs::read(first.revision_path.join(name)).expect("hashed payload");
             assert_eq!(sha256_hex(&contents), expected_hash);
         }
+    }
+
+    #[test]
+    fn pre_revision_flow_snapshots_resources_and_creates_first_revision_atomically() {
+        let (temp, store, brief) = selected_m6_project();
+        let (palette, recipe, settings) = m6_resources(&store);
+        let mut impossible = recipe.clone();
+        impossible.id = "impossible".to_owned();
+        impossible.mode = StoredConversionMode::Reference {
+            settings: ConversionSettings {
+                components: ComponentExpectation { min: 2, max: 2 },
+                ..settings
+            },
+        };
+        store
+            .store_conversion_recipe(&impossible)
+            .expect("impossible recipe is structurally valid");
+        assert!(
+            convert_selected_reference(ConvertSelectedReference {
+                start: temp.path().to_path_buf(),
+                asset: "signal-flare".to_owned(),
+                recipe: impossible.id,
+                actor: "fixture".to_owned(),
+            })
+            .is_err()
+        );
+        assert!(store.asset("signal-flare").expect("asset").head.is_none());
+        assert!(
+            store
+                .revisions("signal-flare")
+                .expect("revisions")
+                .is_empty()
+        );
+
+        let result = convert_selected_reference(ConvertSelectedReference {
+            start: temp.path().to_path_buf(),
+            asset: "signal-flare".to_owned(),
+            recipe: recipe.id.clone(),
+            actor: "fixture".to_owned(),
+        })
+        .expect("first revision");
+        assert_eq!(result.revision, "r000001");
+        let asset = store.asset("signal-flare").expect("revisioned asset");
+        assert_eq!(asset.state, AssetState::Revisioned);
+        assert_eq!(asset.head.as_deref(), Some("r000001"));
+        let before = store.revision("signal-flare", "r000001").expect("snapshot");
+        assert_eq!(before.brief, brief);
+        assert!(before.provenance.inputs.contains_key("brief"));
+        assert!(
+            before
+                .provenance
+                .inputs
+                .contains_key("project_recipe:flare-reference")
+        );
+
+        update_asset_brief(UpdateAssetBrief {
+            start: temp.path().to_path_buf(),
+            asset: "signal-flare".to_owned(),
+            brief: "Changed project brief".to_owned(),
+        })
+        .expect("edit project brief");
+        let mut changed_palette = palette;
+        changed_palette.name = "changed".to_owned();
+        store
+            .store_palette("flare", &changed_palette)
+            .expect("edit palette resource");
+        let mut changed_recipe = recipe;
+        changed_recipe.preview_scale = 7;
+        store
+            .store_conversion_recipe(&changed_recipe)
+            .expect("edit recipe resource");
+        let after = store
+            .revision("signal-flare", "r000001")
+            .expect("unchanged snapshot");
+        assert_eq!(before, after);
+    }
+
+    fn selected_m6_project() -> (tempfile::TempDir, ProjectStore, &'static str) {
+        let temp = tempdir().expect("tempdir");
+        let store = ProjectStore::init(temp.path(), "M6 Fixture").expect("init");
+        let draft = initialize_asset(InitializeAsset {
+            start: temp.path().to_path_buf(),
+            asset: "signal-flare".to_owned(),
+            kind: AssetKind::Sprite,
+            brief: String::new(),
+        })
+        .expect("draft");
+        assert_eq!(draft.state, AssetState::Draft);
+        assert!(matches!(
+            create_revision(CreateRevision {
+                start: temp.path().to_path_buf(),
+                asset: "signal-flare".to_owned(),
+                kind: AssetKind::Sprite,
+                raster_path: temp.path().join("must-not-be-read.json"),
+                brief_path: None,
+                preview_scale: None,
+                actor: "fixture".to_owned(),
+            }),
+            Err(AppError::Project(ProjectError::AssetNotReady { .. }))
+        ));
+        assert!(matches!(
+            inspect_revision(InspectRevision {
+                start: temp.path().to_path_buf(),
+                asset: "signal-flare".to_owned(),
+                revision: None,
+            }),
+            Err(AppError::NoHead(_))
+        ));
+        let brief = "Strict overhead signal flare with one connected silhouette.";
+        let awaiting = update_asset_brief(UpdateAssetBrief {
+            start: temp.path().to_path_buf(),
+            asset: "signal-flare".to_owned(),
+            brief: brief.to_owned(),
+        })
+        .expect("brief");
+        assert_eq!(awaiting.state, AssetState::AwaitingReference);
+        let (run, candidate, bytes) = m6_agent_run(brief);
+        store
+            .store_agent_run(&run, &BTreeMap::from([(candidate.id.clone(), bytes)]))
+            .expect("validated run");
+        select_agent_candidate(SelectAgentCandidate {
+            start: temp.path().to_path_buf(),
+            asset: "signal-flare".to_owned(),
+            run: run.id,
+            candidate: candidate.id,
+        })
+        .expect("explicit selection");
+        assert_eq!(
+            store.asset("signal-flare").expect("selected asset").state,
+            AssetState::SelectedReference
+        );
+        (temp, store, brief)
+    }
+
+    fn m6_agent_run(brief: &str) -> (AgentRunRecord, AgentCandidate, Vec<u8>) {
+        let raster: IndexedRaster =
+            serde_json::from_slice(include_bytes!("../../../fixtures/m1/tiny-raster.json"))
+                .expect("synthetic source raster");
+        let bytes = render(&raster, 1).expect("synthetic source PNG").native_png;
+        let hash = sha256_hex(&bytes);
+        let candidate = AgentCandidate {
+            id: "candidate-one".to_owned(),
+            sha256: hash.clone(),
+            width: 4,
+            height: 4,
+            png: format!("candidates/{hash}.png"),
+        };
+        let run = AgentRunRecord {
+            schema: AGENT_RUN_SCHEMA.to_owned(),
+            id: "run-m6-fixture".to_owned(),
+            asset: "signal-flare".to_owned(),
+            operation: AgentOperation::GenerateReferences,
+            revision: None,
+            profile: "fixture-agent".to_owned(),
+            profile_command_sha256: "0".repeat(64),
+            prompt: brief.to_owned(),
+            started_unix_ms: 1,
+            duration_ms: 1,
+            status: AgentRunStatus::Completed,
+            exit_status: Some(0),
+            adapter: Some(AgentIdentity {
+                adapter: "fixture".to_owned(),
+                provider: Some("fixture".to_owned()),
+                model: Some("fixture".to_owned()),
+                capabilities: vec![AgentCapability::GenerateReferences],
+            }),
+            stdout: String::new(),
+            stderr: String::new(),
+            error: None,
+            candidates: vec![candidate.clone()],
+            critique: None,
+            proposal: None,
+        };
+        (run, candidate, bytes)
+    }
+
+    fn m6_resources(
+        store: &ProjectStore,
+    ) -> (Palette, ConversionRecipeDocument, ConversionSettings) {
+        let palette = Palette::new(
+            "m6-synthetic",
+            0,
+            vec![
+                [0, 0, 0, 0],
+                [92, 28, 24, 255],
+                [238, 76, 36, 255],
+                [255, 224, 112, 255],
+            ],
+        );
+        store.store_palette("flare", &palette).expect("palette");
+        let settings = ConversionSettings {
+            width: 4,
+            height: 4,
+            margin: 0,
+            coverage_percent: 1,
+            backdrop: BackdropPolicy::Alpha { alpha_threshold: 0 },
+            registration: Registration::Center,
+            components: ComponentExpectation { min: 1, max: 1 },
+        };
+        let recipe = ConversionRecipeDocument {
+            schema: CONVERSION_RECIPE_SCHEMA.to_owned(),
+            id: "flare-reference".to_owned(),
+            kind: AssetKind::Sprite,
+            palette: "flare".to_owned(),
+            preview_scale: 4,
+            mode: StoredConversionMode::Reference {
+                settings: settings.clone(),
+            },
+        };
+        store.store_conversion_recipe(&recipe).expect("recipe");
+        (palette, recipe, settings)
     }
 }

@@ -78,8 +78,9 @@ Cross-platform process sandboxing is deliberately not implied.
 4. Candidate files are validated RGBA PNGs stored by SHA-256. Their arrival is
    candidate import, not selection.
 5. Selection is a separate explicit application use case. It copies verified
-   bytes into the content-addressed selected-reference store and writes a
-   selection record; it does not move head, create a revision, review, or approve.
+   bytes into the content-addressed selected-reference store and atomically writes
+   the selection record into the asset manifest; it does not move head, create a
+   revision, review, or approve.
 6. Critique remains prose attached to its run. A proposal is validated read-only
    against its explicit revision and inherited structure rule. Desktop can load
    it into an editable form, but only the existing patch/remap use case can create

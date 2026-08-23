@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AgentOperation,
+  AssetKind,
+  AssetManifest,
   AgentRunRecord,
   PaletteDraft,
   PixelEdit,
@@ -18,6 +20,27 @@ export const pngDataUrl = (base64: string): string => `data:image/png;base64,${b
 
 export const browseProject = (start: string) =>
   invoke<ProjectBrowser>("browse_project", { request: { start } });
+
+export const initializeAsset = (start: string, asset: string, kind: AssetKind, brief: string) =>
+  invoke<AssetManifest>("initialize_asset", { request: { start, asset, kind, brief } });
+
+export const updateAssetBrief = (start: string, asset: string, brief: string) =>
+  invoke<AssetManifest>("update_asset_brief", { request: { start, asset, brief } });
+
+export const convertSelectedReference = (
+  start: string,
+  asset: string,
+  recipe: string,
+  actor: string,
+) => invoke<RevisionResult>("convert_selected_reference", {
+  request: { start, asset, recipe, actor },
+});
+
+export const storeProjectPalette = (start: string, id: string, file: string) =>
+  invoke<unknown>("store_project_palette", { request: { start, id, file } });
+
+export const storeProjectRecipe = (start: string, file: string) =>
+  invoke<unknown>("store_project_recipe", { request: { start, file } });
 
 export const loadRevision = (start: string, asset: string, revision?: string) =>
   invoke<RevisionViewResponse>("load_revision", {
