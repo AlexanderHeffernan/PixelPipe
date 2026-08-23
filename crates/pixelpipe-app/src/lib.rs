@@ -14,12 +14,19 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod agent;
+mod export;
+mod onboarding;
+mod reference;
 
 pub use agent::{
-    AgentRuntime, AgentTaskEvent, AgentTaskEventKind, AgentTaskRequest, AgentTaskResult,
-    BrowseAgentRuns, LoadAgentCandidate, SelectAgentCandidate, browse_agent_runs,
+    AgentConnector, AgentRuntime, AgentTaskEvent, AgentTaskEventKind, AgentTaskRequest,
+    AgentTaskResult, ApproveAgentConnector, BrowseAgentRuns, LoadAgentCandidate,
+    SelectAgentCandidate, approve_agent_connector, browse_agent_runs, detect_agent_connectors,
     load_agent_candidate, select_agent_candidate,
 };
+pub use export::{ExportAsset, ExportResult, export_asset};
+pub use onboarding::{OpenProject, open_project};
+pub use reference::{ImportReference, import_reference};
 
 pub use pixelpipe_core::Palette;
 pub use pixelpipe_project::{
@@ -328,6 +335,8 @@ pub enum AppError {
     AgentProtocol(String),
     #[error("agent candidate path is invalid: {0}")]
     AgentCandidatePath(String),
+    #[error("export already exists: {0}")]
+    ExportExists(PathBuf),
 }
 
 /// Validates a structured raster, renders it, and commits an immutable revision.

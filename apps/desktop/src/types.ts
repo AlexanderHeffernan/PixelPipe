@@ -172,7 +172,10 @@ export interface PaletteDraft {
   indexMap: number[];
 }
 
-export type AgentOperation = "generate_references" | "critique_asset" | "propose_refinement";
+export type AgentOperation =
+  | "generate_references"
+  | "critique_asset"
+  | "propose_refinement";
 export type AgentRunStatus = "completed" | "failed" | "cancelled";
 
 export interface AgentCandidate {
@@ -189,7 +192,12 @@ export type AgentProposal =
       type: "palette_remap";
       remap: {
         schema: string;
-        palette: { schema: string; name: string; transparent_index: number; colors: Rgba[] };
+        palette: {
+          schema: string;
+          name: string;
+          transparent_index: number;
+          colors: Rgba[];
+        };
         index_map: number[];
       };
     };
@@ -242,4 +250,18 @@ export interface ReferenceSelection {
   candidate: string;
   sha256: string;
   selected_unix_ms: number;
+}
+
+export interface AgentConnector {
+  id: "amp" | "codex";
+  name: string;
+  installed: boolean;
+  approved: boolean;
+}
+
+export interface ExportResult {
+  asset: string;
+  revision: string;
+  png: string;
+  metadata: string;
 }

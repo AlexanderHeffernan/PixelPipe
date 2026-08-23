@@ -1,0 +1,217 @@
+.project-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--sidebar);
+}
+.project-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  padding: 18px 14px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.project-avatar {
+  display: grid;
+  place-items: center;
+  width: 31px;
+  height: 31px;
+  color: #2d1408;
+  border-radius: 8px;
+  background: linear-gradient(145deg, #ffaf73, #e96b2f);
+  font-weight: 800;
+}
+.project-identity div {
+  display: grid;
+  min-width: 0;
+}
+.project-identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.project-identity small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.sidebar-section {
+  padding: 13px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 24px;
+  padding: 0 7px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.add-button {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  font-size: 16px;
+}
+.new-asset-form {
+  display: grid;
+  gap: 7px;
+  margin: 5px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+}
+.new-asset-form div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.asset-list {
+  display: grid;
+  gap: 2px;
+}
+.asset-list > button {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 7px;
+  width: 100%;
+  padding: 7px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+}
+.asset-list > button[aria-current="page"] {
+  background: var(--accent-soft);
+}
+.asset-list > button > span:last-child {
+  display: grid;
+  min-width: 0;
+}
+.asset-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+.asset-list small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 8px;
+  text-transform: capitalize;
+}
+.asset-thumb {
+  color: var(--accent);
+}
+.asset-list p {
+  margin: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.workflow-nav {
+  display: grid;
+  gap: 2px;
+}
+.workflow-nav .section-heading {
+  margin-bottom: 3px;
+}
+.workflow-nav > button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+  font-size: 11px;
+}
+.workflow-nav > button[aria-current="step"] {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+.stage-status {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 8px;
+}
+.stage-status.complete {
+  color: #17210d;
+  border-color: #a5d56d;
+  background: #a5d56d;
+}
+.project-sidebar footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 13px 15px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.welcome-view,
+.empty-project {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  padding: 50px;
+  text-align: center;
+  background: radial-gradient(
+    circle at 50% 44%,
+    rgba(255, 141, 67, 0.09),
+    transparent 35%
+  );
+}
+.welcome-icon {
+  grid-template-columns: repeat(2, 22px);
+  gap: 5px;
+  margin-bottom: 28px;
+}
+.welcome-icon span {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+.welcome-view h1 {
+  margin: 8px 0 14px;
+  font-size: clamp(36px, 4vw, 58px);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+.welcome-copy {
+  max-width: 550px;
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.welcome-view > small {
+  margin-top: 15px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.empty-project h1 {
+  margin: 10px 0 5px;
+  font-size: 22px;
+}
+.empty-project p {
+  color: var(--muted);
+}
+.empty-glyph {
+  color: var(--accent);
+  font-size: 40px;
+}

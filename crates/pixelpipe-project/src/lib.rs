@@ -1134,6 +1134,51 @@ impl ProjectStore {
         Ok(selection)
     }
 
+    /// Selects user-imported PNG bytes as the asset reference.
+    ///
+    /// This explicit import path has the same content-addressed storage and
+    /// lifecycle transition as an agent candidate, but no synthetic agent run.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the asset is not ready or storage fails.
+    pub fn select_imported_reference(
+        &self,
+        asset: &str,
+        png_bytes: &[u8],
+    ) -> Result<ReferenceSelection, ProjectError> {
+        let _lock = self.lock()?;
+        let mut manifest = self.asset(asset)?;
+        if manifest.head.is_none() && manifest.brief.text.trim().is_empty() {
+            return Err(ProjectError::AssetNotReady {
+                asset: asset.to_owned(),
+                operation: "select reference",
+                reason: "write a non-empty brief first",
+            });
+        }
+        let stored = self.import_reference(asset, png_bytes)?;
+        let selection = ReferenceSelection {
+            schema: REFERENCE_SELECTION_SCHEMA.to_owned(),
+            asset: asset.to_owned(),
+            run: "import".to_owned(),
+            candidate: "local-file".to_owned(),
+            sha256: stored.sha256,
+            selected_unix_ms: now_unix_ms()?,
+        };
+        ASSET_SCHEMA.clone_into(&mut manifest.schema);
+        manifest.selected_reference = Some(selection.clone());
+        manifest.state = state_for(
+            &manifest.brief.text,
+            manifest.selected_reference.as_ref(),
+            manifest.head.as_deref(),
+        );
+        atomic_write(
+            &self.asset_path(asset).join("asset.toml"),
+            toml::to_string_pretty(&manifest)?.as_bytes(),
+        )?;
+        Ok(selection)
+    }
+
     /// Loads the selected reference only after verifying its content-addressed bytes.
     ///
     /// # Errors

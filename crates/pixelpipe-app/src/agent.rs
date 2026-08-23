@@ -23,10 +23,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
+mod connectors;
+
+pub use connectors::{
+    AgentConnector, ApproveAgentConnector, approve_agent_connector, detect_agent_connectors,
+};
+
 const PROFILE_SCHEMA: &str = "pixelpipe.agent-profile/v1";
 const REQUEST_SCHEMA: &str = "pixelpipe.agent-request/v1";
 const RESPONSE_SCHEMA: &str = "pixelpipe.agent-response/v1";
 const EVENT_SCHEMA: &str = "pixelpipe.agent-task-event/v1";
+const REQUEST_FILE: &str = "pixelpipe-request.json";
 const MAX_CAPTURE_BYTES: usize = 1_048_576;
 static TASK_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
@@ -85,7 +92,7 @@ pub enum AgentTaskEventKind {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AgentProfile {
     schema: String,
@@ -284,6 +291,7 @@ impl AgentRuntime {
         })?;
         let protocol = prepare_request(&store, &request, &task, &workspace, &output_directory)?;
         let protocol_bytes = stable_json(&protocol)?;
+        write_task_file(&workspace.join(REQUEST_FILE), &protocol_bytes)?;
         let command_hash = sha256_hex(&stable_json(&(
             profile.executable.clone(),
             profile.args.clone(),

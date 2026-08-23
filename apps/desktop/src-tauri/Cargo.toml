@@ -17,6 +17,7 @@ base64.workspace = true
 pixelpipe-app = { path = "../../../crates/pixelpipe-app" }
 serde.workspace = true
 tauri.workspace = true
+tauri-plugin-dialog.workspace = true
 
 [lints]
 workspace = true

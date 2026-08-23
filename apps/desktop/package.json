@@ -5,20 +5,26 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "app": "tauri dev",
     "build": "vue-tsc --noEmit && vite build",
+    "format": "prettier --write 'src/**/*.{ts,vue,css}'",
+    "format:check": "prettier --check 'src/**/*.{ts,vue,css}'",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.2",
     "vue": "3.5.41"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "2.11.1",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/vue": "8.1.0",
     "@types/node": "26.2.0",
     "@vitejs/plugin-vue": "6.0.8",
     "jsdom": "30.0.1",
+    "prettier": "3.6.2",
     "type-fest": "2.19.0",
     "typescript": "5.9.3",
     "vite": "8.2.2",

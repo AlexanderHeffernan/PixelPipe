@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AgentOperation,
+  AgentConnector,
   AssetKind,
   AssetManifest,
   AgentRunRecord,
@@ -14,27 +15,63 @@ import type {
   ReviewDecision,
   ReviewRecord,
   ReferenceSelection,
+  ExportResult,
 } from "./types";
 
-export const pngDataUrl = (base64: string): string => `data:image/png;base64,${base64}`;
+export const pngDataUrl = (base64: string): string =>
+  `data:image/png;base64,${base64}`;
 
 export const browseProject = (start: string) =>
   invoke<ProjectBrowser>("browse_project", { request: { start } });
 
-export const initializeAsset = (start: string, asset: string, kind: AssetKind, brief: string) =>
-  invoke<AssetManifest>("initialize_asset", { request: { start, asset, kind, brief } });
+export const openProject = (start: string) =>
+  invoke<ProjectBrowser>("open_project", { request: { start } });
+
+export const initializeAsset = (
+  start: string,
+  asset: string,
+  kind: AssetKind,
+  brief: string,
+) =>
+  invoke<AssetManifest>("initialize_asset", {
+    request: { start, asset, kind, brief },
+  });
 
 export const updateAssetBrief = (start: string, asset: string, brief: string) =>
-  invoke<AssetManifest>("update_asset_brief", { request: { start, asset, brief } });
+  invoke<AssetManifest>("update_asset_brief", {
+    request: { start, asset, brief },
+  });
+
+export const importReference = (start: string, asset: string, file: string) =>
+  invoke<ReferenceSelection>("import_reference", {
+    request: { start, asset, file },
+  });
+
+export const detectAgentConnectors = () =>
+  invoke<AgentConnector[]>("detect_agent_connectors");
+
+export const approveAgentConnector = (id: string) =>
+  invoke<AgentConnector>("approve_agent_connector", { request: { id } });
+
+export const exportAsset = (
+  start: string,
+  asset: string,
+  destination: string,
+  overwrite: boolean,
+) =>
+  invoke<ExportResult>("export_asset", {
+    request: { start, asset, destination, overwrite },
+  });
 
 export const convertSelectedReference = (
   start: string,
   asset: string,
   recipe: string,
   actor: string,
-) => invoke<RevisionResult>("convert_selected_reference", {
-  request: { start, asset, recipe, actor },
-});
+) =>
+  invoke<RevisionResult>("convert_selected_reference", {
+    request: { start, asset, recipe, actor },
+  });
 
 export const storeProjectPalette = (start: string, id: string, file: string) =>
   invoke<unknown>("store_project_palette", { request: { start, id, file } });
@@ -67,7 +104,15 @@ export const recordReview = (
   note: string,
 ) =>
   invoke<ReviewRecord>("record_review", {
-    request: { start, asset, revision, actor, actor_kind: actorKind, decision, note },
+    request: {
+      start,
+      asset,
+      revision,
+      actor,
+      actor_kind: actorKind,
+      decision,
+      note,
+    },
   });
 
 export const patchRevision = (
@@ -126,7 +171,14 @@ export const startAgentTask = (
   revision?: string,
 ) =>
   invoke<string>("start_agent_task", {
-    request: { start, asset, profile, operation, revision: revision ?? null, prompt },
+    request: {
+      start,
+      asset,
+      profile,
+      operation,
+      revision: revision ?? null,
+      prompt,
+    },
   });
 
 export const cancelAgentTask = (task: string) =>
@@ -135,7 +187,11 @@ export const cancelAgentTask = (task: string) =>
 export const browseAgentRuns = (start: string, asset: string) =>
   invoke<AgentRunRecord[]>("browse_agent_runs", { request: { start, asset } });
 
-export const loadAgentCandidate = (start: string, run: string, candidate: string) =>
+export const loadAgentCandidate = (
+  start: string,
+  run: string,
+  candidate: string,
+) =>
   invoke<{ png_base64: string }>("load_agent_candidate", {
     request: { start, run, candidate },
   });

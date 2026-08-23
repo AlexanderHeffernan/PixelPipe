@@ -28,6 +28,7 @@ toml = "0.8"
 base64 = "0.22"
 tauri = "2.11.5"
 tauri-build = "2.6.3"
+tauri-plugin-dialog = "2.7.2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

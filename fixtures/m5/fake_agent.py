@@ -24,7 +24,8 @@ def synthetic_png():
     )
 
 
-request = json.load(sys.stdin)
+with open("pixelpipe-request.json", encoding="utf-8") as request_file:
+    request = json.load(request_file)
 mode = sys.argv[1] if len(sys.argv) > 1 else "success"
 
 if mode == "cancel":

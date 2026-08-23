@@ -3,9 +3,10 @@
 PixelPipe is an AI-first, project-aware workstation for producing deterministic,
 game-ready pixel-art assets from selected visual references.
 
-**Milestone 6 is ready for review.** PixelPipe now supports stable assets before
-a revision exists and the complete brief → generate → select → deterministic
-conversion → first immutable revision handoff.
+The desktop app now presents one opinionated path: choose a game folder, create
+a sprite brief, generate smooth references with an explicitly connected Amp or
+Codex CLI (or import a PNG), select a reference, pixelize it with starter
+defaults, inspect the native result, and export PNG/JSON runtime assets.
 
 - [Architecture contract](ARCHITECTURE.md)
 - [Milestone 0 research and decision record](docs/milestones/M0-charter.md)
@@ -16,7 +17,28 @@ conversion → first immutable revision handoff.
 - [Milestone 5 configured agent record](docs/milestones/M5-agent-workflow.md)
 - [Milestone 6 pre-revision asset record](docs/milestones/M6-pre-revision-assets.md)
 
-## Try the M1 path
+## Run the desktop app
+
+Prerequisites: Rust 1.98+, Node.js 22+, and the platform dependencies required
+by [Tauri 2](https://v2.tauri.app/start/prerequisites/). Then:
+
+```sh
+cd apps/desktop
+npm install
+npm run app
+```
+
+Choose your game folder in the native dialog. PixelPipe creates `.pixelpipe`
+project metadata and starter 16×16, 32×32, and 64×64 sprite recipes without
+changing other files. Amp and Codex connectors are detected from the user's
+machine and require explicit approval before PixelPipe stores a user-local
+profile or runs them.
+
+The Tauri CLI starts both Vite and the native Rust process. Running
+`cargo run -p pixelpipe-desktop` alone is not supported: the debug window
+expects Vite at `http://localhost:1420` and will otherwise be blank.
+
+## CLI foundation
 
 ```sh
 cargo run -p pixelpipe-cli -- init --root /path/to/game --name "My Game"
@@ -68,22 +90,6 @@ Patch/remap commands always require an explicit immutable parent. An empty patch
 from an older revision creates a new identical child and acts as undo without
 moving or rewriting history. Review events never change revision bytes or the
 separate approval pointer.
-
-## M4 desktop workstation
-
-Install the frontend dependencies, then run the Tauri app from the desktop
-directory:
-
-```sh
-cd apps/desktop
-npm install
-npm run build
-cargo run -p pixelpipe-desktop
-```
-
-The desktop uses the same `pixelpipe-app` use cases as the CLI. It receives only
-verified revision PNG bytes, keeps selection transient, and requires an explicit
-parent for every pixel patch or palette remap.
 
 ## M5 configured agent
 
