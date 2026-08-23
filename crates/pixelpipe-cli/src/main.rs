@@ -1,7 +1,10 @@
-use std::{path::PathBuf, process::ExitCode};
+use std::{fs, path::PathBuf, process::ExitCode};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use pixelpipe_app::{CreateRevision, create_revision};
+use pixelpipe_app::{
+    ConversionMode, ConvertRevision, CreateRevision, convert_revision, create_revision,
+};
+use pixelpipe_core::{ConversionSettings, SheetSettings};
 use pixelpipe_project::{AssetKind, ProjectStore};
 use serde::Serialize;
 use serde_json::json;
@@ -65,6 +68,28 @@ enum RevisionCommand {
         #[arg(long, default_value = "cli")]
         actor: String,
     },
+    Convert {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long, value_enum, default_value_t = Kind::Sprite)]
+        kind: Kind,
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        palette: PathBuf,
+        #[arg(long)]
+        settings: PathBuf,
+        #[arg(long, value_enum, default_value_t = ConversionKind::Reference)]
+        conversion: ConversionKind,
+        #[arg(long)]
+        brief: Option<PathBuf>,
+        #[arg(long)]
+        preview_scale: Option<u16>,
+        #[arg(long, default_value = "cli")]
+        actor: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -83,6 +108,12 @@ enum Kind {
     Sheet,
     Tile,
     Ui,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum ConversionKind {
+    Reference,
+    Sheet,
 }
 
 impl From<Kind> for AssetKind {
@@ -159,6 +190,47 @@ fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
                 actor,
             })?,
         })),
+        Command::Revision {
+            command:
+                RevisionCommand::Convert {
+                    root,
+                    asset,
+                    kind,
+                    source,
+                    palette,
+                    settings,
+                    conversion,
+                    brief,
+                    preview_scale,
+                    actor,
+                },
+        } => {
+            let settings_bytes = fs::read(&settings)?;
+            let mode = match conversion {
+                ConversionKind::Reference => {
+                    ConversionMode::Reference(serde_json::from_slice::<ConversionSettings>(
+                        &settings_bytes,
+                    )?)
+                }
+                ConversionKind::Sheet => {
+                    ConversionMode::Sheet(serde_json::from_slice::<SheetSettings>(&settings_bytes)?)
+                }
+            };
+            Ok(json!({
+                "ok": true,
+                "revision": convert_revision(ConvertRevision {
+                    start: root,
+                    asset,
+                    kind: kind.into(),
+                    source_path: source,
+                    palette_path: palette,
+                    mode,
+                    brief_path: brief,
+                    preview_scale,
+                    actor,
+                })?,
+            }))
+        }
         Command::Asset {
             command: AssetCommand::Inspect { root, asset },
         } => {

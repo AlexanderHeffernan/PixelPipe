@@ -1,0 +1,17 @@
+{
+  "width": 4,
+  "height": 4,
+  "margin": 1,
+  "coverage_percent": 25,
+  "backdrop": {
+    "type": "border_connected",
+    "color": [255, 255, 255],
+    "tolerance": 10,
+    "alpha_threshold": 0
+  },
+  "registration": "bottom",
+  "components": {
+    "min": 1,
+    "max": 1
+  }
+}

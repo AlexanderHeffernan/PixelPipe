@@ -13,11 +13,13 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 pixelpipe-app = { path = "../pixelpipe-app" }
+pixelpipe-core = { path = "../pixelpipe-core" }
 pixelpipe-project = { path = "../pixelpipe-project" }
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+png.workspace = true
 tempfile = "3"
 
 [lints]

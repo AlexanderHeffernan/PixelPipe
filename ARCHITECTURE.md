@@ -130,6 +130,33 @@ affect output.
 The core does not choose whether an image is good, invoke AI, read project
 configuration, or know export destinations.
 
+### Deterministic conversion contract
+
+The M2 reference boundary is an RGBA PNG byte stream plus an ordered palette and
+a complete serialized settings object. PixelPipe hashes the original PNG bytes
+and canonical palette; the recipe records every conversion setting.
+
+Conversion uses this fixed order:
+
+1. Decode to RGBA8 without color invention.
+2. Apply an alpha threshold, optionally removing only target-colored pixels
+   connected to the source border.
+3. Find the visible alpha bounds and fit them into the target margin using one
+   integer rational scale.
+4. Map every visible source pixel to the nearest non-transparent palette entry
+   by squared RGB distance.
+5. For each target cell, enforce the integer foreground-coverage threshold and
+   choose the modal palette index.
+6. Center or bottom-register the result, validate connected-component
+   expectations, then encode the canonical raster and exports.
+
+All equal-distance and equal-count ties choose the lower ordered palette index;
+coverage equal to the threshold is foreground. There is no filtering,
+antialiasing, dithering, floating-point math, or implicit semantic repair.
+Regular sheets apply cleanup per source cell and share one scale, registration,
+baseline, and palette across frames. PixelPipe validates every frame rather than
+silently deleting disconnected components.
+
 ### Project store
 
 Owns schema migration, atomic writes, asset/revision identity, parent links,
@@ -168,9 +195,11 @@ game-root/
     palettes/<palette>.toml      ordered RGBA colours and transparent index
     assets/<asset-id>/
       asset.toml                 brief identity, kind, head, approved revision
-      references/<run-id>/
-        run.json                 request, adapter identity, timestamps, hashes
-        candidate-01.png         immutable high-resolution candidates
+      references/
+        selected/<sha256>.png    immutable selected reference bytes
+        <run-id>/
+          run.json               request, adapter identity, timestamps, hashes
+          candidate-01.png       immutable high-resolution candidates
       revisions/r000001/
         brief.md                 brief snapshot used for this revision
         recipe.json              selected reference + deterministic operations

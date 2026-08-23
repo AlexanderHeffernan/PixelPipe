@@ -5,6 +5,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod conversion;
+
+pub use conversion::{
+    BackdropPolicy, ComponentExpectation, ConversionResult, ConversionSettings, Registration,
+    RgbaImage, SheetSettings, convert_reference, convert_sheet, decode_rgba_png,
+};
+
 pub const PALETTE_SCHEMA: &str = "pixelpipe.palette/v1";
 pub const RASTER_SCHEMA: &str = "pixelpipe.raster/v1";
 pub const RECIPE_SCHEMA: &str = "pixelpipe.recipe/v1";
@@ -46,6 +53,8 @@ pub struct Recipe {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
     RenderIndexed { preview_scale: u16 },
+    ConvertReference { settings: ConversionSettings },
+    ConvertSheet { settings: SheetSettings },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,6 +111,20 @@ pub enum CoreError {
     DimensionOverflow,
     #[error("PNG encoding failed: {0}")]
     Png(#[from] png::EncodingError),
+    #[error("PNG decoding failed: {0}")]
+    PngDecode(#[from] png::DecodingError),
+    #[error("source image dimensions or pixel count are invalid")]
+    InvalidSourceImage,
+    #[error("source image contains no visible pixels after backdrop cleanup")]
+    EmptySource,
+    #[error("conversion margin leaves no drawable target area")]
+    InvalidMargin,
+    #[error("coverage percent must be between 1 and 100")]
+    InvalidCoverage,
+    #[error("sheet grid must divide the source image exactly")]
+    InvalidSheetGrid,
+    #[error("connected component count {actual} is outside expected range {min}..={max}")]
+    ComponentCount { min: u16, max: u16, actual: u16 },
     #[error("JSON encoding failed: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -116,6 +139,24 @@ impl Palette {
             colors,
         }
     }
+
+    /// Validates palette schema, size, and transparent-index bounds.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`CoreError`] when the palette is invalid.
+    pub fn validate(&self) -> Result<(), CoreError> {
+        ensure_schema(&self.schema, PALETTE_SCHEMA)?;
+        if self.colors.is_empty() || self.colors.len() > 256 {
+            return Err(CoreError::InvalidPaletteSize);
+        }
+        if usize::from(self.transparent_index) >= self.colors.len() {
+            return Err(CoreError::InvalidTransparentIndex {
+                index: self.transparent_index,
+            });
+        }
+        Ok(())
+    }
 }
 
 impl IndexedRaster {
@@ -127,7 +168,7 @@ impl IndexedRaster {
     /// is invalid.
     pub fn validate(&self) -> Result<ValidationReport, CoreError> {
         ensure_schema(&self.schema, RASTER_SCHEMA)?;
-        ensure_schema(&self.palette.schema, PALETTE_SCHEMA)?;
+        self.palette.validate()?;
 
         if self.width == 0 || self.height == 0 || self.width > 8192 || self.height > 8192 {
             return Err(CoreError::InvalidDimensions);
@@ -144,14 +185,6 @@ impl IndexedRaster {
             return Err(CoreError::PixelCount {
                 expected,
                 actual: self.pixels.len(),
-            });
-        }
-        if self.palette.colors.is_empty() || self.palette.colors.len() > 256 {
-            return Err(CoreError::InvalidPaletteSize);
-        }
-        if usize::from(self.palette.transparent_index) >= self.palette.colors.len() {
-            return Err(CoreError::InvalidTransparentIndex {
-                index: self.palette.transparent_index,
             });
         }
         if let Some((offset, index)) = self

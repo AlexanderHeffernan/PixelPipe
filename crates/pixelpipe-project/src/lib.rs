@@ -119,6 +119,12 @@ pub struct StoredRevision {
     pub revision_path: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredReference {
+    pub sha256: String,
+    pub path: PathBuf,
+}
+
 #[derive(Debug, Error)]
 pub enum ProjectError {
     #[error("I/O error at {path}: {source}")]
@@ -150,6 +156,8 @@ pub enum ProjectError {
     RevisionExists(PathBuf),
     #[error("rendered output hash does not match bytes for '{name}'")]
     OutputHashMismatch { name: String },
+    #[error("stored reference does not match its content-addressed path: {0}")]
+    ReferenceHashMismatch(PathBuf),
     #[error("TOML error: {0}")]
     TomlSerialize(#[from] toml::ser::Error),
     #[error("invalid TOML: {0}")]
@@ -267,6 +275,33 @@ impl ProjectStore {
             });
         }
         Ok(asset)
+    }
+
+    /// Imports original PNG bytes into the asset's content-addressed reference store.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when the asset ID is invalid, storage fails, or
+    /// an existing immutable object does not match its hash-derived path.
+    pub fn import_reference(
+        &self,
+        asset_id: &str,
+        png_bytes: &[u8],
+    ) -> Result<StoredReference, ProjectError> {
+        validate_asset_id(asset_id)?;
+        let sha256 = sha256_hex(png_bytes);
+        let references = self.asset_path(asset_id).join("references/selected");
+        let path = references.join(format!("{sha256}.png"));
+        if path.exists() {
+            let existing = fs::read(&path).map_err(|source| io_at(&path, source))?;
+            if existing != png_bytes {
+                return Err(ProjectError::ReferenceHashMismatch(path));
+            }
+            return Ok(StoredReference { sha256, path });
+        }
+        fs::create_dir_all(&references).map_err(|source| io_at(&references, source))?;
+        atomic_write(&path, png_bytes)?;
+        Ok(StoredReference { sha256, path })
     }
 
     /// Atomically publishes a complete immutable revision and advances asset head.
@@ -532,5 +567,22 @@ mod tests {
             validate_asset_id("../escape"),
             Err(ProjectError::InvalidAssetId(_))
         ));
+    }
+
+    #[test]
+    fn imports_references_by_content_hash_without_overwriting() {
+        let temp = tempdir().expect("tempdir");
+        let store = ProjectStore::init(temp.path(), "Fixture Game").expect("init");
+        let bytes = b"synthetic PNG fixture bytes";
+        let first = store
+            .import_reference("test-sprite", bytes)
+            .expect("import");
+        let second = store
+            .import_reference("test-sprite", bytes)
+            .expect("repeat import");
+
+        assert_eq!(first, second);
+        assert_eq!(fs::read(&first.path).expect("stored reference"), bytes);
+        assert_eq!(first.sha256, sha256_hex(bytes));
     }
 }

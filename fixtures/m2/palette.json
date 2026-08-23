@@ -1,0 +1,12 @@
+{
+  "schema": "pixelpipe.palette/v1",
+  "name": "m2-synthetic",
+  "transparent_index": 0,
+  "colors": [
+    [0, 0, 0, 0],
+    [24, 24, 28, 255],
+    [208, 52, 44, 255],
+    [248, 184, 64, 255],
+    [244, 240, 224, 255]
+  ]
+}
