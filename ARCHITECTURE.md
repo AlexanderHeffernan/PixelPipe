@@ -208,6 +208,7 @@ game-root/
         validation.json          deterministic checks and review requirements
         native.png               review render
         preview.png              nearest-neighbour review render
+      reviews/r000001.json       append-only review event history
     cache/                       disposable and ignored
     tmp/                         disposable and ignored
 ```
@@ -246,6 +247,32 @@ Approval is a mutable pointer in `asset.toml` to an immutable revision. Export
 records the approved revision and output hashes. A critique never changes pixels;
 accepted proposed operations create a revision through the same application use
 case as manual operations.
+
+### Refinement, comparison, and review contract
+
+Pixel patches are complete coordinate/index lists. Duplicate coordinates,
+out-of-bounds coordinates, and out-of-palette indices reject the whole operation
+before storage. Palette remaps provide the complete replacement palette and one
+new index for every old index; the old transparent index must map to the new
+transparent index. Both operations inherit the parent's component rule. Sheets
+retain per-frame rules rather than incorrectly validating the combined sheet as
+one sprite.
+
+Every refinement names an explicit parent, hashes that parent's canonical
+raster, and creates a new monotonic revision. Creating from an older parent is a
+branch; an empty patch from an older parent is undo-by-new-revision. Asset head
+advances to the new child, but no prior revision or review render changes.
+
+Inspection reports bounds, pivots, complete palette usage, and a stable hex-index
+text grid. Comparison uses rendered RGBA values for pixel equality, reports
+row-major coordinate/color differences and ordered palette differences, and can
+emit indexed red/green/magenta removed/added/changed visual diffs.
+
+Review history is stored outside immutable revision payloads as atomic event
+records. Each event names a human or agent actor and an explicit `reviewed`,
+`changes_requested`, or `accepted` decision. Deterministic validation never
+creates a review event or aesthetic acceptance. Review acceptance is not the
+asset's separate approval/export pointer.
 
 ## CLI, UI, and agent parity
 

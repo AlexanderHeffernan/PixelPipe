@@ -225,7 +225,7 @@ pub fn convert_sheet(
 
     for (index, frame) in frames.iter().enumerate() {
         let (raster, placement) = render_frame(frame, palette, &settings.frame, scale)?;
-        validate_components(&raster, settings.frame.components)?;
+        validate_component_expectation(&raster, settings.frame.components)?;
         let column = u32::try_from(index).map_err(|_| CoreError::DimensionOverflow)? % columns;
         let row = u32::try_from(index).map_err(|_| CoreError::DimensionOverflow)? / columns;
         copy_frame(
@@ -547,7 +547,13 @@ fn nearest_palette_index(pixel: [u8; 4], palette: &Palette) -> u8 {
         })
 }
 
-fn validate_components(
+/// Counts four-connected visible components and enforces an inclusive range.
+///
+/// # Errors
+///
+/// Returns a [`CoreError`] when dimensions overflow or the count is outside the
+/// expected range.
+pub fn validate_component_expectation(
     raster: &IndexedRaster,
     expectation: ComponentExpectation,
 ) -> Result<u16, CoreError> {
@@ -560,6 +566,58 @@ fn validate_components(
         });
     }
     Ok(count)
+}
+
+/// Enforces the same four-connected component range independently per sheet frame.
+///
+/// # Errors
+///
+/// Returns a [`CoreError`] when the grid is invalid or any frame count falls
+/// outside the expected range.
+pub fn validate_sheet_component_expectation(
+    raster: &IndexedRaster,
+    columns: u16,
+    rows: u16,
+    expectation: ComponentExpectation,
+) -> Result<Vec<u16>, CoreError> {
+    let columns = u32::from(columns);
+    let rows = u32::from(rows);
+    if columns == 0
+        || rows == 0
+        || !raster.width.is_multiple_of(columns)
+        || !raster.height.is_multiple_of(rows)
+    {
+        return Err(CoreError::InvalidSheetGrid);
+    }
+    let width = raster.width / columns;
+    let height = raster.height / rows;
+    let mut counts = Vec::with_capacity(
+        usize::try_from(columns * rows).map_err(|_| CoreError::DimensionOverflow)?,
+    );
+    for row in 0..rows {
+        for column in 0..columns {
+            let mut pixels = Vec::with_capacity(pixel_count(width, height)?);
+            for y in 0..height {
+                for x in 0..width {
+                    pixels.push(
+                        raster.pixels
+                            [source_offset(raster.width, column * width + x, row * height + y)?],
+                    );
+                }
+            }
+            let frame = IndexedRaster {
+                schema: raster.schema.clone(),
+                width,
+                height,
+                palette: raster.palette.clone(),
+                pixels,
+                pivot: None,
+                metadata: std::collections::BTreeMap::new(),
+            };
+            counts.push(validate_component_expectation(&frame, expectation)?);
+        }
+    }
+    Ok(counts)
 }
 
 fn component_count(raster: &IndexedRaster) -> Result<u16, CoreError> {
@@ -595,10 +653,10 @@ fn component_neighbors(x: usize, y: usize, width: u32, height: u32) -> [Option<u
     let width = usize::try_from(width).unwrap_or(0);
     let height = usize::try_from(height).unwrap_or(0);
     [
-        (x > 0).then_some(y * width + x - 1),
-        (x + 1 < width).then_some(y * width + x + 1),
-        (y > 0).then_some((y - 1) * width + x),
-        (y + 1 < height).then_some((y + 1) * width + x),
+        (x > 0).then(|| y * width + x - 1),
+        (x + 1 < width).then(|| y * width + x + 1),
+        (y > 0).then(|| (y - 1) * width + x),
+        (y + 1 < height).then(|| (y + 1) * width + x),
     ]
 }
 
@@ -608,7 +666,7 @@ fn finish_conversion(
     source_bounds: &[Bounds],
     placements: &[Bounds],
 ) -> Result<ConversionResult, CoreError> {
-    let components = validate_components(&raster, settings.components)?;
+    let components = validate_component_expectation(&raster, settings.components)?;
     raster.metadata = conversion_metadata(source_bounds, placements);
     Ok(ConversionResult {
         raster,

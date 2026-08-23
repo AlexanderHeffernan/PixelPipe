@@ -1,4 +1,8 @@
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -139,6 +143,202 @@ fn cli_converts_synthetic_png_through_the_application_use_case() {
     );
 }
 
+#[test]
+fn cli_refines_branches_compares_and_records_review_without_mutating_parents() {
+    let project = tempdir().expect("project tempdir");
+    let root = project.path().to_str().expect("UTF-8 project path");
+    run(&["init", "--root", root, "--name", "M3 Fixture"]);
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let raster = workspace.join("fixtures/m1/tiny-raster.json");
+    let fixtures = workspace.join("fixtures/m3");
+    let created = run(&[
+        "revision",
+        "create",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--pixels",
+        raster.to_str().expect("raster path"),
+    ]);
+    assert_eq!(created["revision"]["revision"], "r000001");
+    let first_path = PathBuf::from(created["revision"]["revision_path"].as_str().expect("path"));
+    let first_payloads = revision_payloads(&first_path);
+
+    let patched = run(&[
+        "revision",
+        "patch",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--parent",
+        "r000001",
+        "--patch",
+        fixtures
+            .join("pixel-patch.json")
+            .to_str()
+            .expect("patch path"),
+    ]);
+    assert_eq!(patched["revision"]["revision"], "r000002");
+    assert_eq!(patched["revision"]["parent"], "r000001");
+
+    let remapped = run(&[
+        "revision",
+        "remap",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--parent",
+        "r000001",
+        "--remap",
+        fixtures
+            .join("palette-remap.json")
+            .to_str()
+            .expect("remap path"),
+    ]);
+    assert_eq!(remapped["revision"]["revision"], "r000003");
+    assert_eq!(remapped["revision"]["parent"], "r000001");
+    assert_eq!(revision_payloads(&first_path), first_payloads);
+
+    assert_m3_inspection_comparison_review(&project, root, &first_path, &first_payloads);
+    assert_invalid_patch_is_atomic(&project, root);
+}
+
+fn assert_m3_inspection_comparison_review(
+    project: &tempfile::TempDir,
+    root: &str,
+    first_path: &Path,
+    first_payloads: &[(String, Vec<u8>)],
+) {
+    let inspection = run(&[
+        "revision",
+        "inspect",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--revision",
+        "r000002",
+    ]);
+    assert_eq!(inspection["revision"]["review"], Value::Null);
+    assert_eq!(
+        inspection["revision"]["inspection"]["text_rows"][3],
+        "01 01 01 --"
+    );
+
+    let visual_native = project.path().join("diff.png");
+    let visual_preview = project.path().join("diff-preview.png");
+    let comparison = run(&[
+        "revision",
+        "compare",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--left",
+        "r000001",
+        "--right",
+        "r000002",
+        "--visual-native",
+        visual_native.to_str().expect("visual path"),
+        "--visual-preview",
+        visual_preview.to_str().expect("preview path"),
+    ]);
+    assert_eq!(
+        comparison["comparison"]["diff"]["changed_pixels"]
+            .as_array()
+            .expect("pixels")
+            .len(),
+        2
+    );
+    assert_eq!(
+        comparison["comparison"]["visual_native_sha256"],
+        "3de8b85fe254add0ac7525bc72732d5692dfaba83f81be3a94b1284ece90bb13"
+    );
+    assert_eq!(
+        comparison["comparison"]["visual_preview_sha256"],
+        "f77d9c7a01bd0f341fd56913a598412915cf1022e33aa0613e8f72f13a106302"
+    );
+    assert!(visual_native.is_file());
+    assert!(visual_preview.is_file());
+
+    let review = run(&[
+        "revision",
+        "review",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--revision",
+        "r000002",
+        "--decision",
+        "changes-requested",
+        "--actor-kind",
+        "agent",
+        "--actor",
+        "fixture-agent",
+        "--note",
+        "native silhouette needs another pass",
+    ]);
+    assert_eq!(
+        review["review"]["events"][0]["decision"],
+        "changes_requested"
+    );
+    let inspected_review = run(&[
+        "revision",
+        "inspect",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--revision",
+        "r000002",
+    ]);
+    assert_eq!(
+        inspected_review["revision"]["review"]["events"][0]["actor_kind"],
+        "agent"
+    );
+    assert_eq!(revision_payloads(first_path), first_payloads);
+}
+
+fn assert_invalid_patch_is_atomic(project: &tempfile::TempDir, root: &str) {
+    let invalid_patch = project.path().join("invalid-patch.json");
+    fs::write(
+        &invalid_patch,
+        r#"{"schema":"pixelpipe.patch/v1","edits":[{"x":99,"y":0,"index":1}]}"#,
+    )
+    .expect("invalid patch");
+    run_failure(&[
+        "revision",
+        "patch",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--parent",
+        "r000002",
+        "--patch",
+        invalid_patch.to_str().expect("invalid patch path"),
+    ]);
+    let asset = run(&[
+        "asset",
+        "inspect",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+    ]);
+    assert_eq!(asset["asset"]["head"], "r000003");
+    assert!(
+        !project
+            .path()
+            .join(".pixelpipe/assets/signal-flare/revisions/r000004")
+            .exists()
+    );
+}
+
 fn write_fixture_png(fixture_path: &Path, output_path: &Path) {
     let fixture: RgbaFixture =
         serde_json::from_slice(&fs::read(fixture_path).expect("read synthetic RGBA fixture"))
@@ -164,4 +364,28 @@ fn run(arguments: &[&str]) -> Value {
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout).expect("CLI stdout JSON")
+}
+
+fn run_failure(arguments: &[&str]) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_pixelpipe"))
+        .args(arguments)
+        .output()
+        .expect("run pixelpipe");
+    assert!(!output.status.success(), "pixelpipe unexpectedly succeeded");
+    serde_json::from_slice(&output.stderr).expect("CLI stderr JSON")
+}
+
+fn revision_payloads(path: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut payloads = fs::read_dir(path)
+        .expect("revision directory")
+        .map(|entry| {
+            let entry = entry.expect("revision entry");
+            (
+                entry.file_name().to_string_lossy().into_owned(),
+                fs::read(entry.path()).expect("revision payload"),
+            )
+        })
+        .collect::<Vec<_>>();
+    payloads.sort_by(|left, right| left.0.cmp(&right.0));
+    payloads
 }

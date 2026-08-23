@@ -3,15 +3,16 @@
 PixelPipe is an AI-first, project-aware workstation for producing deterministic,
 game-ready pixel-art assets from selected visual references.
 
-**Milestone 2 is ready for review.** The headless Rust pipeline can initialize a
-project, deterministically convert an RGBA reference or regular sheet, and write
-an immutable canonical revision with indexed PNG and exact nearest-neighbour
-preview exports.
+**Milestone 3 is ready for review.** The headless Rust pipeline can initialize a
+project, deterministically convert references, branch immutable revisions with
+atomic pixel/palette operations, inspect and compare them, and record explicit
+human or agent visual-review events.
 
 - [Architecture contract](ARCHITECTURE.md)
 - [Milestone 0 research and decision record](docs/milestones/M0-charter.md)
 - [Milestone 1 foundation record](docs/milestones/M1-foundation.md)
 - [Milestone 2 conversion record](docs/milestones/M2-conversion.md)
+- [Milestone 3 refinement/review record](docs/milestones/M3-review-and-refinement.md)
 
 ## Try the M1 path
 
@@ -45,6 +46,26 @@ cargo run -p pixelpipe-cli -- revision convert \
 
 Use `--conversion sheet --kind sheet` with a `SheetSettings` JSON document for
 a regular frame grid.
+
+## M3 refinement and review
+
+```sh
+pixelpipe revision inspect --root /path/to/game --asset signal-flare
+pixelpipe revision patch --root /path/to/game --asset signal-flare \
+  --parent r000001 --patch patch.json
+pixelpipe revision remap --root /path/to/game --asset signal-flare \
+  --parent r000001 --remap palette-remap.json
+pixelpipe revision compare --root /path/to/game --asset signal-flare \
+  --left r000001 --right r000002 --visual-preview diff.png
+pixelpipe revision review --root /path/to/game --asset signal-flare \
+  --revision r000002 --actor-kind human --actor alexander \
+  --decision accepted --note "Reads clearly at native size"
+```
+
+Patch/remap commands always require an explicit immutable parent. An empty patch
+from an older revision creates a new identical child and acts as undo without
+moving or rewriting history. Review events never change revision bytes or the
+separate approval pointer.
 
 ## License
 

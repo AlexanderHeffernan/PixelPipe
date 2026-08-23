@@ -12,6 +12,7 @@ use pixelpipe_core::{
     IndexedRaster, RECIPE_SCHEMA, Recipe, VALIDATION_SCHEMA, ValidationReport, sha256_hex,
     stable_json,
 };
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -19,6 +20,16 @@ pub const PROJECT_SCHEMA: &str = "pixelpipe.project/v1";
 pub const ASSET_SCHEMA: &str = "pixelpipe.asset/v1";
 pub const REVISION_SCHEMA: &str = "pixelpipe.revision/v1";
 pub const PROVENANCE_SCHEMA: &str = "pixelpipe.provenance/v1";
+pub const REVIEW_SCHEMA: &str = "pixelpipe.review/v1";
+const REVISION_PAYLOADS: [&str; 7] = [
+    "brief.md",
+    "native.png",
+    "pixels.json",
+    "preview.png",
+    "provenance.json",
+    "recipe.json",
+    "validation.json",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -125,6 +136,52 @@ pub struct StoredReference {
     pub path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+pub struct RevisionSnapshot {
+    pub path: PathBuf,
+    pub manifest: RevisionManifest,
+    pub raster: IndexedRaster,
+    pub recipe: Recipe,
+    pub validation: ValidationReport,
+    pub provenance: Provenance,
+    pub brief: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewActorKind {
+    Human,
+    Agent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewDecision {
+    Reviewed,
+    ChangesRequested,
+    Accepted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewEvent {
+    pub sequence: u64,
+    pub created_unix_ms: u64,
+    pub actor: String,
+    pub actor_kind: ReviewActorKind,
+    pub decision: ReviewDecision,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewRecord {
+    pub schema: String,
+    pub asset: String,
+    pub revision: String,
+    pub events: Vec<ReviewEvent>,
+}
+
 #[derive(Debug, Error)]
 pub enum ProjectError {
     #[error("I/O error at {path}: {source}")]
@@ -154,6 +211,22 @@ pub enum ProjectError {
     },
     #[error("revision directory already exists: {0}")]
     RevisionExists(PathBuf),
+    #[error("revision '{revision}' does not exist for asset '{asset}'")]
+    RevisionNotFound { asset: String, revision: String },
+    #[error("revision payload hash mismatch for '{name}'")]
+    RevisionHashMismatch { name: String },
+    #[error("revision manifest has an invalid payload file set")]
+    InvalidRevisionFiles,
+    #[error("revision manifest identity does not match asset/revision path")]
+    RevisionIdentityMismatch,
+    #[error("invalid revision id '{0}'")]
+    InvalidRevisionId(String),
+    #[error("review actor must not be empty")]
+    EmptyReviewActor,
+    #[error("review record identity or event sequence is invalid")]
+    InvalidReviewRecord,
+    #[error("revision brief is not valid UTF-8")]
+    InvalidBriefUtf8,
     #[error("rendered output hash does not match bytes for '{name}'")]
     OutputHashMismatch { name: String },
     #[error("stored reference does not match its content-addressed path: {0}")]
@@ -162,6 +235,8 @@ pub enum ProjectError {
     TomlSerialize(#[from] toml::ser::Error),
     #[error("invalid TOML: {0}")]
     TomlDeserialize(#[from] toml::de::Error),
+    #[error("invalid JSON: {0}")]
+    Json(#[from] serde_json::Error),
     #[error("core encoding error: {0}")]
     Core(#[from] pixelpipe_core::CoreError),
     #[error("system clock is before the Unix epoch")]
@@ -304,6 +379,148 @@ impl ProjectStore {
         Ok(StoredReference { sha256, path })
     }
 
+    /// Loads and hash-verifies one immutable revision snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when identity, schema, payload, or file hashes
+    /// are invalid, or the revision does not exist.
+    pub fn revision(
+        &self,
+        asset_id: &str,
+        revision: &str,
+    ) -> Result<RevisionSnapshot, ProjectError> {
+        validate_asset_id(asset_id)?;
+        validate_revision_id(revision)?;
+        let path = self.asset_path(asset_id).join("revisions").join(revision);
+        if !path.is_dir() {
+            return Err(ProjectError::RevisionNotFound {
+                asset: asset_id.to_owned(),
+                revision: revision.to_owned(),
+            });
+        }
+        let manifest: RevisionManifest = read_json(&path.join("revision.json"))?;
+        ensure_schema(&manifest.schema, REVISION_SCHEMA)?;
+        if manifest.asset != asset_id || manifest.id != revision {
+            return Err(ProjectError::RevisionIdentityMismatch);
+        }
+        if manifest.files.len() != REVISION_PAYLOADS.len()
+            || !REVISION_PAYLOADS
+                .iter()
+                .all(|name| manifest.files.contains_key(*name))
+        {
+            return Err(ProjectError::InvalidRevisionFiles);
+        }
+        if let Some(parent) = &manifest.parent {
+            validate_revision_id(parent)?;
+        }
+        for (name, expected) in &manifest.files {
+            let payload_path = path.join(name);
+            let bytes = fs::read(&payload_path).map_err(|source| io_at(&payload_path, source))?;
+            if sha256_hex(&bytes) != *expected {
+                return Err(ProjectError::RevisionHashMismatch { name: name.clone() });
+            }
+        }
+        let raster: IndexedRaster = read_json(&path.join("pixels.json"))?;
+        raster.validate()?;
+        let recipe: Recipe = read_json(&path.join("recipe.json"))?;
+        ensure_schema(&recipe.schema, RECIPE_SCHEMA)?;
+        let validation: ValidationReport = read_json(&path.join("validation.json"))?;
+        ensure_schema(&validation.schema, VALIDATION_SCHEMA)?;
+        let provenance: Provenance = read_json(&path.join("provenance.json"))?;
+        ensure_schema(&provenance.schema, PROVENANCE_SCHEMA)?;
+        if provenance.revision != revision {
+            return Err(ProjectError::RevisionIdentityMismatch);
+        }
+        let brief = String::from_utf8(
+            fs::read(path.join("brief.md"))
+                .map_err(|source| io_at(&path.join("brief.md"), source))?,
+        )
+        .map_err(|_| ProjectError::InvalidBriefUtf8)?;
+        Ok(RevisionSnapshot {
+            path,
+            manifest,
+            raster,
+            recipe,
+            validation,
+            provenance,
+            brief,
+        })
+    }
+
+    /// Loads a revision's durable review record, if review has begun.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when identities, schemas, or review JSON are invalid.
+    pub fn review(
+        &self,
+        asset_id: &str,
+        revision: &str,
+    ) -> Result<Option<ReviewRecord>, ProjectError> {
+        self.revision(asset_id, revision)?;
+        let path = self.review_path(asset_id, revision);
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let record: ReviewRecord = read_json(&path)?;
+        validate_review_record(&record, asset_id, revision)?;
+        Ok(Some(record))
+    }
+
+    /// Atomically appends an explicit human or agent review event.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when the revision, actor, record, lock, or
+    /// durable write is invalid.
+    pub fn record_review(
+        &self,
+        asset_id: &str,
+        revision: &str,
+        actor: &str,
+        actor_kind: ReviewActorKind,
+        decision: ReviewDecision,
+        note: &str,
+    ) -> Result<ReviewRecord, ProjectError> {
+        if actor.trim().is_empty() {
+            return Err(ProjectError::EmptyReviewActor);
+        }
+        self.revision(asset_id, revision)?;
+        let lock = self.lock()?;
+        let path = self.review_path(asset_id, revision);
+        let mut record = if path.is_file() {
+            let record: ReviewRecord = read_json(&path)?;
+            validate_review_record(&record, asset_id, revision)?;
+            record
+        } else {
+            ReviewRecord {
+                schema: REVIEW_SCHEMA.to_owned(),
+                asset: asset_id.to_owned(),
+                revision: revision.to_owned(),
+                events: Vec::new(),
+            }
+        };
+        let sequence = u64::try_from(record.events.len())
+            .map_err(|_| ProjectError::Clock)?
+            .checked_add(1)
+            .ok_or(ProjectError::Clock)?;
+        record.events.push(ReviewEvent {
+            sequence,
+            created_unix_ms: now_unix_ms()?,
+            actor: actor.to_owned(),
+            actor_kind,
+            decision,
+            note: note.to_owned(),
+        });
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|source| io_at(parent, source))?;
+        }
+        atomic_write(&path, &stable_json(&record)?)?;
+        drop(lock);
+        Ok(record)
+    }
+
     /// Atomically publishes a complete immutable revision and advances asset head.
     ///
     /// # Errors
@@ -317,19 +534,37 @@ impl ProjectStore {
         kind: AssetKind,
         files: RevisionFiles,
     ) -> Result<StoredRevision, ProjectError> {
+        self.create_revision_selected(asset_id, kind, None, files)
+    }
+
+    /// Atomically creates a revision from an explicit immutable parent.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when the parent does not exist or revision
+    /// validation, locking, serialization, or storage fails.
+    pub fn create_revision_from(
+        &self,
+        asset_id: &str,
+        kind: AssetKind,
+        parent_revision: &str,
+        files: RevisionFiles,
+    ) -> Result<StoredRevision, ProjectError> {
+        self.create_revision_selected(asset_id, kind, Some(parent_revision), files)
+    }
+
+    fn create_revision_selected(
+        &self,
+        asset_id: &str,
+        kind: AssetKind,
+        parent_revision: Option<&str>,
+        files: RevisionFiles,
+    ) -> Result<StoredRevision, ProjectError> {
         validate_asset_id(asset_id)?;
         files.raster.validate()?;
         ensure_schema(&files.recipe.schema, RECIPE_SCHEMA)?;
         ensure_schema(&files.validation.schema, VALIDATION_SCHEMA)?;
-        let lock_path = self.root.join(".pixelpipe/.lock");
-        let lock = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&lock_path)
-            .map_err(|source| io_at(&lock_path, source))?;
-        lock.lock_exclusive()
-            .map_err(|source| io_at(&lock_path, source))?;
+        let lock = self.lock()?;
 
         let asset_path = self.asset_path(asset_id);
         let manifest_path = asset_path.join("asset.toml");
@@ -354,19 +589,19 @@ impl ProjectStore {
             });
         }
 
-        let parent = asset.head.clone();
+        let parent = match parent_revision {
+            Some(parent) => {
+                self.revision(asset_id, parent)?;
+                Some(parent.to_owned())
+            }
+            None => asset.head.clone(),
+        };
         let revision = next_revision(&asset_path)?;
         let revision_path = asset_path.join("revisions").join(&revision);
         if revision_path.exists() {
             return Err(ProjectError::RevisionExists(revision_path));
         }
-        let created_unix_ms = u64::try_from(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|_| ProjectError::Clock)?
-                .as_millis(),
-        )
-        .map_err(|_| ProjectError::Clock)?;
+        let created_unix_ms = now_unix_ms()?;
         let prepared = prepare_revision(
             asset_id,
             &revision,
@@ -387,6 +622,7 @@ impl ProjectStore {
         fs::rename(&staging, &revision_path).map_err(|source| io_at(&revision_path, source))?;
         asset.head = Some(revision.clone());
         atomic_write(&manifest_path, toml::to_string_pretty(&asset)?.as_bytes())?;
+        drop(lock);
 
         Ok(StoredRevision {
             project_root: self.root.clone(),
@@ -399,6 +635,25 @@ impl ProjectStore {
 
     fn asset_path(&self, id: &str) -> PathBuf {
         self.root.join(".pixelpipe/assets").join(id)
+    }
+
+    fn review_path(&self, asset_id: &str, revision: &str) -> PathBuf {
+        self.asset_path(asset_id)
+            .join("reviews")
+            .join(format!("{revision}.json"))
+    }
+
+    fn lock(&self) -> Result<File, ProjectError> {
+        let path = self.root.join(".pixelpipe/.lock");
+        let lock = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&path)
+            .map_err(|source| io_at(&path, source))?;
+        lock.lock_exclusive()
+            .map_err(|source| io_at(&path, source))?;
+        Ok(lock)
     }
 }
 
@@ -499,6 +754,16 @@ fn validate_asset_id(id: &str) -> Result<(), ProjectError> {
     }
 }
 
+fn validate_revision_id(id: &str) -> Result<(), ProjectError> {
+    let valid =
+        id.len() == 7 && id.starts_with('r') && id[1..].bytes().all(|byte| byte.is_ascii_digit());
+    if valid {
+        Ok(())
+    } else {
+        Err(ProjectError::InvalidRevisionId(id.to_owned()))
+    }
+}
+
 fn ensure_schema(actual: &str, expected: &'static str) -> Result<(), ProjectError> {
     if actual == expected {
         Ok(())
@@ -510,6 +775,26 @@ fn ensure_schema(actual: &str, expected: &'static str) -> Result<(), ProjectErro
     }
 }
 
+fn validate_review_record(
+    record: &ReviewRecord,
+    asset_id: &str,
+    revision: &str,
+) -> Result<(), ProjectError> {
+    ensure_schema(&record.schema, REVIEW_SCHEMA)?;
+    let events_valid = record.events.iter().enumerate().all(|(index, event)| {
+        u64::try_from(index)
+            .ok()
+            .and_then(|index| index.checked_add(1))
+            == Some(event.sequence)
+            && !event.actor.trim().is_empty()
+    });
+    if record.asset == asset_id && record.revision == revision && events_valid {
+        Ok(())
+    } else {
+        Err(ProjectError::InvalidReviewRecord)
+    }
+}
+
 fn absolute(path: &Path) -> Result<PathBuf, ProjectError> {
     if path.is_absolute() {
         Ok(path.to_path_buf())
@@ -518,6 +803,21 @@ fn absolute(path: &Path) -> Result<PathBuf, ProjectError> {
             .map(|cwd| cwd.join(path))
             .map_err(|source| io_at(path, source))
     }
+}
+
+fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, ProjectError> {
+    let bytes = fs::read(path).map_err(|source| io_at(path, source))?;
+    serde_json::from_slice(&bytes).map_err(ProjectError::from)
+}
+
+fn now_unix_ms() -> Result<u64, ProjectError> {
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| ProjectError::Clock)?
+            .as_millis(),
+    )
+    .map_err(|_| ProjectError::Clock)
 }
 
 fn write_file(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {

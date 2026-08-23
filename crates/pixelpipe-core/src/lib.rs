@@ -6,10 +6,21 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 mod conversion;
+mod editing;
+mod inspection;
 
 pub use conversion::{
     BackdropPolicy, ComponentExpectation, ConversionResult, ConversionSettings, Registration,
     RgbaImage, SheetSettings, convert_reference, convert_sheet, decode_rgba_png,
+    validate_component_expectation, validate_sheet_component_expectation,
+};
+pub use editing::{
+    ComponentRule, PALETTE_REMAP_SCHEMA, PATCH_SCHEMA, PaletteRemap, PixelPatch, PixelPatchSet,
+    apply_palette_remap, apply_pixel_patch,
+};
+pub use inspection::{
+    PaletteDifference, PaletteUsage, PixelDifference, RasterBounds, RasterComparison, RasterDiff,
+    RasterInspection, compare_rasters, inspect_raster,
 };
 
 pub const PALETTE_SCHEMA: &str = "pixelpipe.palette/v1";
@@ -55,6 +66,8 @@ pub enum Operation {
     RenderIndexed { preview_scale: u16 },
     ConvertReference { settings: ConversionSettings },
     ConvertSheet { settings: SheetSettings },
+    PatchPixels { patch: PixelPatchSet },
+    RemapPalette { remap: PaletteRemap },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,6 +138,18 @@ pub enum CoreError {
     InvalidSheetGrid,
     #[error("connected component count {actual} is outside expected range {min}..={max}")]
     ComponentCount { min: u16, max: u16, actual: u16 },
+    #[error("pixel patch coordinate ({x}, {y}) is outside raster bounds")]
+    PatchOutOfBounds { x: u32, y: u32 },
+    #[error("pixel patch contains duplicate coordinate ({x}, {y})")]
+    DuplicatePatch { x: u32, y: u32 },
+    #[error("pixel patch index {index} is outside the palette")]
+    InvalidPatchIndex { index: u8 },
+    #[error("palette remap has {actual} entries, expected {expected}")]
+    InvalidRemapLength { expected: usize, actual: usize },
+    #[error("palette remap target index {index} is outside the new palette")]
+    InvalidRemapIndex { index: u8 },
+    #[error("palette remap must map the old transparent index to the new transparent index")]
+    InvalidTransparentRemap,
     #[error("JSON encoding failed: {0}")]
     Json(#[from] serde_json::Error),
 }

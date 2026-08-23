@@ -1,11 +1,15 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use pixelpipe_core::{
-    ConversionSettings, IndexedRaster, Operation, Palette, RECIPE_SCHEMA, Recipe, SheetSettings,
-    ValidationCheck, convert_reference, convert_sheet, decode_rgba_png, render, sha256_hex,
-    stable_json,
+    ComponentRule, ConversionSettings, IndexedRaster, Operation, Palette, PaletteRemap,
+    PixelPatchSet, RECIPE_SCHEMA, RasterDiff, RasterInspection, Recipe, SheetSettings,
+    ValidationCheck, apply_palette_remap, apply_pixel_patch, compare_rasters, convert_reference,
+    convert_sheet, decode_rgba_png, inspect_raster, render, sha256_hex, stable_json,
 };
-use pixelpipe_project::{AssetKind, ProjectError, ProjectStore, RevisionFiles, StoredRevision};
+use pixelpipe_project::{
+    AssetKind, ProjectError, ProjectStore, ReviewActorKind, ReviewDecision, ReviewRecord,
+    RevisionFiles, StoredRevision,
+};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -39,6 +43,78 @@ pub struct ConvertRevision {
     pub actor: String,
 }
 
+#[derive(Debug)]
+pub struct PatchRevision {
+    pub start: PathBuf,
+    pub asset: String,
+    pub parent: String,
+    pub patch_path: PathBuf,
+    pub brief_path: Option<PathBuf>,
+    pub preview_scale: Option<u16>,
+    pub actor: String,
+}
+
+#[derive(Debug)]
+pub struct RemapRevision {
+    pub start: PathBuf,
+    pub asset: String,
+    pub parent: String,
+    pub remap_path: PathBuf,
+    pub brief_path: Option<PathBuf>,
+    pub preview_scale: Option<u16>,
+    pub actor: String,
+}
+
+#[derive(Debug)]
+pub struct CompareRevisions {
+    pub start: PathBuf,
+    pub asset: String,
+    pub left: String,
+    pub right: String,
+    pub preview_scale: Option<u16>,
+}
+
+#[derive(Debug)]
+pub struct InspectRevision {
+    pub start: PathBuf,
+    pub asset: String,
+    pub revision: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct RevisionComparisonResult {
+    pub project_root: PathBuf,
+    pub asset: String,
+    pub left: String,
+    pub right: String,
+    pub diff: RasterDiff,
+    pub visual_native_png: Vec<u8>,
+    pub visual_preview_png: Vec<u8>,
+    pub visual_native_sha256: String,
+    pub visual_preview_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RevisionInspectionResult {
+    pub project_root: PathBuf,
+    pub asset: String,
+    pub revision: String,
+    pub parent: Option<String>,
+    pub inspection: RasterInspection,
+    pub review: Option<ReviewRecord>,
+}
+
+#[derive(Debug)]
+pub struct RecordReview {
+    pub start: PathBuf,
+    pub asset: String,
+    pub revision: String,
+    pub actor: String,
+    pub actor_kind: ReviewActorKind,
+    pub decision: ReviewDecision,
+    pub note: String,
+}
+
 struct CommitRaster {
     asset: String,
     kind: AssetKind,
@@ -49,6 +125,7 @@ struct CommitRaster {
     actor: String,
     input_hashes: BTreeMap<String, String>,
     additional_checks: Vec<ValidationCheck>,
+    parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -87,6 +164,16 @@ pub enum AppError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("invalid operation JSON in {path}: {source}")]
+    OperationJson {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("asset '{0}' has no head revision")]
+    NoHead(String),
+    #[error("operation structure rule conflicts with its inherited revision rule")]
+    StructureRuleConflict,
     #[error("brief is not valid UTF-8: {path}")]
     BriefUtf8 { path: PathBuf },
 }
@@ -133,6 +220,7 @@ pub fn create_revision(request: CreateRevision) -> Result<RevisionResult, AppErr
             actor: request.actor,
             input_hashes,
             additional_checks: Vec::new(),
+            parent: None,
         },
     )
 }
@@ -190,8 +278,245 @@ pub fn convert_revision(request: ConvertRevision) -> Result<RevisionResult, AppE
             actor: request.actor,
             input_hashes,
             additional_checks: converted.checks,
+            parent: None,
         },
     )
+}
+
+/// Applies a validated pixel patch to an explicit parent and creates a new revision.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when loading, patch validation, rendering, or atomic
+/// revision storage fails.
+pub fn patch_revision(request: PatchRevision) -> Result<RevisionResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let parent = store.revision(&request.asset, &request.parent)?;
+    let operation_path = request.patch_path;
+    let mut patch: PixelPatchSet =
+        serde_json::from_slice(&read(&operation_path)?).map_err(|source| {
+            AppError::OperationJson {
+                path: operation_path.clone(),
+                source,
+            }
+        })?;
+    inherit_structure(&mut patch.structure, component_rule(&parent.recipe))?;
+    let raster = apply_pixel_patch(&parent.raster, &patch)?;
+    let preview_scale = request
+        .preview_scale
+        .unwrap_or(store.manifest()?.preview_scale);
+    let recipe = Recipe {
+        schema: RECIPE_SCHEMA.to_owned(),
+        input_sha256: sha256_hex(&stable_json(&parent.raster)?),
+        palette_sha256: sha256_hex(&stable_json(&raster.palette)?),
+        operations: vec![
+            Operation::PatchPixels {
+                patch: patch.clone(),
+            },
+            Operation::RenderIndexed { preview_scale },
+        ],
+    };
+    let brief = override_brief(request.brief_path, parent.brief)?;
+    let input_hashes = BTreeMap::from([
+        ("palette".to_owned(), recipe.palette_sha256.clone()),
+        ("parent_pixels".to_owned(), recipe.input_sha256.clone()),
+    ]);
+    let kind = store.asset(&request.asset)?.kind;
+    commit_raster(
+        &store,
+        CommitRaster {
+            asset: request.asset,
+            kind,
+            raster,
+            recipe,
+            preview_scale,
+            brief,
+            actor: request.actor,
+            input_hashes,
+            additional_checks: vec![ValidationCheck {
+                name: "pixel_patch".to_owned(),
+                passed: true,
+                detail: patch.edits.len().to_string(),
+            }],
+            parent: Some(request.parent),
+        },
+    )
+}
+
+/// Applies an explicit palette index map to a parent and creates a new revision.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when loading, remap validation, rendering, or atomic
+/// revision storage fails.
+pub fn remap_revision(request: RemapRevision) -> Result<RevisionResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let parent = store.revision(&request.asset, &request.parent)?;
+    let path = request.remap_path;
+    let mut remap: PaletteRemap =
+        serde_json::from_slice(&read(&path)?).map_err(|source| AppError::OperationJson {
+            path: path.clone(),
+            source,
+        })?;
+    inherit_structure(&mut remap.structure, component_rule(&parent.recipe))?;
+    let raster = apply_palette_remap(&parent.raster, &remap)?;
+    let preview_scale = request
+        .preview_scale
+        .unwrap_or(store.manifest()?.preview_scale);
+    let recipe = Recipe {
+        schema: RECIPE_SCHEMA.to_owned(),
+        input_sha256: sha256_hex(&stable_json(&parent.raster)?),
+        palette_sha256: sha256_hex(&stable_json(&raster.palette)?),
+        operations: vec![
+            Operation::RemapPalette {
+                remap: remap.clone(),
+            },
+            Operation::RenderIndexed { preview_scale },
+        ],
+    };
+    let brief = override_brief(request.brief_path, parent.brief)?;
+    let input_hashes = BTreeMap::from([
+        ("palette".to_owned(), recipe.palette_sha256.clone()),
+        ("parent_pixels".to_owned(), recipe.input_sha256.clone()),
+    ]);
+    let kind = store.asset(&request.asset)?.kind;
+    commit_raster(
+        &store,
+        CommitRaster {
+            asset: request.asset,
+            kind,
+            raster,
+            recipe,
+            preview_scale,
+            brief,
+            actor: request.actor,
+            input_hashes,
+            additional_checks: vec![ValidationCheck {
+                name: "palette_remap".to_owned(),
+                passed: true,
+                detail: remap.index_map.len().to_string(),
+            }],
+            parent: Some(request.parent),
+        },
+    )
+}
+
+/// Loads a revision inspection and its separate durable review history.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when project, revision, review, or raster validation fails.
+pub fn inspect_revision(request: InspectRevision) -> Result<RevisionInspectionResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let revision = match request.revision {
+        Some(revision) => revision,
+        None => store
+            .asset(&request.asset)?
+            .head
+            .ok_or_else(|| AppError::NoHead(request.asset.clone()))?,
+    };
+    let snapshot = store.revision(&request.asset, &revision)?;
+    let inspection = inspect_raster(&snapshot.raster)?;
+    let review = store.review(&request.asset, &revision)?;
+    Ok(RevisionInspectionResult {
+        project_root: store.root().to_path_buf(),
+        asset: request.asset,
+        revision,
+        parent: snapshot.manifest.parent,
+        inspection,
+        review,
+    })
+}
+
+/// Compares two immutable revisions and produces machine and visual diffs.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when either revision cannot be verified or diff
+/// rendering fails.
+pub fn compare_revisions(request: CompareRevisions) -> Result<RevisionComparisonResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let left = store.revision(&request.asset, &request.left)?;
+    let right = store.revision(&request.asset, &request.right)?;
+    let preview_scale = request
+        .preview_scale
+        .unwrap_or(store.manifest()?.preview_scale);
+    let comparison = compare_rasters(&left.raster, &right.raster, preview_scale)?;
+    Ok(RevisionComparisonResult {
+        project_root: store.root().to_path_buf(),
+        asset: request.asset,
+        left: request.left,
+        right: request.right,
+        diff: comparison.diff,
+        visual_native_png: comparison.visual.native_png,
+        visual_preview_png: comparison.visual.preview_png,
+        visual_native_sha256: comparison.visual_native_sha256,
+        visual_preview_sha256: comparison.visual_preview_sha256,
+    })
+}
+
+/// Appends one explicit human or agent review event without changing the revision.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when the project, revision, actor, lock, or record is invalid.
+pub fn record_review(request: RecordReview) -> Result<ReviewRecord, AppError> {
+    let RecordReview {
+        start,
+        asset,
+        revision,
+        actor,
+        actor_kind,
+        decision,
+        note,
+    } = request;
+    let store = ProjectStore::discover(&start)?;
+    store
+        .record_review(&asset, &revision, &actor, actor_kind, decision, &note)
+        .map_err(AppError::from)
+}
+
+fn component_rule(recipe: &Recipe) -> Option<ComponentRule> {
+    recipe
+        .operations
+        .iter()
+        .rev()
+        .find_map(|operation| match operation {
+            Operation::ConvertReference { settings } => Some(ComponentRule::Raster {
+                expectation: settings.components,
+            }),
+            Operation::ConvertSheet { settings } => Some(ComponentRule::SheetFrames {
+                columns: settings.columns,
+                rows: settings.rows,
+                expectation: settings.frame.components,
+            }),
+            Operation::PatchPixels { patch } => patch.structure,
+            Operation::RemapPalette { remap } => remap.structure,
+            Operation::RenderIndexed { .. } => None,
+        })
+}
+
+fn inherit_structure(
+    operation: &mut Option<ComponentRule>,
+    inherited: Option<ComponentRule>,
+) -> Result<(), AppError> {
+    match (*operation, inherited) {
+        (Some(operation), Some(inherited)) if operation != inherited => {
+            Err(AppError::StructureRuleConflict)
+        }
+        (None, inherited) => {
+            *operation = inherited;
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn override_brief(path: Option<PathBuf>, inherited: String) -> Result<String, AppError> {
+    match path {
+        Some(path) => String::from_utf8(read(&path)?).map_err(|_| AppError::BriefUtf8 { path }),
+        None => Ok(inherited),
+    }
 }
 
 fn commit_raster(store: &ProjectStore, commit: CommitRaster) -> Result<RevisionResult, AppError> {
@@ -203,21 +528,21 @@ fn commit_raster(store: &ProjectStore, commit: CommitRaster) -> Result<RevisionR
         ("native.png".to_owned(), native_sha256.clone()),
         ("preview.png".to_owned(), preview_sha256.clone()),
     ]);
-    let stored = store.create_revision(
-        &commit.asset,
-        commit.kind,
-        RevisionFiles {
-            raster: commit.raster,
-            recipe: commit.recipe,
-            validation: rendered.validation,
-            native_png: rendered.native_png,
-            preview_png: rendered.preview_png,
-            brief: commit.brief,
-            actor: commit.actor,
-            input_hashes: commit.input_hashes,
-            output_hashes,
-        },
-    )?;
+    let files = RevisionFiles {
+        raster: commit.raster,
+        recipe: commit.recipe,
+        validation: rendered.validation,
+        native_png: rendered.native_png,
+        preview_png: rendered.preview_png,
+        brief: commit.brief,
+        actor: commit.actor,
+        input_hashes: commit.input_hashes,
+        output_hashes,
+    };
+    let stored = match commit.parent {
+        Some(parent) => store.create_revision_from(&commit.asset, commit.kind, &parent, files)?,
+        None => store.create_revision(&commit.asset, commit.kind, files)?,
+    };
 
     Ok(result(stored, native_sha256, preview_sha256))
 }
