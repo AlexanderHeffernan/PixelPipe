@@ -1,15 +1,24 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  browseAgentRuns,
   browseProject,
+  cancelAgentTask,
   compareRevisions,
+  loadAgentCandidate,
   loadRevision,
   patchRevision,
   pngDataUrl,
   recordReview,
   remapRevision,
+  selectAgentCandidate,
+  startAgentTask,
 } from "./api";
 import type {
+  AgentOperation,
+  AgentRunRecord,
+  AgentTaskEvent,
   PaletteDraft,
   PixelEdit,
   ProjectBrowser,
@@ -38,6 +47,18 @@ const reviewDecision = ref<ReviewDecision>("reviewed");
 const reviewNote = ref("");
 const patchEdits = ref<PixelEdit[]>([{ x: 0, y: 0, index: 0 }]);
 const paletteDraft = ref<PaletteDraft>();
+const agentProfile = ref("");
+const agentPrompt = ref("");
+const agentBusy = ref(false);
+const agentTaskId = ref("");
+const agentStage = ref("idle");
+const agentLogs = ref<string[]>([]);
+const agentRuns = ref<AgentRunRecord[]>([]);
+const activeAgentRun = ref<AgentRunRecord>();
+const candidateImages = ref<Record<string, string>>({});
+const selectedCandidate = ref("");
+const proposalSource = ref("");
+let unlistenAgent: UnlistenFn | undefined;
 
 const selectedAsset = computed(() =>
   project.value?.assets.find(({ asset }) => asset.id === assetId.value),
@@ -52,6 +73,14 @@ const previewUrl = computed(() =>
 const diffUrl = computed(() =>
   comparison.value ? pngDataUrl(comparison.value.visual_preview_png_base64) : "",
 );
+
+onMounted(async () => {
+  unlistenAgent = await listen<AgentTaskEvent>("pixelpipe://agent-task", ({ payload }) => {
+    void handleAgentEvent(payload);
+  });
+});
+
+onUnmounted(() => unlistenAgent?.());
 
 watch(
   view,
@@ -114,6 +143,10 @@ async function selectAsset(id: string) {
     return;
   }
   await selectRevision(target);
+  if (project.value) {
+    agentRuns.value = await browseAgentRuns(project.value.project_root, id);
+    activeAgentRun.value = agentRuns.value.at(-1);
+  }
 }
 
 async function selectRevision(id: string) {
@@ -172,10 +205,11 @@ async function submitPatch() {
       assetId.value,
       revisionId.value,
       patchEdits.value,
-      actor.value.trim(),
+      mutationActor(),
     );
     await refreshAndSelect(result.revision);
     notice.value = `Created ${result.revision} from explicit parent ${result.parent}.`;
+    proposalSource.value = "";
   });
 }
 
@@ -187,11 +221,134 @@ async function submitRemap() {
       assetId.value,
       revisionId.value,
       paletteDraft.value!,
-      actor.value.trim(),
+      mutationActor(),
     );
     await refreshAndSelect(result.revision);
     notice.value = `Created ${result.revision} with an explicit palette remap.`;
+    proposalSource.value = "";
   });
+}
+
+function mutationActor() {
+  return proposalSource.value
+    ? `${actor.value.trim()} via agent-run:${proposalSource.value}`
+    : actor.value.trim();
+}
+
+async function startAgent(operation: AgentOperation) {
+  if (!project.value || !assetId.value || !agentProfile.value.trim() || !agentPrompt.value.trim()) return;
+  error.value = "";
+  agentBusy.value = true;
+  agentStage.value = "launching";
+  agentLogs.value = [];
+  activeAgentRun.value = undefined;
+  candidateImages.value = {};
+  selectedCandidate.value = "";
+  try {
+    agentTaskId.value = await startAgentTask(
+      project.value.project_root,
+      assetId.value,
+      agentProfile.value.trim(),
+      operation,
+      agentPrompt.value,
+      operation === "generate_references" ? undefined : revisionId.value,
+    );
+    notice.value = `Started ${operation.replaceAll("_", " ")} task.`;
+  } catch (caught) {
+    agentBusy.value = false;
+    agentStage.value = "failed";
+    error.value = caught instanceof Error ? caught.message : String(caught);
+    await nextTick();
+    statusElement.value?.focus();
+  }
+}
+
+async function handleAgentEvent(message: AgentTaskEvent) {
+  if (agentTaskId.value && message.task !== agentTaskId.value) return;
+  agentTaskId.value ||= message.task;
+  const event = message.event;
+  if (event.type === "progress") {
+    agentStage.value = event.stage;
+    agentLogs.value.push(event.message);
+  } else if (event.type === "log") {
+    agentLogs.value.push(`${event.stream}: ${event.message}`);
+  } else if (event.type === "candidate_ready") {
+    agentStage.value = `validated ${event.candidate.id}`;
+  } else if (event.type === "completed") {
+    agentBusy.value = false;
+    agentStage.value = "completed";
+    activeAgentRun.value = event.run;
+    agentRuns.value = [...agentRuns.value.filter(({ id }) => id !== event.run.id), event.run];
+    await loadCandidateImages(event.run);
+    notice.value = "Agent task completed. Nothing was selected, applied, or approved.";
+  } else if (event.type === "failed") {
+    agentBusy.value = false;
+    agentStage.value = "failed";
+    activeAgentRun.value = event.run;
+    error.value = event.error;
+  } else if (event.type === "cancelled") {
+    agentBusy.value = false;
+    agentStage.value = "cancelled";
+    activeAgentRun.value = event.run;
+    notice.value = "Agent task cancelled. No candidate or operation was applied.";
+  }
+}
+
+async function loadCandidateImages(run: AgentRunRecord) {
+  if (!project.value) return;
+  const loaded = await Promise.all(
+    run.candidates.map(async (candidate) => [
+      candidate.id,
+      pngDataUrl((await loadAgentCandidate(project.value!.project_root, run.id, candidate.id)).png_base64),
+    ] as const),
+  );
+  candidateImages.value = Object.fromEntries(loaded);
+}
+
+async function cancelAgent() {
+  if (!agentTaskId.value) return;
+  await cancelAgentTask(agentTaskId.value);
+  agentStage.value = "cancelling";
+}
+
+async function chooseCandidate(candidate: string) {
+  if (!project.value || !activeAgentRun.value) return;
+  await run(async () => {
+    const selection = await selectAgentCandidate(
+      project.value!.project_root,
+      assetId.value,
+      activeAgentRun.value!.id,
+      candidate,
+    );
+    selectedCandidate.value = selection.candidate;
+    notice.value = `Selected ${selection.candidate} (${selection.sha256.slice(0, 12)}…). Head was unchanged.`;
+  });
+}
+
+async function openAgentRun(id: string) {
+  const run = agentRuns.value.find((entry) => entry.id === id);
+  if (!run) return;
+  activeAgentRun.value = run;
+  candidateImages.value = {};
+  await loadCandidateImages(run);
+}
+
+function loadProposal() {
+  const run = activeAgentRun.value;
+  if (!run?.proposal) return;
+  proposalSource.value = run.id;
+  if (run.proposal.type === "pixel_patch") {
+    patchEdits.value = run.proposal.patch.edits.map((edit) => ({ ...edit }));
+  } else {
+    const remap = run.proposal.remap;
+    paletteDraft.value = {
+      name: remap.palette.name,
+      transparentIndex: remap.palette.transparent_index,
+      colors: remap.palette.colors.map((color) => [...color] as Rgba),
+      indexMap: [...remap.index_map],
+    };
+  }
+  notice.value = `Loaded proposal ${run.id} into the editable form. It has not been applied.`;
 }
 
 function addPatch() {
@@ -330,6 +487,55 @@ function formatBounds(bounds?: { x: number; y: number; width: number; height: nu
             </div>
           </figure>
         </div>
+
+        <section class="agent-workflow panel" aria-labelledby="agent-workflow-title">
+          <div class="panel-title agent-title">
+            <div><small>Configured user agent</small><h3 id="agent-workflow-title">Reference and critique workflow</h3></div>
+            <span class="agent-state" :class="agentStage">{{ agentStage.replaceAll("_", " ") }}</span>
+          </div>
+          <form class="stack-form" @submit.prevent="startAgent('generate_references')">
+            <div class="form-row agent-config">
+              <label>User profile<input v-model="agentProfile" required placeholder="my-approved-agent" autocomplete="off" /></label>
+              <label v-if="agentRuns.length">Previous run
+                <select :value="activeAgentRun?.id ?? ''" :disabled="agentBusy" @change="openAgentRun(($event.target as HTMLSelectElement).value)">
+                  <option value="">Choose captured run</option>
+                  <option v-for="run in [...agentRuns].reverse()" :key="run.id" :value="run.id">{{ run.operation.replaceAll("_", " ") }} · {{ run.status }}</option>
+                </select>
+              </label>
+            </div>
+            <label>Brief or review prompt<textarea v-model="agentPrompt" required rows="3" placeholder="Describe the smooth reference, critique goal, or focused refinement you want."></textarea></label>
+            <div class="agent-actions">
+              <button class="primary" :disabled="agentBusy || !agentProfile.trim() || !agentPrompt.trim()">Generate references</button>
+              <button type="button" :disabled="agentBusy || !agentProfile.trim() || !agentPrompt.trim()" @click="startAgent('critique_asset')">Critique revision</button>
+              <button type="button" :disabled="agentBusy || !agentProfile.trim() || !agentPrompt.trim()" @click="startAgent('propose_refinement')">Propose refinement</button>
+              <button v-if="agentBusy" type="button" class="danger" @click="cancelAgent">Cancel task</button>
+            </div>
+            <p class="form-note">Profiles live in user settings and must explicitly allowlist an absolute executable. Project files cannot choose a command. Completion never selects, applies, reviews, or approves.</p>
+          </form>
+
+          <div v-if="activeAgentRun" class="agent-result">
+            <div class="run-summary">
+              <strong>{{ activeAgentRun.operation.replaceAll("_", " ") }}</strong>
+              <span>{{ activeAgentRun.status }} · {{ activeAgentRun.duration_ms }} ms</span>
+              <span v-if="activeAgentRun.adapter">{{ activeAgentRun.adapter.adapter }}<template v-if="activeAgentRun.adapter.provider"> · {{ activeAgentRun.adapter.provider }}</template><template v-if="activeAgentRun.adapter.model">/{{ activeAgentRun.adapter.model }}</template></span>
+              <code>{{ activeAgentRun.id }}</code>
+            </div>
+            <p v-if="activeAgentRun.error" class="agent-error">{{ activeAgentRun.error }}</p>
+            <div v-if="activeAgentRun.candidates.length" class="candidate-grid" aria-label="Validated generated candidates">
+              <figure v-for="candidate in activeAgentRun.candidates" :key="candidate.id" :class="{ selected: selectedCandidate === candidate.id }">
+                <div class="checker candidate-stage"><img v-if="candidateImages[candidate.id]" :src="candidateImages[candidate.id]" :alt="`Generated candidate ${candidate.id}`" /></div>
+                <figcaption><strong>{{ candidate.id }}</strong><small>{{ candidate.width }}×{{ candidate.height }} · {{ candidate.sha256.slice(0, 12) }}…</small></figcaption>
+                <button type="button" :disabled="busy || selectedCandidate === candidate.id" @click="chooseCandidate(candidate.id)">{{ selectedCandidate === candidate.id ? "Selected reference" : "Select reference" }}</button>
+              </figure>
+            </div>
+            <blockquote v-if="activeAgentRun.critique"><strong>Agent critique</strong><p>{{ activeAgentRun.critique }}</p></blockquote>
+            <div v-if="activeAgentRun.proposal" class="proposal-review">
+              <div><strong>Validated, unapplied {{ activeAgentRun.proposal.type.replaceAll("_", " ") }}</strong><p>Review it in the structured form before creating any child revision.</p></div>
+              <button type="button" @click="loadProposal">Load into editable form</button>
+            </div>
+          </div>
+          <details v-if="agentLogs.length" class="agent-logs"><summary>Task log (redacted) · {{ agentLogs.length }}</summary><pre>{{ agentLogs.join("\n") }}</pre></details>
+        </section>
 
         <section class="comparison panel">
           <div class="panel-title">

@@ -3,10 +3,9 @@
 PixelPipe is an AI-first, project-aware workstation for producing deterministic,
 game-ready pixel-art assets from selected visual references.
 
-**Milestone 4 is ready for review.** The deterministic Rust pipeline now has a
-Tauri 2 + Vue 3 desktop workstation for project navigation, native/nearest
-inspection, revision comparison, explicit review, and structured patch/remap
-submission.
+**Milestone 5 is ready for review.** PixelPipe now has a provider-neutral,
+user-approved one-shot agent workflow for asynchronous reference generation,
+candidate selection, critique, and validated-but-unapplied refinements.
 
 - [Architecture contract](ARCHITECTURE.md)
 - [Milestone 0 research and decision record](docs/milestones/M0-charter.md)
@@ -14,6 +13,7 @@ submission.
 - [Milestone 2 conversion record](docs/milestones/M2-conversion.md)
 - [Milestone 3 refinement/review record](docs/milestones/M3-review-and-refinement.md)
 - [Milestone 4 desktop review record](docs/milestones/M4-desktop-review.md)
+- [Milestone 5 configured agent record](docs/milestones/M5-agent-workflow.md)
 
 ## Try the M1 path
 
@@ -83,6 +83,18 @@ cargo run -p pixelpipe-desktop
 The desktop uses the same `pixelpipe-app` use cases as the CLI. It receives only
 verified revision PNG bytes, keeps selection transient, and requires an explicit
 parent for every pixel patch or palette remap.
+
+## M5 configured agent
+
+Agent executables are configured and explicitly approved in user-local settings,
+never `.pixelpipe/project.toml`. `pixelpipe agent run` emits typed JSON lifecycle
+events to stderr and a final JSON result to stdout. Generated candidates are
+validated and content-addressed, then require a separate
+`pixelpipe reference select` action. Critiques never change project state;
+proposals must pass through the existing explicit-parent patch/remap use cases.
+
+See the [M5 record](docs/milestones/M5-agent-workflow.md) for profile locations,
+the strict JSON protocol, safety limits, and CLI examples.
 
 ## License
 

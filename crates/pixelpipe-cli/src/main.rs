@@ -1,10 +1,17 @@
-use std::{fs, path::PathBuf, process::ExitCode};
+use std::{
+    fs,
+    path::PathBuf,
+    process::ExitCode,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use pixelpipe_app::{
+    AgentOperation, AgentRunStatus, AgentRuntime, AgentTaskRequest, BrowseAgentRuns,
     CompareRevisions, ConversionMode, ConvertRevision, CreateRevision, InspectRevision,
-    PatchRevision, RecordReview, RemapRevision, compare_revisions, convert_revision,
-    create_revision, inspect_revision, patch_revision, record_review, remap_revision,
+    LoadAgentCandidate, PatchRevision, RecordReview, RemapRevision, SelectAgentCandidate,
+    browse_agent_runs, compare_revisions, convert_revision, create_revision, inspect_revision,
+    load_agent_candidate, patch_revision, record_review, remap_revision, select_agent_candidate,
 };
 use pixelpipe_core::{ConversionSettings, SheetSettings};
 use pixelpipe_project::{
@@ -44,6 +51,14 @@ enum Command {
     Asset {
         #[command(subcommand)]
         command: AssetCommand,
+    },
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommand,
+    },
+    Reference {
+        #[command(subcommand)]
+        command: ReferenceCommand,
     },
 }
 
@@ -179,6 +194,54 @@ enum AssetCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum AgentCommand {
+    Run {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        profile: String,
+        #[arg(long, value_enum)]
+        operation: AgentOperationKind,
+        #[arg(long)]
+        revision: Option<String>,
+        #[arg(long)]
+        prompt: String,
+    },
+    Runs {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+    },
+    Candidate {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        run: String,
+        #[arg(long)]
+        candidate: String,
+        #[arg(long)]
+        output: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum ReferenceCommand {
+    Select {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        run: String,
+        #[arg(long)]
+        candidate: String,
+    },
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum Kind {
     Sprite,
@@ -204,6 +267,23 @@ enum ReviewDecision {
     Reviewed,
     ChangesRequested,
     Accepted,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum AgentOperationKind {
+    Generate,
+    Critique,
+    Propose,
+}
+
+impl From<AgentOperationKind> for AgentOperation {
+    fn from(value: AgentOperationKind) -> Self {
+        match value {
+            AgentOperationKind::Generate => Self::GenerateReferences,
+            AgentOperationKind::Critique => Self::CritiqueAsset,
+            AgentOperationKind::Propose => Self::ProposeRefinement,
+        }
+    }
 }
 
 impl From<ReviewActorKind> for ProjectReviewActorKind {
@@ -286,6 +366,84 @@ fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
                 "project_root": store.root(),
                 "asset": store.asset(&asset)?,
             }))
+        }
+        Command::Agent { command } => run_agent(command),
+        Command::Reference {
+            command:
+                ReferenceCommand::Select {
+                    root,
+                    asset,
+                    run,
+                    candidate,
+                },
+        } => Ok(json!({
+            "ok": true,
+            "selection": select_agent_candidate(SelectAgentCandidate {
+                start: root,
+                asset,
+                run,
+                candidate,
+            })?,
+        })),
+    }
+}
+
+fn run_agent(command: AgentCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    match command {
+        AgentCommand::Run {
+            root,
+            asset,
+            profile,
+            operation,
+            revision,
+            prompt,
+        } => {
+            let runtime = AgentRuntime::user_local()?;
+            let sink = Arc::new(|event| {
+                eprintln!(
+                    "{}",
+                    serde_json::to_string(&event).expect("agent event must serialize")
+                );
+            });
+            let cancel = AtomicBool::new(false);
+            let result = runtime.run(
+                AgentTaskRequest {
+                    start: root,
+                    asset,
+                    profile,
+                    operation: operation.into(),
+                    revision,
+                    prompt,
+                },
+                &cancel,
+                sink,
+            )?;
+            if result.run.status != AgentRunStatus::Completed {
+                return Err(format!(
+                    "agent run '{}' ended with {:?}",
+                    result.run.id, result.run.status
+                )
+                .into());
+            }
+            Ok(json!({ "ok": true, "run": result.run }))
+        }
+        AgentCommand::Runs { root, asset } => Ok(json!({
+            "ok": true,
+            "runs": browse_agent_runs(BrowseAgentRuns { start: root, asset })?,
+        })),
+        AgentCommand::Candidate {
+            root,
+            run,
+            candidate,
+            output,
+        } => {
+            let bytes = load_agent_candidate(LoadAgentCandidate {
+                start: root,
+                run,
+                candidate,
+            })?;
+            fs::write(&output, bytes)?;
+            Ok(json!({ "ok": true, "output": output }))
         }
     }
 }

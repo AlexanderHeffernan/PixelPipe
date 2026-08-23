@@ -1,0 +1,23 @@
+{
+  "schema": "pixelpipe.agent-response/v1",
+  "adapter": {
+    "adapter": "pixelpipe-fixture-agent",
+    "provider": "fixture-provider",
+    "model": "fixture-model",
+    "capabilities": [
+      "generate_references",
+      "critique_asset",
+      "propose_refinement"
+    ]
+  },
+  "result": {
+    "type": "generated_references",
+    "candidates": [
+      {
+        "id": "candidate-one",
+        "path": "candidate.png",
+        "sha256": "be0cb8da780b0a4a59a38302b855c657bfd997de8e8883a1db42a4698dba3ede"
+      }
+    ]
+  }
+}

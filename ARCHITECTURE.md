@@ -191,10 +191,11 @@ base64 rather than frontend-selected filesystem paths. Vue owns only transient
 path, selection, form, loading, and error state; reopening or refreshing always
 reconciles from `pixelpipe-app`.
 
-Desktop operations are request/response commands in M4. There are no domain
-events yet because no approved operation is long-running, and introducing an
-event stream would create synchronization state without product value. Add typed
-events when generation or another asynchronous use case demonstrates the need.
+Deterministic desktop operations remain request/response commands. M5 adds one
+typed event stream only for subprocess work: started, progress/log,
+candidate-ready, completed, failed, and cancelled. Tauri owns the transient task
+registry/cancellation flags; durable run state is reconciled from the application
+and project layers rather than localStorage.
 
 ## Project-root model
 
@@ -206,13 +207,14 @@ game-root/
   .pixelpipe/
     project.toml                 schema, art direction, defaults, export maps
     palettes/<palette>.toml      ordered RGBA colours and transparent index
+    runs/<task-id>/              ignored local agent run/candidate capture
+      run.json
+      candidates/<sha256>.png
     assets/<asset-id>/
       asset.toml                 brief identity, kind, head, approved revision
       references/
         selected/<sha256>.png    immutable selected reference bytes
-        <run-id>/
-          run.json               request, adapter identity, timestamps, hashes
-          candidate-01.png       immutable high-resolution candidates
+        selection.json           explicit run/candidate/hash selection
       revisions/r000001/
         brief.md                 brief snapshot used for this revision
         recipe.json              selected reference + deterministic operations
@@ -315,9 +317,9 @@ generation or critique never implies approval.
 ## Configurable agent protocol
 
 PixelPipe has no model-provider dependency in its core and no MCP requirement.
-The user configures a local executable via user settings, environment, or an
-explicit CLI option. Repositories may name desired capabilities but may not name
-an executable that PixelPipe runs automatically.
+The user configures a local executable through user-local settings. Repositories
+may name desired capabilities but may not name an executable that PixelPipe runs
+automatically.
 
 Protocol `pixelpipe.agent.v1` is a one-shot process contract:
 
@@ -327,13 +329,30 @@ Protocol `pixelpipe.agent.v1` is a one-shot process contract:
   hashes, constraints, and a fresh writable output directory.
 - Output paths must remain inside that directory and are imported only after
   validation and hashing.
-- `capabilities` discovers supported operations and adapter metadata.
+- The approved profile declares allowed capabilities; every response reports
+  adapter capabilities and metadata for verification/capture.
 - Initial operations are `generate_references`, `critique_asset`, and
   `propose_refinement`.
 - Responses may return images, structured critique, and serialized pixel
   operations. They may not claim approval or mutate the project.
 - Cancellation terminates the child process; timeout and output limits are user
   policy. Prompts and responses are provenance, except configured secret fields.
+
+M5 concretizes that contract as `pixelpipe.agent-profile/v1`,
+`pixelpipe.agent-request/v1`, `pixelpipe.agent-response/v1`,
+`pixelpipe.agent-run/v1`, and `pixelpipe.agent-task-event/v1`. Profiles are read
+only from the operating system's user configuration directory, require
+`approved: true`, an absolute executable, and allowlisted capabilities, and may
+name environment variables whose values should be inherited/redacted. The child
+starts with a cleared environment and an isolated temporary working directory.
+Candidates must be relative, canonicalize inside the assigned output directory,
+decode as RGBA PNG, and match their reported SHA-256 before import.
+
+The adapter is trusted code, not an OS sandbox. PixelPipe prevents returned paths
+from escaping the import boundary and never grants an alternate project write
+API, but a user-approved executable retains that user's ambient filesystem
+permissions. A cross-platform sandbox must not be promised without a separately
+reviewed platform design.
 
 An adapter can wrap Amp, another coding agent, a local model, or a hosted provider.
 Provider-specific authentication, streaming, and retries stay inside the adapter.
@@ -373,6 +392,17 @@ frontend sorting. Error and empty states remain visible, command failures receiv
 focus, list navigation supports arrow/Home/End keys, and reduced-motion/focus
 styles are part of the baseline rather than optional polish.
 
+### M5 agent task surface
+
+Generation, critique, and refinement proposal share one application task request
+and lifecycle. Final run records capture exit status, duration, redacted
+stdout/stderr, prompt, approved profile command hash, adapter identity and
+reported provider/model/capabilities, errors, and artifact hashes. Candidate
+import, explicit selected-reference mutation, critique, proposal, and revision
+application remain separate states. Proposals validate read-only against their
+named revision; accepting one still invokes the existing explicit-parent
+patch/remap use case and creates a child revision.
+
 ## Explicit non-goals for the first product arc
 
 - Training or hosting image models.
@@ -395,8 +425,8 @@ Milestones must preserve these executable checks once their layers exist:
 1. A fixed selected reference + recipe produces byte-identical canonical JSON and
    native PNG across repeated runs and supported platforms.
 2. CLI and Tauri adapters pass the same use-case conformance suite.
-3. An AI adapter cannot write outside its assigned output directory or bypass
-   revision creation.
+3. An artifact outside an AI task's assigned output directory cannot be imported,
+   and an AI response cannot bypass explicit selection or revision creation.
 4. Every approved/exported asset resolves to immutable inputs, recipe, versions,
    validation, and hashes.
 5. Every nearest preview is an exact integer enlargement of the native raster.

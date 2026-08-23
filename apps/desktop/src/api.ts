@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentOperation,
+  AgentRunRecord,
   PaletteDraft,
   PixelEdit,
   ProjectBrowser,
@@ -9,6 +11,7 @@ import type {
   ReviewActorKind,
   ReviewDecision,
   ReviewRecord,
+  ReferenceSelection,
 } from "./types";
 
 export const pngDataUrl = (base64: string): string => `data:image/png;base64,${base64}`;
@@ -89,4 +92,37 @@ export const remapRevision = (
       preview_scale: null,
       actor,
     },
+  });
+
+export const startAgentTask = (
+  start: string,
+  asset: string,
+  profile: string,
+  operation: AgentOperation,
+  prompt: string,
+  revision?: string,
+) =>
+  invoke<string>("start_agent_task", {
+    request: { start, asset, profile, operation, revision: revision ?? null, prompt },
+  });
+
+export const cancelAgentTask = (task: string) =>
+  invoke<void>("cancel_agent_task", { task });
+
+export const browseAgentRuns = (start: string, asset: string) =>
+  invoke<AgentRunRecord[]>("browse_agent_runs", { request: { start, asset } });
+
+export const loadAgentCandidate = (start: string, run: string, candidate: string) =>
+  invoke<{ png_base64: string }>("load_agent_candidate", {
+    request: { start, run, candidate },
+  });
+
+export const selectAgentCandidate = (
+  start: string,
+  asset: string,
+  run: string,
+  candidate: string,
+) =>
+  invoke<ReferenceSelection>("select_agent_candidate", {
+    request: { start, asset, run, candidate },
   });

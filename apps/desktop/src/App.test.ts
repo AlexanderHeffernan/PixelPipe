@@ -3,6 +3,17 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App.vue";
 
+const eventMock = vi.hoisted(() => ({
+  handler: undefined as ((event: { payload: unknown }) => void) | undefined,
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (_event: string, handler: (event: { payload: unknown }) => void) => {
+    eventMock.handler = handler;
+    return () => undefined;
+  }),
+}));
+
 const project = {
   project_root: "/game",
   project: { schema: "pixelpipe.project/v1", name: "Fixture Game", preview_scale: 8 },
@@ -65,6 +76,7 @@ describe("desktop review workstation", () => {
     mockIPC((command) => {
       commands.push(command);
       if (command === "browse_project") return project;
+      if (command === "browse_agent_runs") return [];
       if (command === "load_revision") return revision;
       if (command === "record_review") {
         return {
@@ -112,5 +124,64 @@ describe("desktop review workstation", () => {
     const status = await screen.findByRole("status");
     await waitFor(() => expect(status).toHaveFocus());
     expect(status).toHaveTextContent("no .pixelpipe/project.toml found");
+  });
+
+  it("starts agent work asynchronously and keeps a proposal unapplied until explicit revision submission", async () => {
+    const commands: string[] = [];
+    mockIPC((command) => {
+      commands.push(command);
+      if (command === "browse_project") return project;
+      if (command === "browse_agent_runs") return [];
+      if (command === "load_revision") return revision;
+      if (command === "start_agent_task") return "task-1";
+      throw new Error(`unexpected command ${command}`);
+    });
+    render(App);
+    await fireEvent.update(screen.getByLabelText("Project path"), "/game");
+    await fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await screen.findByRole("heading", { name: "Reference and critique workflow" });
+    await fireEvent.update(screen.getByLabelText("User profile"), "approved-fixture");
+    await fireEvent.update(screen.getByLabelText("Brief or review prompt"), "Tighten the flare tip");
+    await fireEvent.click(screen.getByRole("button", { name: "Propose refinement" }));
+
+    await waitFor(() => expect(commands).toContain("start_agent_task"));
+    expect(screen.getByRole("button", { name: "Cancel task" })).toBeVisible();
+    eventMock.handler?.({
+      payload: {
+        schema: "pixelpipe.agent-task-event/v1",
+        task: "task-1",
+        sequence: 3,
+        event: {
+          type: "completed",
+          run: {
+            schema: "pixelpipe.agent-run/v1",
+            id: "task-1",
+            asset: "signal-flare",
+            operation: "propose_refinement",
+            revision: "r000002",
+            profile: "approved-fixture",
+            profile_command_sha256: "0".repeat(64),
+            prompt: "Tighten the flare tip",
+            started_unix_ms: 1,
+            duration_ms: 20,
+            status: "completed",
+            exit_status: 0,
+            stdout: "{}",
+            stderr: "",
+            candidates: [],
+            proposal: {
+              type: "pixel_patch",
+              patch: { schema: "pixelpipe.patch/v1", edits: [{ x: 1, y: 1, index: 1 }] },
+            },
+          },
+        },
+      },
+    });
+
+    expect(await screen.findByText("Validated, unapplied pixel patch")).toBeVisible();
+    expect(commands).not.toContain("patch_revision");
+    await fireEvent.click(screen.getByRole("button", { name: "Load into editable form" }));
+    expect(screen.getByRole("status")).toHaveTextContent("It has not been applied");
+    expect(commands).not.toContain("patch_revision");
   });
 });

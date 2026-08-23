@@ -13,7 +13,18 @@ use pixelpipe_project::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub use pixelpipe_project::{ReviewActorKind, ReviewDecision, ReviewRecord};
+mod agent;
+
+pub use agent::{
+    AgentRuntime, AgentTaskEvent, AgentTaskEventKind, AgentTaskRequest, AgentTaskResult,
+    BrowseAgentRuns, LoadAgentCandidate, SelectAgentCandidate, browse_agent_runs,
+    load_agent_candidate, select_agent_candidate,
+};
+
+pub use pixelpipe_project::{
+    AgentCandidate, AgentOperation, AgentProposal, AgentRunRecord, AgentRunStatus,
+    ReferenceSelection, ReviewActorKind, ReviewDecision, ReviewRecord,
+};
 
 #[derive(Debug)]
 pub struct CreateRevision {
@@ -264,6 +275,14 @@ pub enum AppError {
     StructureRuleConflict,
     #[error("brief is not valid UTF-8: {path}")]
     BriefUtf8 { path: PathBuf },
+    #[error("agent profile error: {0}")]
+    AgentProfile(String),
+    #[error("agent process error: {0}")]
+    AgentProcess(String),
+    #[error("agent protocol error: {0}")]
+    AgentProtocol(String),
+    #[error("agent candidate path is invalid: {0}")]
+    AgentCandidatePath(String),
 }
 
 /// Validates a structured raster, renders it, and commits an immutable revision.

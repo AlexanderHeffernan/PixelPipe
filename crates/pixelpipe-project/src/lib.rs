@@ -9,8 +9,8 @@ use std::{
 use atomicwrites::{AllowOverwrite, AtomicFile};
 use fs2::FileExt;
 use pixelpipe_core::{
-    IndexedRaster, RECIPE_SCHEMA, Recipe, VALIDATION_SCHEMA, ValidationReport, sha256_hex,
-    stable_json,
+    IndexedRaster, PaletteRemap, PixelPatchSet, RECIPE_SCHEMA, Recipe, VALIDATION_SCHEMA,
+    ValidationReport, sha256_hex, stable_json,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,8 @@ pub const ASSET_SCHEMA: &str = "pixelpipe.asset/v1";
 pub const REVISION_SCHEMA: &str = "pixelpipe.revision/v1";
 pub const PROVENANCE_SCHEMA: &str = "pixelpipe.provenance/v1";
 pub const REVIEW_SCHEMA: &str = "pixelpipe.review/v1";
+pub const AGENT_RUN_SCHEMA: &str = "pixelpipe.agent-run/v1";
+pub const REFERENCE_SELECTION_SCHEMA: &str = "pixelpipe.reference-selection/v1";
 const REVISION_PAYLOADS: [&str; 7] = [
     "brief.md",
     "native.png",
@@ -184,6 +186,100 @@ pub struct ReviewRecord {
     pub events: Vec<ReviewEvent>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentCapability {
+    GenerateReferences,
+    CritiqueAsset,
+    ProposeRefinement,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentOperation {
+    GenerateReferences,
+    CritiqueAsset,
+    ProposeRefinement,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRunStatus {
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentIdentity {
+    pub adapter: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    pub capabilities: Vec<AgentCapability>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCandidate {
+    pub id: String,
+    pub sha256: String,
+    pub width: u32,
+    pub height: u32,
+    pub png: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AgentProposal {
+    PixelPatch { patch: PixelPatchSet },
+    PaletteRemap { remap: PaletteRemap },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentRunRecord {
+    pub schema: String,
+    pub id: String,
+    pub asset: String,
+    pub operation: AgentOperation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    pub profile: String,
+    pub profile_command_sha256: String,
+    pub prompt: String,
+    pub started_unix_ms: u64,
+    pub duration_ms: u64,
+    pub status: AgentRunStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_status: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<AgentIdentity>,
+    pub stdout: String,
+    pub stderr: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidates: Vec<AgentCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub critique: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal: Option<AgentProposal>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceSelection {
+    pub schema: String,
+    pub asset: String,
+    pub run: String,
+    pub candidate: String,
+    pub sha256: String,
+    pub selected_unix_ms: u64,
+}
+
 #[derive(Debug, Error)]
 pub enum ProjectError {
     #[error("I/O error at {path}: {source}")]
@@ -233,6 +329,16 @@ pub enum ProjectError {
     OutputHashMismatch { name: String },
     #[error("stored reference does not match its content-addressed path: {0}")]
     ReferenceHashMismatch(PathBuf),
+    #[error("invalid agent run or candidate id '{0}'")]
+    InvalidAgentId(String),
+    #[error("agent run directory already exists: {0}")]
+    AgentRunExists(PathBuf),
+    #[error("agent run identity, schema, or candidate manifest is invalid")]
+    InvalidAgentRun,
+    #[error("agent candidate '{candidate}' does not exist in run '{run}'")]
+    AgentCandidateNotFound { run: String, candidate: String },
+    #[error("agent candidate bytes do not match their content hash")]
+    AgentCandidateHashMismatch,
     #[error("TOML error: {0}")]
     TomlSerialize(#[from] toml::ser::Error),
     #[error("invalid TOML: {0}")]
@@ -575,6 +681,160 @@ impl ProjectStore {
         Ok(record)
     }
 
+    /// Atomically stores one finished agent run and its validated candidate PNGs.
+    ///
+    /// Agent runs are immutable local provenance. Project configuration never
+    /// supplies the executable that produced them.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when identities, hashes, locking, or storage fail.
+    pub fn store_agent_run(
+        &self,
+        record: &AgentRunRecord,
+        candidate_bytes: &BTreeMap<String, Vec<u8>>,
+    ) -> Result<(), ProjectError> {
+        validate_agent_run(record)?;
+        if record.candidates.len() != candidate_bytes.len() {
+            return Err(ProjectError::InvalidAgentRun);
+        }
+        for candidate in &record.candidates {
+            let bytes = candidate_bytes.get(&candidate.id).ok_or_else(|| {
+                ProjectError::AgentCandidateNotFound {
+                    run: record.id.clone(),
+                    candidate: candidate.id.clone(),
+                }
+            })?;
+            if sha256_hex(bytes) != candidate.sha256 {
+                return Err(ProjectError::AgentCandidateHashMismatch);
+            }
+        }
+
+        let lock = self.lock()?;
+        let runs = self.root.join(".pixelpipe/runs");
+        fs::create_dir_all(&runs).map_err(|source| io_at(&runs, source))?;
+        let destination = runs.join(&record.id);
+        if destination.exists() {
+            return Err(ProjectError::AgentRunExists(destination));
+        }
+        let staging = self.root.join(".pixelpipe/tmp").join(format!(
+            "agent-run-{}-{}",
+            record.id,
+            std::process::id()
+        ));
+        if staging.exists() {
+            fs::remove_dir_all(&staging).map_err(|source| io_at(&staging, source))?;
+        }
+        fs::create_dir_all(staging.join("candidates")).map_err(|source| io_at(&staging, source))?;
+        for candidate in &record.candidates {
+            let bytes = candidate_bytes
+                .get(&candidate.id)
+                .ok_or(ProjectError::InvalidAgentRun)?;
+            write_file(&staging.join(&candidate.png), bytes)?;
+        }
+        write_file(&staging.join("run.json"), &stable_json(record)?)?;
+        fs::rename(&staging, &destination).map_err(|source| io_at(&destination, source))?;
+        drop(lock);
+        Ok(())
+    }
+
+    /// Loads and hash-verifies an immutable agent run.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when the run or any candidate is invalid.
+    pub fn agent_run(&self, run: &str) -> Result<AgentRunRecord, ProjectError> {
+        validate_agent_id(run)?;
+        let path = self.root.join(".pixelpipe/runs").join(run);
+        let record: AgentRunRecord = read_json(&path.join("run.json"))?;
+        validate_agent_run(&record)?;
+        if record.id != run {
+            return Err(ProjectError::InvalidAgentRun);
+        }
+        for candidate in &record.candidates {
+            let bytes = fs::read(path.join(&candidate.png))
+                .map_err(|source| io_at(&path.join(&candidate.png), source))?;
+            if sha256_hex(&bytes) != candidate.sha256 {
+                return Err(ProjectError::AgentCandidateHashMismatch);
+            }
+        }
+        Ok(record)
+    }
+
+    /// Lists verified runs for an asset in stable run-ID order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when the run store cannot be read or verified.
+    pub fn agent_runs(&self, asset: &str) -> Result<Vec<AgentRunRecord>, ProjectError> {
+        validate_asset_id(asset)?;
+        let runs = self.root.join(".pixelpipe/runs");
+        if !runs.is_dir() {
+            return Ok(Vec::new());
+        }
+        let mut records = Vec::new();
+        for entry in fs::read_dir(&runs).map_err(|source| io_at(&runs, source))? {
+            let entry = entry.map_err(|source| io_at(&runs, source))?;
+            if !entry.path().join("run.json").is_file() {
+                continue;
+            }
+            let id = entry.file_name().to_string_lossy().into_owned();
+            let record = self.agent_run(&id)?;
+            if record.asset == asset {
+                records.push(record);
+            }
+        }
+        records.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(records)
+    }
+
+    /// Explicitly selects one validated generated candidate as the asset reference.
+    ///
+    /// This does not create or move a revision.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProjectError`] when run/candidate verification or storage fails.
+    pub fn select_agent_candidate(
+        &self,
+        asset: &str,
+        run: &str,
+        candidate_id: &str,
+    ) -> Result<ReferenceSelection, ProjectError> {
+        validate_asset_id(asset)?;
+        validate_agent_id(candidate_id)?;
+        let record = self.agent_run(run)?;
+        if record.asset != asset {
+            return Err(ProjectError::InvalidAgentRun);
+        }
+        let candidate = record
+            .candidates
+            .iter()
+            .find(|candidate| candidate.id == candidate_id)
+            .ok_or_else(|| ProjectError::AgentCandidateNotFound {
+                run: run.to_owned(),
+                candidate: candidate_id.to_owned(),
+            })?;
+        let path = self
+            .root
+            .join(".pixelpipe/runs")
+            .join(run)
+            .join(&candidate.png);
+        let bytes = fs::read(&path).map_err(|source| io_at(&path, source))?;
+        let stored = self.import_reference(asset, &bytes)?;
+        let selection = ReferenceSelection {
+            schema: REFERENCE_SELECTION_SCHEMA.to_owned(),
+            asset: asset.to_owned(),
+            run: run.to_owned(),
+            candidate: candidate_id.to_owned(),
+            sha256: stored.sha256,
+            selected_unix_ms: now_unix_ms()?,
+        };
+        let selection_path = self.asset_path(asset).join("references/selection.json");
+        atomic_write(&selection_path, &stable_json(&selection)?)?;
+        Ok(selection)
+    }
+
     /// Atomically publishes a complete immutable revision and advances asset head.
     ///
     /// # Errors
@@ -816,6 +1076,94 @@ fn validate_revision_id(id: &str) -> Result<(), ProjectError> {
     } else {
         Err(ProjectError::InvalidRevisionId(id.to_owned()))
     }
+}
+
+fn validate_agent_id(id: &str) -> Result<(), ProjectError> {
+    let valid = !id.is_empty()
+        && id.len() <= 96
+        && !id.starts_with('-')
+        && !id.ends_with('-')
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+    if valid {
+        Ok(())
+    } else {
+        Err(ProjectError::InvalidAgentId(id.to_owned()))
+    }
+}
+
+fn validate_agent_run(record: &AgentRunRecord) -> Result<(), ProjectError> {
+    ensure_schema(&record.schema, AGENT_RUN_SCHEMA)?;
+    validate_agent_id(&record.id)?;
+    validate_asset_id(&record.asset)?;
+    validate_agent_id(&record.profile)?;
+    if let Some(revision) = &record.revision {
+        validate_revision_id(revision)?;
+    }
+    let candidates_valid = record.candidates.iter().all(|candidate| {
+        validate_agent_id(&candidate.id).is_ok()
+            && is_sha256(&candidate.sha256)
+            && candidate.png == format!("candidates/{}.png", candidate.sha256)
+            && candidate.width > 0
+            && candidate.height > 0
+    });
+    let unique_candidates = record.candidates.iter().enumerate().all(|(index, left)| {
+        record.candidates[index + 1..]
+            .iter()
+            .all(|right| left.id != right.id && left.sha256 != right.sha256)
+    });
+    let operation_valid = match record.operation {
+        AgentOperation::GenerateReferences => record.revision.is_none(),
+        AgentOperation::CritiqueAsset | AgentOperation::ProposeRefinement => {
+            record.revision.is_some()
+        }
+    };
+    let outcome_valid = match (record.status, record.operation) {
+        (AgentRunStatus::Completed, AgentOperation::GenerateReferences) => {
+            record.adapter.is_some()
+                && record.error.is_none()
+                && !record.candidates.is_empty()
+                && record.critique.is_none()
+                && record.proposal.is_none()
+        }
+        (AgentRunStatus::Completed, AgentOperation::CritiqueAsset) => {
+            record.adapter.is_some()
+                && record.error.is_none()
+                && record.candidates.is_empty()
+                && record.critique.is_some()
+                && record.proposal.is_none()
+        }
+        (AgentRunStatus::Completed, AgentOperation::ProposeRefinement) => {
+            record.adapter.is_some()
+                && record.error.is_none()
+                && record.candidates.is_empty()
+                && record.critique.is_none()
+                && record.proposal.is_some()
+        }
+        (AgentRunStatus::Failed | AgentRunStatus::Cancelled, _) => {
+            record.error.is_some()
+                && record.candidates.is_empty()
+                && record.critique.is_none()
+                && record.proposal.is_none()
+        }
+    };
+    if !is_sha256(&record.profile_command_sha256)
+        || !operation_valid
+        || !outcome_valid
+        || !candidates_valid
+        || !unique_candidates
+    {
+        return Err(ProjectError::InvalidAgentRun);
+    }
+    Ok(())
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn ensure_schema(actual: &str, expected: &'static str) -> Result<(), ProjectError> {

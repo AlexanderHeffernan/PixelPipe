@@ -1,0 +1,10 @@
+{
+  "schema": "pixelpipe.agent-request/v1",
+  "id": "fixture-task",
+  "operation": "generate_references",
+  "asset": "signal-flare",
+  "prompt": "Create several smooth high-resolution signal flare references.",
+  "workspace": {
+    "output_directory": "/assigned/task/output"
+  }
+}
