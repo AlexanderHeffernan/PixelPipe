@@ -223,6 +223,11 @@ pub(crate) enum AssetCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum AgentCommand {
+    Detect,
+    Approve {
+        #[arg(long)]
+        connector: String,
+    },
     Run {
         #[arg(long, default_value = ".")]
         root: PathBuf,

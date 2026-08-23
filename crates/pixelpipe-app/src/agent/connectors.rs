@@ -63,6 +63,11 @@ pub fn detect_agent_connectors() -> Result<Vec<AgentConnector>, AppError> {
 /// Returns an error for unsupported or missing executables and profile storage failures.
 pub fn approve_agent_connector(request: ApproveAgentConnector) -> Result<AgentConnector, AppError> {
     let (name, executable, args) = connector_command(&request.id)?;
+    let secret_environment = connector_secrets(&request.id)
+        .iter()
+        .filter(|name| env::var_os(name).is_some())
+        .map(|name| (*name).to_owned())
+        .collect();
     let profile = AgentProfile {
         schema: PROFILE_SCHEMA.to_owned(),
         id: request.id.clone(),
@@ -75,7 +80,7 @@ pub fn approve_agent_connector(request: ApproveAgentConnector) -> Result<AgentCo
             AgentCapability::ProposeRefinement,
         ],
         environment: vec!["HOME".to_owned(), "PATH".to_owned()],
-        secret_environment: Vec::new(),
+        secret_environment,
         timeout_seconds: 600,
     };
     let directory = user_profile_directory()?;
@@ -93,6 +98,14 @@ pub fn approve_agent_connector(request: ApproveAgentConnector) -> Result<AgentCo
         installed: true,
         approved: true,
     })
+}
+
+fn connector_secrets(id: &str) -> &'static [&'static str] {
+    match id {
+        "amp" => &["AMP_API_KEY"],
+        "codex" => &["OPENAI_API_KEY"],
+        _ => &[],
+    }
 }
 
 fn connector_command(id: &str) -> Result<(&'static str, PathBuf, Vec<String>), AppError> {

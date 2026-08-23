@@ -9,10 +9,10 @@ use pixelpipe_app::{
     ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision, InitializeAsset,
     InspectRevision, LoadAgentCandidate, PatchRevision, RecordReview, RemapRevision,
     SelectAgentCandidate, StoreProjectPalette, StoreProjectRecipe, UpdateAssetBrief,
-    browse_agent_runs, compare_revisions, convert_revision, convert_selected_reference,
-    create_revision, initialize_asset, inspect_revision, load_agent_candidate, patch_revision,
-    record_review, remap_revision, select_agent_candidate, store_project_palette,
-    store_project_recipe, update_asset_brief,
+    approve_agent_connector, browse_agent_runs, compare_revisions, convert_revision,
+    convert_selected_reference, create_revision, detect_agent_connectors, initialize_asset,
+    inspect_revision, load_agent_candidate, patch_revision, record_review, remap_revision,
+    select_agent_candidate, store_project_palette, store_project_recipe, update_asset_brief,
 };
 use pixelpipe_core::{ConversionSettings, SheetSettings};
 use pixelpipe_project::ProjectStore;
@@ -95,6 +95,16 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
 
 fn run_agent(command: AgentCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match command {
+        AgentCommand::Detect => Ok(json!({
+            "ok": true,
+            "connectors": detect_agent_connectors()?,
+        })),
+        AgentCommand::Approve { connector } => Ok(json!({
+            "ok": true,
+            "connector": approve_agent_connector(pixelpipe_app::ApproveAgentConnector {
+                id: connector,
+            })?,
+        })),
         AgentCommand::Run {
             root,
             asset,
