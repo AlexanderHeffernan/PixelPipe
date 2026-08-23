@@ -1,0 +1,24 @@
+[package]
+name = "pixelpipe-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "pixelpipe"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+pixelpipe-app = { path = "../pixelpipe-app" }
+pixelpipe-project = { path = "../pixelpipe-project" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

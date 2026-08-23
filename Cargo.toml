@@ -1,0 +1,32 @@
+[workspace]
+members = [
+  "crates/pixelpipe-core",
+  "crates/pixelpipe-project",
+  "crates/pixelpipe-app",
+  "crates/pixelpipe-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/AlexanderHeffernan/PixelPipe"
+
+[workspace.dependencies]
+atomicwrites = "0.4"
+clap = { version = "4.5", features = ["derive"] }
+fs2 = "0.4"
+png = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+toml = "0.8"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
