@@ -2,9 +2,9 @@ use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use pixelpipe_core::{
     ComponentRule, ConversionSettings, IndexedRaster, Operation, PaletteRemap, PixelPatchSet,
-    RECIPE_SCHEMA, RasterDiff, RasterInspection, Recipe, SheetSettings, ValidationCheck,
-    apply_palette_remap, apply_pixel_patch, compare_rasters, convert_reference, convert_sheet,
-    decode_rgba_png, inspect_raster, render, sha256_hex, stable_json,
+    RECIPE_SCHEMA, RasterDiff, Recipe, SheetSettings, ValidationCheck, apply_palette_remap,
+    apply_pixel_patch, compare_rasters, convert_reference, convert_sheet, decode_rgba_png,
+    inspect_raster, render, sha256_hex, stable_json,
 };
 use pixelpipe_project::{
     AssetKind, ProjectError, ProjectManifest, ProjectStore, RevisionFiles, RevisionManifest,
@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod agent;
+mod conversion_preview;
 mod export;
 mod onboarding;
 mod reference;
@@ -24,11 +25,14 @@ pub use agent::{
     SelectAgentCandidate, approve_agent_connector, browse_agent_runs, detect_agent_connectors,
     load_agent_candidate, select_agent_candidate,
 };
+pub use conversion_preview::{
+    ConversionPreview, PreviewSelectedReference, preview_selected_reference,
+};
 pub use export::{ExportAsset, ExportResult, export_asset};
 pub use onboarding::{OpenProject, open_project};
 pub use reference::{ImportReference, import_reference};
 
-pub use pixelpipe_core::Palette;
+pub use pixelpipe_core::{Palette, RasterInspection};
 pub use pixelpipe_project::{
     AgentCandidate, AgentOperation, AgentProposal, AgentRunRecord, AgentRunStatus, AssetManifest,
     ConversionRecipeDocument, ReferenceSelection, ReviewActorKind, ReviewDecision, ReviewRecord,
@@ -85,6 +89,8 @@ pub struct ConvertSelectedReference {
     pub start: PathBuf,
     pub asset: String,
     pub recipe: String,
+    #[serde(default)]
+    pub settings: Option<ConversionSettings>,
     pub actor: String,
 }
 
@@ -325,6 +331,8 @@ pub enum AppError {
     NoHead(String),
     #[error("operation structure rule conflicts with its inherited revision rule")]
     StructureRuleConflict,
+    #[error("unsupported conversion request: {0}")]
+    UnsupportedConversion(String),
     #[error("brief is not valid UTF-8: {path}")]
     BriefUtf8 { path: PathBuf },
     #[error("agent profile error: {0}")]
@@ -550,10 +558,16 @@ pub fn convert_selected_reference(
     let canonical_palette = stable_json(&palette)?;
     let (converted, operation) = match resource_recipe.mode.clone() {
         StoredConversionMode::Reference { settings } => {
+            let settings = request.settings.unwrap_or(settings);
             let converted = convert_reference(&source, &palette, &settings)?;
             (converted, Operation::ConvertReference { settings })
         }
         StoredConversionMode::Sheet { settings } => {
+            if request.settings.is_some() {
+                return Err(AppError::UnsupportedConversion(
+                    "sheet recipes do not accept reference settings overrides".to_owned(),
+                ));
+            }
             let converted = convert_sheet(&source, &palette, &settings)?;
             (converted, Operation::ConvertSheet { settings })
         }
@@ -1132,6 +1146,7 @@ mod tests {
                 start: temp.path().to_path_buf(),
                 asset: "signal-flare".to_owned(),
                 recipe: impossible.id,
+                settings: None,
                 actor: "fixture".to_owned(),
             })
             .is_err()
@@ -1148,6 +1163,7 @@ mod tests {
             start: temp.path().to_path_buf(),
             asset: "signal-flare".to_owned(),
             recipe: recipe.id.clone(),
+            settings: None,
             actor: "fixture".to_owned(),
         })
         .expect("first revision");

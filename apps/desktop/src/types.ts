@@ -48,7 +48,34 @@ export interface ConversionRecipeDocument {
   kind: AssetKind;
   palette: string;
   preview_scale: number;
-  mode: { type: "reference" | "sheet"; settings: unknown };
+  mode:
+    | { type: "reference"; settings: ConversionSettings }
+    | { type: "sheet"; settings: SheetSettings };
+}
+
+export type BackdropPolicy =
+  | { type: "alpha"; alpha_threshold: number }
+  | {
+      type: "border_connected";
+      color: [number, number, number];
+      tolerance: number;
+      alpha_threshold: number;
+    };
+
+export interface ConversionSettings {
+  width: number;
+  height: number;
+  margin: number;
+  coverage_percent: number;
+  backdrop: BackdropPolicy;
+  registration: "center" | "bottom";
+  components: { min: number; max: number };
+}
+
+export interface SheetSettings {
+  columns: number;
+  rows: number;
+  frame: ConversionSettings;
 }
 
 export interface RasterBounds {
@@ -117,6 +144,12 @@ export interface RevisionViewResponse {
   metadata: RevisionViewMetadata;
   native_png_base64: string;
   preview_png_base64: string;
+}
+
+export interface ConversionPreviewResponse {
+  inspection: RasterInspection;
+  palette_name: string;
+  native_png_base64: string;
 }
 
 export interface PixelDifference {

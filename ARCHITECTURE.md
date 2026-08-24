@@ -1,6 +1,7 @@
 # PixelPipe Architecture Contract
 
-Status: **Accepted in Milestone 0 on 2026-08-23**
+Status: **Accepted in Milestone 0 on 2026-08-23; workstation emphasis amended by
+[ADR 0002](docs/decisions/0002-deterministic-workstation.md)**
 
 ## Product charter
 
@@ -10,17 +11,20 @@ specialist skill to draw every asset. It runs from a game repository root and
 keeps art direction, palettes, references, recipes, revisions, provenance,
 validation, approval, and export mappings together.
 
-The default workflow is deliberately opinionated:
+The default workflow is deliberately opinionated. Reference generation may
+happen in a user's coding agent, but the workstation's primary job begins with
+an image:
 
-1. Write a structured brief in the game project.
-2. Ask a configured user agent for several smooth, high-resolution references.
-3. Select one reference. This freezes the nondeterministic boundary.
-4. Deterministically remove the backdrop, crop/register, hard-reduce, map to an
+1. Create an asset and add a smooth high-resolution reference, either directly
+   or through the CLI used by a coding agent.
+2. Select one reference. This freezes the nondeterministic boundary.
+3. Deterministically remove the backdrop, crop/register, hard-reduce, map to an
    indexed palette, validate, and render native and nearest-neighbour previews.
-5. Inspect the native asset, enlarged preview, and relevant asset family.
-6. Accept proposed refinements or make the same serialized edits through the UI
-   or CLI, producing a new immutable revision.
-7. Approve a revision and export indexed PNG plus machine-readable metadata to
+4. Tune the conversion live on one large pixel canvas without creating a
+   revision for each control movement.
+5. Enter pixel-editing mode and make serialized pencil, fill, or palette edits
+   through the UI or CLI, producing a new immutable revision.
+6. Approve a revision and export indexed PNG plus machine-readable metadata to
    the paths expected by the game.
 
 PixelPipe is not “an image generator with an export button.” Its product value is
@@ -179,9 +183,12 @@ and validates their results.
 
 ### Frontends
 
-The CLI is the complete scriptable interface. The desktop app is the focused
-visual interface for briefs, candidate selection, native/enlarged/family review,
-revision comparison, and operation editing. Neither frontend owns domain state.
+The CLI is the complete scriptable interface and the preferred coding-agent
+boundary. The desktop app is a focused conversion and indexed-pixel workstation:
+one large nearest-neighbour canvas, a collapsible asset sidebar, and a collapsible
+live settings inspector. It does not permanently duplicate native and enlarged
+views or make embedded agent orchestration its main navigation. Neither frontend
+owns domain state.
 
 The M4 desktop adapter is a fifth outer workspace crate at
 `apps/desktop/src-tauri`; the four M1 crates remain the engine, store,
@@ -440,7 +447,7 @@ conversion is the only pre-revision transition that creates `r000001`.
 - Training or hosting image models.
 - A provider marketplace, workflow-node graph, plugin system, or MCP server.
 - Photoshop-class painting, layers, blend modes, vector editing, or animation
-  timeline. A focused indexed-raster editor comes only after the pipeline works.
+  timeline. The focused indexed-raster editor stays intentionally small.
 - Automatic aesthetic approval or pretending validators can replace visual review.
 - Semantic reconstruction of a bad reference during deterministic reduction.
 - Runtime game-engine integration or hot reload beyond file export.

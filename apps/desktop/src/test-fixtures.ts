@@ -1,0 +1,95 @@
+import type {
+  ConversionSettings,
+  ProjectBrowser,
+  RevisionViewResponse,
+} from "./types";
+
+export const settings: ConversionSettings = {
+  width: 32,
+  height: 32,
+  margin: 1,
+  coverage_percent: 35,
+  backdrop: {
+    type: "border_connected",
+    color: [255, 255, 255],
+    tolerance: 28,
+    alpha_threshold: 8,
+  },
+  registration: "center",
+  components: { min: 1, max: 8 },
+};
+
+export const reference = {
+  schema: "pixelpipe.reference-selection/v1",
+  asset: "field-medic",
+  run: "import",
+  candidate: "local-file",
+  sha256: "0".repeat(64),
+  selected_unix_ms: 1,
+};
+
+export const project: ProjectBrowser = {
+  project_root: "/game",
+  project: {
+    schema: "pixelpipe.project/v1",
+    name: "Fixture Game",
+    preview_scale: 8,
+  },
+  assets: [
+    {
+      asset: {
+        schema: "pixelpipe.asset/v2",
+        id: "field-medic",
+        kind: "sprite",
+        state: "selected_reference",
+        brief: {
+          schema: "pixelpipe.asset-brief/v1",
+          text: "Strict overhead field medic",
+        },
+        selected_reference: reference,
+      },
+      revisions: [],
+    },
+  ],
+  recipes: [
+    {
+      schema: "pixelpipe.conversion-recipe/v1",
+      id: "sprite-32",
+      kind: "sprite",
+      palette: "starter",
+      preview_scale: 8,
+      mode: { type: "reference", settings },
+    },
+  ],
+};
+
+export const revisionView: RevisionViewResponse = {
+  metadata: {
+    project_root: "/game",
+    asset: "field-medic",
+    revision: "r000001",
+    inspection: {
+      width: 32,
+      height: 32,
+      visible_pixels: 100,
+      palette: [{ index: 1, rgba: [38, 44, 62, 255], count: 100 }],
+      text_rows: [],
+    },
+    palette_name: "starter",
+    transparent_index: 0,
+    validation: {
+      schema: "pixelpipe.validation/v1",
+      valid: true,
+      checks: [],
+      visual_review: "required",
+    },
+  },
+  native_png_base64: "native",
+  preview_png_base64: "preview",
+};
+
+export const preview = {
+  inspection: revisionView.metadata.inspection,
+  palette_name: "starter",
+  native_png_base64: "preview-native",
+};

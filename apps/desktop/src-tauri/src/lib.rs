@@ -7,8 +7,8 @@ use commands::{
     },
     project::{
         browse_project, convert_selected_reference, export_asset, import_reference,
-        initialize_asset, open_project, store_project_palette, store_project_recipe,
-        update_asset_brief,
+        initialize_asset, open_project, preview_selected_reference, store_project_palette,
+        store_project_recipe, update_asset_brief,
     },
     revisions::{compare_revisions, load_revision, patch_revision, record_review, remap_revision},
 };
@@ -33,6 +33,7 @@ pub fn run() {
             approve_agent_connector,
             export_asset,
             convert_selected_reference,
+            preview_selected_reference,
             store_project_palette,
             store_project_recipe,
             load_revision,

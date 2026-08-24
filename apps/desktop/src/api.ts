@@ -5,6 +5,8 @@ import type {
   AssetKind,
   AssetManifest,
   AgentRunRecord,
+  ConversionPreviewResponse,
+  ConversionSettings,
   PaletteDraft,
   PixelEdit,
   ProjectBrowser,
@@ -67,10 +69,21 @@ export const convertSelectedReference = (
   start: string,
   asset: string,
   recipe: string,
+  settings: ConversionSettings | undefined,
   actor: string,
 ) =>
   invoke<RevisionResult>("convert_selected_reference", {
-    request: { start, asset, recipe, actor },
+    request: { start, asset, recipe, settings: settings ?? null, actor },
+  });
+
+export const previewSelectedReference = (
+  start: string,
+  asset: string,
+  recipe: string,
+  settings: ConversionSettings | undefined,
+) =>
+  invoke<ConversionPreviewResponse>("preview_selected_reference", {
+    request: { start, asset, recipe, settings: settings ?? null },
   });
 
 export const storeProjectPalette = (start: string, id: string, file: string) =>

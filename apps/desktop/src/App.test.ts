@@ -4,161 +4,163 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/vue";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.vue";
 import * as api from "./api";
+import { preview, project, revisionView, settings } from "./test-fixtures";
 
-const dialog = vi.hoisted(() => ({
+const dialogs = vi.hoisted(() => ({
   project: "/game",
-  reference: undefined as string | undefined,
+  reference: "/tmp/source.png",
 }));
 vi.mock("./services/dialogs", () => ({
-  chooseProjectFolder: vi.fn(async () => dialog.project),
-  chooseReferenceImage: vi.fn(async () => dialog.reference),
-  chooseExportFolder: vi.fn(async () => "/game/assets"),
-  confirmAgentConnector: vi.fn(async () => true),
-  confirmExport: vi.fn(async () => true),
-}));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async () => () => undefined),
+  chooseProjectFolder: vi.fn(async () => dialogs.project),
+  chooseReferenceImage: vi.fn(async () => dialogs.reference),
 }));
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
 }));
 
-const brief = {
-  schema: "pixelpipe.asset-brief/v1",
-  text: "Strict overhead field medic",
-};
-const draftProject = {
-  project_root: "/game",
-  project: {
-    schema: "pixelpipe.project/v1",
-    name: "Fixture Game",
-    preview_scale: 8,
-  },
-  assets: [
-    {
-      asset: {
-        schema: "pixelpipe.asset/v2",
-        id: "field-medic",
-        kind: "sprite" as const,
-        state: "awaiting_reference" as const,
-        brief,
-      },
-      revisions: [],
-    },
-  ],
-  recipes: [
-    {
-      schema: "pixelpipe.conversion-recipe/v1",
-      id: "sprite-32",
-      kind: "sprite" as const,
-      palette: "starter",
-      preview_scale: 8,
-      mode: { type: "reference" as const, settings: {} },
-    },
-  ],
-};
+beforeEach(() => {
+  vi.spyOn(api, "openProject").mockResolvedValue(structuredClone(project));
+  vi.spyOn(api, "browseProject").mockResolvedValue(structuredClone(project));
+  vi.spyOn(api, "previewSelectedReference").mockResolvedValue(preview);
+  vi.spyOn(api, "loadRevision").mockResolvedValue(revisionView);
+  vi.spyOn(api, "convertSelectedReference");
+  vi.spyOn(api, "initializeAsset").mockResolvedValue(project.assets[0].asset);
+});
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  dialog.reference = undefined;
+  vi.useRealTimers();
 });
 
-function mockProject(project = draftProject) {
-  vi.spyOn(api, "openProject").mockResolvedValue(project);
-  vi.spyOn(api, "detectAgentConnectors").mockResolvedValue([
-    { id: "amp", name: "Amp", installed: true, approved: false },
-    { id: "codex", name: "Codex", installed: false, approved: false },
-  ]);
-  vi.spyOn(api, "browseAgentRuns").mockResolvedValue([]);
+async function openWorkstation() {
+  render(App);
+  await fireEvent.click(
+    screen.getByRole("button", { name: "Open Project Folder…" }),
+  );
+  await screen.findByRole("navigation", { name: "Project assets" });
+  await screen.findByRole("img", { name: "field-medic pixel art" });
 }
 
-describe("opinionated sprite workflow", () => {
-  it("opens a game folder without asking for paths or JSON", async () => {
-    mockProject();
-    render(App);
-    expect(
-      screen.getByRole("heading", { name: /Make game-ready sprites/ }),
-    ).toBeVisible();
-    await fireEvent.click(
-      screen.getByRole("button", { name: "Open Project Folder…" }),
+describe("deterministic workstation", () => {
+  it("opens a project into the focused sprite workspace", async () => {
+    await openWorkstation();
+    expect(screen.getByText("Fixture Game")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Field Medic" })).toHaveAttribute(
+      "aria-current",
+      "page",
     );
-    expect(await screen.findByText("Fixture Game")).toBeVisible();
     expect(
-      screen.getByRole("heading", { name: "Generate smooth references" }),
-    ).toBeVisible();
-    expect(api.openProject).toHaveBeenCalledWith("/game");
+      screen.getByRole("img", { name: "field-medic pixel art" }),
+    ).toHaveAttribute("src", "data:image/png;base64,preview-native");
+    expect(api.previewSelectedReference).toHaveBeenCalledWith(
+      "/game",
+      "field-medic",
+      "sprite-32",
+      settings,
+    );
   });
 
-  it("imports a PNG and advances to deterministic conversion", async () => {
-    mockProject();
-    dialog.reference = "/game/medic.png";
-    vi.spyOn(api, "importReference").mockResolvedValue({
-      schema: "pixelpipe.reference-selection/v1",
+  it("previews control changes live without creating a revision", async () => {
+    vi.useFakeTimers();
+    await openWorkstation();
+    vi.mocked(api.previewSelectedReference).mockClear();
+    await fireEvent.click(screen.getByRole("button", { name: "64" }));
+    await vi.advanceTimersByTimeAsync(60);
+    expect(api.previewSelectedReference).toHaveBeenCalledWith(
+      "/game",
+      "field-medic",
+      "sprite-32",
+      expect.objectContaining({ width: 64, height: 64 }),
+    );
+    expect(api.convertSelectedReference).not.toHaveBeenCalled();
+  });
+
+  it("creates one immutable editing base only when entering Edit", async () => {
+    vi.mocked(api.convertSelectedReference).mockResolvedValue({
+      project_root: "/game",
       asset: "field-medic",
-      run: "import",
-      candidate: "medic",
-      sha256: "0".repeat(64),
-      selected_unix_ms: 1,
+      revision: "r000001",
+      revision_path: "/game/.pixelpipe/assets/field-medic/revisions/r000001",
+      native_sha256: "1".repeat(64),
+      preview_sha256: "2".repeat(64),
+      validation: "valid_visual_review_required",
     });
-    vi.spyOn(api, "browseProject").mockResolvedValue({
-      ...draftProject,
+    vi.mocked(api.browseProject).mockResolvedValue({
+      ...project,
       assets: [
         {
-          ...draftProject.assets[0],
+          ...project.assets[0],
           asset: {
-            ...draftProject.assets[0].asset,
-            state: "selected_reference",
-            selected_reference: {
-              schema: "pixelpipe.reference-selection/v1",
-              asset: "field-medic",
-              run: "import",
-              candidate: "medic",
-              sha256: "0".repeat(64),
-              selected_unix_ms: 1,
-            },
+            ...project.assets[0].asset,
+            state: "revisioned",
+            head: "r000001",
           },
         },
       ],
     });
-    render(App);
-    await fireEvent.click(
-      screen.getByRole("button", { name: "Open Project Folder…" }),
+    await openWorkstation();
+    await fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await waitFor(() =>
+      expect(api.convertSelectedReference).toHaveBeenCalledTimes(1),
     );
-    await fireEvent.click(
-      await screen.findByRole("button", { name: "Import PNG…" }),
-    );
-    expect(
-      await screen.findByRole("heading", { name: "Choose the sprite size" }),
-    ).toBeVisible();
-    expect(api.importReference).toHaveBeenCalledWith(
+    expect(api.convertSelectedReference).toHaveBeenCalledWith(
       "/game",
       "field-medic",
-      "/game/medic.png",
+      "sprite-32",
+      settings,
+      "user",
     );
+    expect(await screen.findByText("Pixel Editing")).toBeVisible();
   });
 
-  it("requires explicit consent before using an installed agent", async () => {
-    mockProject();
-    vi.spyOn(api, "approveAgentConnector").mockResolvedValue({
-      id: "amp",
-      name: "Amp",
-      installed: true,
-      approved: true,
-    });
-    render(App);
+  it("exposes accessible independent sidebar toggles", async () => {
+    await openWorkstation();
     await fireEvent.click(
-      screen.getByRole("button", { name: "Open Project Folder…" }),
+      screen.getByRole("button", { name: "Hide asset sidebar" }),
     );
     await fireEvent.click(
-      await screen.findByRole("button", { name: "Connect Amp" }),
+      screen.getByRole("button", { name: "Hide inspector" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Show asset sidebar" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", { name: "Show inspector" }),
+    ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("creates a coding-agent-ready asset without requiring setup fields", async () => {
+    await openWorkstation();
+    await fireEvent.click(screen.getByRole("button", { name: "Create Asset" }));
+    const dialog = screen.getByRole("dialog", { name: "Create Asset" });
+    const controls = within(dialog);
+    const name = controls.getByRole("textbox", { name: "Name" });
+    expect(name).toHaveFocus();
+    await fireEvent.update(name, "Health Potion");
+    await fireEvent.click(
+      controls.getByRole("radio", { name: /Use my coding agent/ }),
+    );
+    await fireEvent.click(
+      controls.getByRole("button", { name: "Create Asset" }),
     );
     await waitFor(() =>
-      expect(api.approveAgentConnector).toHaveBeenCalledWith("amp"),
+      expect(api.initializeAsset).toHaveBeenCalledWith(
+        "/game",
+        "health-potion",
+        "sprite",
+        "Health Potion",
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Create Asset" }),
+      ).not.toBeInTheDocument(),
     );
   });
 });

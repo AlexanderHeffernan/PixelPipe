@@ -116,8 +116,22 @@ pub(crate) enum RevisionCommand {
         asset: String,
         #[arg(long)]
         recipe: String,
+        #[arg(long)]
+        settings: Option<PathBuf>,
         #[arg(long, default_value = "cli")]
         actor: String,
+    },
+    PreviewSelected {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        recipe: String,
+        #[arg(long)]
+        settings: Option<PathBuf>,
+        #[arg(long)]
+        native: PathBuf,
     },
     Patch {
         #[arg(long, default_value = ".")]
@@ -262,6 +276,14 @@ pub(crate) enum AgentCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum ReferenceCommand {
+    Import {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        file: PathBuf,
+    },
     Select {
         #[arg(long, default_value = ".")]
         root: PathBuf,

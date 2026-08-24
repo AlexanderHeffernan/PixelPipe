@@ -35,6 +35,7 @@ fn folder_to_export_uses_starter_resources_without_manual_json() {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
         recipe: "sprite-32".to_owned(),
+        settings: None,
         actor: "user".to_owned(),
     })
     .unwrap();

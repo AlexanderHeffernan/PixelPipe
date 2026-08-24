@@ -8,11 +8,11 @@ const workspace = useWorkspace();
     <div class="welcome-icon" aria-hidden="true">
       <span></span><span></span><span></span><span></span>
     </div>
-    <p class="eyebrow">AI-first pixel art</p>
-    <h1>Make game-ready sprites<br />inside your project.</h1>
+    <p class="eyebrow">Deterministic pixel artwork</p>
+    <h1>Convert, refine, and ship<br />game-ready sprites.</h1>
     <p class="welcome-copy">
-      Choose your game folder. PixelPipe adds its project metadata, sensible
-      starter recipes, and keeps every revision reproducible.
+      Open a new or existing game folder. PixelPipe keeps palettes, conversion
+      recipes, assets, and revisions together with your project.
     </p>
     <button
       class="primary large"

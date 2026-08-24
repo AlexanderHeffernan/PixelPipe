@@ -1,8 +1,10 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use pixelpipe_app::{
     BrowseProject, ConvertSelectedReference, ExportAsset, ImportReference, InitializeAsset,
-    OpenProject, ProjectBrowser, RevisionResult, StoreProjectPalette, StoreProjectRecipe,
-    UpdateAssetBrief,
+    OpenProject, PreviewSelectedReference, ProjectBrowser, RasterInspection, RevisionResult,
+    StoreProjectPalette, StoreProjectRecipe, UpdateAssetBrief,
 };
+use serde::Serialize;
 
 use super::{CommandResult, command_error};
 
@@ -48,6 +50,26 @@ pub(crate) fn convert_selected_reference(
     request: ConvertSelectedReference,
 ) -> CommandResult<RevisionResult> {
     pixelpipe_app::convert_selected_reference(request).map_err(|error| command_error(&error))
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ConversionPreviewResponse {
+    inspection: RasterInspection,
+    palette_name: String,
+    native_png_base64: String,
+}
+
+#[tauri::command]
+pub(crate) fn preview_selected_reference(
+    request: PreviewSelectedReference,
+) -> CommandResult<ConversionPreviewResponse> {
+    let preview = pixelpipe_app::preview_selected_reference(request)
+        .map_err(|error| command_error(&error))?;
+    Ok(ConversionPreviewResponse {
+        inspection: preview.inspection,
+        palette_name: preview.palette_name,
+        native_png_base64: STANDARD.encode(preview.native_png),
+    })
 }
 
 #[tauri::command]

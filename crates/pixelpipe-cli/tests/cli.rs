@@ -118,6 +118,59 @@ fn cli_initializes_pre_revision_asset_and_project_resources() {
     );
     let show = run(&["project", "show", "--root", root]);
     assert_eq!(show["recipes"][0]["id"], "synthetic-flare");
+
+    assert_selected_reference_preview(project.path());
+}
+
+fn assert_selected_reference_preview(project: &Path) {
+    let root = project.to_str().expect("project path");
+    let reference = project.join("reference.png");
+    write_fixture_png(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/m2/reference.rgba.json"),
+        &reference,
+    );
+    let imported = run(&[
+        "reference",
+        "import",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--file",
+        reference.to_str().expect("reference path"),
+    ]);
+    assert_eq!(imported["selection"]["asset"], "signal-flare");
+
+    let preview = project.join("preview.png");
+    let previewed = run(&[
+        "revision",
+        "preview-selected",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--recipe",
+        "synthetic-flare",
+        "--native",
+        preview.to_str().expect("preview path"),
+    ]);
+    assert_eq!(previewed["preview"]["inspection"]["width"], 4);
+    assert_eq!(
+        &fs::read(&preview).expect("preview PNG")[..8],
+        b"\x89PNG\r\n\x1a\n"
+    );
+    assert!(
+        run(&[
+            "asset",
+            "inspect",
+            "--root",
+            root,
+            "--asset",
+            "signal-flare"
+        ])["asset"]
+            .get("head")
+            .is_none()
+    );
 }
 
 #[derive(Deserialize)]

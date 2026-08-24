@@ -6,13 +6,14 @@ use std::{
 
 use pixelpipe_app::{
     AgentRunStatus, AgentRuntime, AgentTaskRequest, BrowseAgentRuns, CompareRevisions,
-    ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision, InitializeAsset,
-    InspectRevision, LoadAgentCandidate, PatchRevision, RecordReview, RemapRevision,
-    SelectAgentCandidate, StoreProjectPalette, StoreProjectRecipe, UpdateAssetBrief,
-    approve_agent_connector, browse_agent_runs, compare_revisions, convert_revision,
-    convert_selected_reference, create_revision, detect_agent_connectors, initialize_asset,
-    inspect_revision, load_agent_candidate, patch_revision, record_review, remap_revision,
-    select_agent_candidate, store_project_palette, store_project_recipe, update_asset_brief,
+    ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision, ImportReference,
+    InitializeAsset, InspectRevision, LoadAgentCandidate, PatchRevision, PreviewSelectedReference,
+    RecordReview, RemapRevision, SelectAgentCandidate, StoreProjectPalette, StoreProjectRecipe,
+    UpdateAssetBrief, approve_agent_connector, browse_agent_runs, compare_revisions,
+    convert_revision, convert_selected_reference, create_revision, detect_agent_connectors,
+    import_reference, initialize_asset, inspect_revision, load_agent_candidate, patch_revision,
+    preview_selected_reference, record_review, remap_revision, select_agent_candidate,
+    store_project_palette, store_project_recipe, update_asset_brief,
 };
 use pixelpipe_core::{ConversionSettings, SheetSettings};
 use pixelpipe_project::ProjectStore;
@@ -35,19 +36,32 @@ pub(crate) fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Err
         Command::Revision { command } => run_revision(command),
         Command::Asset { command } => run_asset(command),
         Command::Agent { command } => run_agent(command),
-        Command::Reference {
-            command:
-                ReferenceCommand::Select {
-                    root,
-                    asset,
-                    run,
-                    candidate,
-                },
-        } => Ok(json!({
-            "ok": true,
-            "selection": select_agent_candidate(SelectAgentCandidate { start: root, asset, run, candidate })?,
-        })),
+        Command::Reference { command } => run_reference(command),
     }
+}
+
+fn run_reference(
+    command: ReferenceCommand,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let selection = match command {
+        ReferenceCommand::Import { root, asset, file } => import_reference(ImportReference {
+            start: root,
+            asset,
+            file,
+        })?,
+        ReferenceCommand::Select {
+            root,
+            asset,
+            run,
+            candidate,
+        } => select_agent_candidate(SelectAgentCandidate {
+            start: root,
+            asset,
+            run,
+            candidate,
+        })?,
+    };
+    Ok(json!({ "ok": true, "selection": selection }))
 }
 
 fn run_project(command: ProjectCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
@@ -180,9 +194,25 @@ fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn s
             root,
             asset,
             recipe,
+            settings,
             actor,
         } => Ok(
-            json!({ "ok": true, "revision": convert_selected_reference(ConvertSelectedReference { start: root, asset, recipe, actor })? }),
+            json!({ "ok": true, "revision": convert_selected_reference(ConvertSelectedReference { start: root, asset, recipe, settings: read_reference_settings(settings)?, actor })? }),
+        ),
+        RevisionCommand::PreviewSelected {
+            root,
+            asset,
+            recipe,
+            settings,
+            native,
+        } => preview_selected_command(
+            PreviewSelectedReference {
+                start: root,
+                asset,
+                recipe,
+                settings: read_reference_settings(settings)?,
+            },
+            &native,
         ),
         RevisionCommand::Patch {
             root,
@@ -244,6 +274,26 @@ fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn s
             json!({ "ok": true, "review": record_review(RecordReview { start: root, asset, revision, actor, actor_kind: actor_kind.into(), decision: decision.into(), note })? }),
         ),
     }
+}
+
+fn preview_selected_command(
+    request: PreviewSelectedReference,
+    native: &std::path::Path,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let preview = preview_selected_reference(request)?;
+    fs::write(native, &preview.native_png)?;
+    Ok(json!({ "ok": true, "preview": {
+        "inspection": preview.inspection,
+        "palette_name": preview.palette_name,
+        "native": native,
+    }}))
+}
+
+fn read_reference_settings(
+    path: Option<PathBuf>,
+) -> Result<Option<ConversionSettings>, Box<dyn std::error::Error>> {
+    path.map(|path| Ok(serde_json::from_slice(&fs::read(path)?)?))
+        .transpose()
 }
 
 fn convert_command(
