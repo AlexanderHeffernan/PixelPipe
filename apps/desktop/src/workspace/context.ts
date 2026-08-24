@@ -59,9 +59,13 @@ export function createWorkspace() {
     preview,
     thumbnails,
     recipes,
-    error,
   });
-  const { recipeId, settings, busy: previewBusy } = conversion;
+  const {
+    recipeId,
+    settings,
+    busy: previewBusy,
+    error: previewError,
+  } = conversion;
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   function showNotice(message: string) {
@@ -239,6 +243,7 @@ export function createWorkspace() {
     createAssetOpen,
     busy,
     previewBusy,
+    previewError,
     error,
     notice,
     selectedAsset,
@@ -252,6 +257,7 @@ export function createWorkspace() {
     openPath,
     selectAsset,
     updateSettings: conversion.updateSettings,
+    chooseRecipe: conversion.chooseRecipe,
     setMode,
     createAsset,
     importReference,

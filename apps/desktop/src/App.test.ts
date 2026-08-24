@@ -15,15 +15,22 @@ const dialogs = vi.hoisted(() => ({
   project: "/game",
   reference: "/tmp/source.png",
 }));
+const tauriWindow = vi.hoisted(() => ({
+  startDragging: vi.fn(async () => {}),
+}));
 vi.mock("./services/dialogs", () => ({
   chooseProjectFolder: vi.fn(async () => dialogs.project),
   chooseReferenceImage: vi.fn(async () => dialogs.reference),
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => tauriWindow,
 }));
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
 }));
 
 beforeEach(() => {
+  tauriWindow.startDragging.mockClear();
   vi.spyOn(api, "openProject").mockResolvedValue(structuredClone(project));
   vi.spyOn(api, "browseProject").mockResolvedValue(structuredClone(project));
   vi.spyOn(api, "previewSelectedReference").mockResolvedValue(preview);
@@ -71,7 +78,8 @@ describe("deterministic workstation", () => {
     await openWorkstation();
     vi.mocked(api.previewSelectedReference).mockClear();
     await fireEvent.click(screen.getByRole("button", { name: "64" }));
-    await vi.advanceTimersByTimeAsync(60);
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.resolve();
     expect(api.previewSelectedReference).toHaveBeenCalledWith(
       "/game",
       "field-medic",
@@ -79,6 +87,88 @@ describe("deterministic workstation", () => {
       expect.objectContaining({ width: 64, height: 64 }),
     );
     expect(api.convertSelectedReference).not.toHaveBeenCalled();
+  });
+
+  it("supports linked and independent custom output dimensions", async () => {
+    vi.useFakeTimers();
+    await openWorkstation();
+    vi.mocked(api.previewSelectedReference).mockClear();
+
+    const width = screen.getByRole("spinbutton", { name: "Width" });
+    await fireEvent.update(width, "40");
+    await fireEvent.change(width);
+    await vi.advanceTimersByTimeAsync(60);
+    expect(api.previewSelectedReference).toHaveBeenLastCalledWith(
+      "/game",
+      "field-medic",
+      "sprite-32",
+      expect.objectContaining({ width: 40, height: 40 }),
+    );
+
+    await fireEvent.click(screen.getByRole("button", { name: "Linked" }));
+    const height = screen.getByRole("spinbutton", { name: "Height" });
+    await fireEvent.update(height, "24");
+    await fireEvent.change(height);
+    await vi.advanceTimersByTimeAsync(60);
+    expect(api.previewSelectedReference).toHaveBeenLastCalledWith(
+      "/game",
+      "field-medic",
+      "sprite-32",
+      expect.objectContaining({ width: 40, height: 24 }),
+    );
+  });
+
+  it("exposes deterministic backdrop controls with live help", async () => {
+    await openWorkstation();
+    expect(screen.getByRole("combobox", { name: "Background" })).toHaveValue(
+      "border_connected",
+    );
+    expect(
+      screen.getByRole("slider", { name: "Colour tolerance" }),
+    ).toHaveValue("28");
+    await fireEvent.update(
+      screen.getByRole("slider", { name: "Colour tolerance" }),
+      "51",
+    );
+
+    await fireEvent.update(
+      screen.getByRole("combobox", { name: "Background" }),
+      "alpha",
+    );
+    expect(
+      screen.queryByRole("slider", { name: "Colour tolerance" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/source image’s transparency/)).toBeVisible();
+
+    await fireEvent.update(
+      screen.getByRole("combobox", { name: "Background" }),
+      "border_connected",
+    );
+    expect(
+      screen.getByRole("slider", { name: "Colour tolerance" }),
+    ).toHaveValue("51");
+  });
+
+  it("keeps the last valid image visible when a preview is rejected", async () => {
+    vi.useFakeTimers();
+    await openWorkstation();
+    vi.mocked(api.previewSelectedReference).mockRejectedValueOnce(
+      new Error("too many disconnected shapes"),
+    );
+
+    await fireEvent.update(
+      screen.getByRole("slider", { name: "Shape coverage" }),
+      "50",
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.resolve();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "too many disconnected shapes",
+    );
+    expect(
+      screen.getByRole("img", { name: "field-medic pixel art" }),
+    ).toHaveAttribute("src", "data:image/png;base64,preview-native");
   });
 
   it("creates one immutable editing base only when entering Edit", async () => {
@@ -133,6 +223,26 @@ describe("deterministic workstation", () => {
     expect(
       screen.getByRole("button", { name: "Show inspector" }),
     ).toHaveAttribute("aria-pressed", "false");
+    expect(document.querySelector(".project-sidebar")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(document.querySelector(".conversion-inspector")).toHaveClass(
+      "is-collapsed",
+    );
+  });
+
+  it("drags the native window only from non-interactive titlebar space", async () => {
+    await openWorkstation();
+    const titlebar = document.querySelector(".titlebar");
+    expect(titlebar).not.toBeNull();
+    await fireEvent.mouseDown(titlebar!);
+    expect(tauriWindow.startDragging).toHaveBeenCalledTimes(1);
+
+    await fireEvent.mouseDown(
+      screen.getByRole("button", { name: "Hide inspector" }),
+    );
+    expect(tauriWindow.startDragging).toHaveBeenCalledTimes(1);
   });
 
   it("creates a coding-agent-ready asset without requiring setup fields", async () => {

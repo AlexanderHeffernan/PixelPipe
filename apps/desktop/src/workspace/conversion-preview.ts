@@ -1,4 +1,4 @@
-import { ref, toRaw, type ComputedRef, type Ref } from "vue";
+import { onScopeDispose, ref, toRaw, type ComputedRef, type Ref } from "vue";
 import * as api from "../api";
 import type {
   ConversionPreviewResponse,
@@ -13,15 +13,20 @@ interface PreviewContext {
   preview: Ref<ConversionPreviewResponse | undefined>;
   thumbnails: Ref<Record<string, string>>;
   recipes: ComputedRef<ConversionRecipeDocument[]>;
-  error: Ref<string>;
 }
 
 export function createConversionPreview(context: PreviewContext) {
   const recipeId = ref("");
   const settings = ref<ConversionSettings>();
   const busy = ref(false);
+  const error = ref("");
   let timer: ReturnType<typeof setTimeout> | undefined;
   let sequence = 0;
+
+  onScopeDispose(() => {
+    if (timer) clearTimeout(timer);
+    sequence += 1;
+  });
 
   function chooseDefaultRecipe() {
     const recipe =
@@ -32,11 +37,24 @@ export function createConversionPreview(context: PreviewContext) {
       recipe?.mode.type === "reference"
         ? structuredClone(toRaw(recipe.mode.settings))
         : undefined;
+    error.value = "";
+  }
+
+  function chooseRecipe(id: string) {
+    const recipe = context.recipes.value.find(
+      (candidate) => candidate.id === id,
+    );
+    if (!recipe || recipe.mode.type !== "reference") return;
+    recipeId.value = recipe.id;
+    settings.value = structuredClone(toRaw(recipe.mode.settings));
+    error.value = "";
+    void request();
   }
 
   function updateSettings(update: Partial<ConversionSettings>) {
     if (!settings.value) return;
     settings.value = { ...settings.value, ...update };
+    error.value = "";
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => void request(), 60);
   }
@@ -55,14 +73,14 @@ export function createConversionPreview(context: PreviewContext) {
       );
       if (requested === sequence) {
         context.preview.value = result;
+        error.value = "";
         context.thumbnails.value[context.assetId.value] = api.pngDataUrl(
           result.native_png_base64,
         );
       }
     } catch (caught) {
       if (requested === sequence) {
-        context.error.value =
-          caught instanceof Error ? caught.message : String(caught);
+        error.value = caught instanceof Error ? caught.message : String(caught);
       }
     } finally {
       if (requested === sequence) busy.value = false;
@@ -73,7 +91,9 @@ export function createConversionPreview(context: PreviewContext) {
     recipeId,
     settings,
     busy,
+    error,
     chooseDefaultRecipe,
+    chooseRecipe,
     updateSettings,
     request,
   };

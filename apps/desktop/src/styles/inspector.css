@@ -1,11 +1,28 @@
 .conversion-inspector {
   flex: 0 0 292px;
+  width: 292px;
   min-height: 0;
   padding: 24px 24px;
   border-left: 1px solid var(--line);
   background: var(--material);
   backdrop-filter: blur(28px) saturate(120%);
   overflow-y: auto;
+  transition:
+    flex-basis 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.conversion-inspector.is-collapsed {
+  flex-basis: 0;
+  width: 0;
+  padding-right: 0;
+  padding-left: 0;
+  border-left-color: transparent;
+  opacity: 0;
+  transform: translateX(14px);
+  pointer-events: none;
 }
 .inspector-heading {
   display: flex;
@@ -33,38 +50,6 @@
   background: var(--accent);
   animation: pulse 0.75s alternate infinite;
 }
-.inspector-control {
-  margin-bottom: 20px;
-}
-.inspector-control > label,
-.inspector-slider > span:first-child {
-  display: block;
-  margin-bottom: 9px;
-  color: var(--muted);
-  font-size: 10px;
-}
-.segmented-control {
-  display: flex;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.segmented-control button {
-  flex: 1;
-  padding: 6px 0;
-  border: 0;
-  border-right: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.12);
-  font-size: 10px;
-}
-.segmented-control button:last-child {
-  border-right: 0;
-}
-.segmented-control button[aria-pressed="true"] {
-  color: #eef0ff;
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
 .inspector-row {
   display: grid;
   grid-template-columns: 90px minmax(0, 1fr);
@@ -88,29 +73,6 @@
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.inspector-slider {
-  display: grid;
-  grid-template-columns: 1fr 36px;
-  align-items: center;
-  gap: 8px;
-  min-height: 62px;
-  border-bottom: 1px solid var(--line);
-}
-.inspector-slider > span:first-child {
-  grid-column: 1 / -1;
-  margin: 8px 0 -3px;
-}
-.inspector-slider input {
-  height: 3px;
-  padding: 0;
-  border: 0;
-  accent-color: var(--accent);
-}
-.inspector-slider output {
-  color: var(--muted);
-  font-size: 9px;
-  text-align: right;
 }
 .palette-strip {
   display: flex;
@@ -147,5 +109,11 @@
 @keyframes pulse {
   to {
     opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversion-inspector {
+    transition: none;
   }
 }

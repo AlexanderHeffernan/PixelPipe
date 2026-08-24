@@ -1,12 +1,20 @@
 <script setup lang="ts">
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useWorkspace } from "../workspace/context";
 
 const workspace = useWorkspace();
+
+function startWindowDrag(event: MouseEvent) {
+  if (event.button !== 0) return;
+  const target = event.target as HTMLElement;
+  if (target.closest("button, input, select, textarea, a")) return;
+  void getCurrentWindow().startDragging();
+}
 </script>
 
 <template>
-  <header class="titlebar" data-tauri-drag-region>
-    <div class="titlebar-leading" data-tauri-drag-region>
+  <header class="titlebar" @mousedown="startWindowDrag">
+    <div class="titlebar-leading">
       <button
         v-if="workspace.project.value"
         class="icon-button sidebar-toggle"

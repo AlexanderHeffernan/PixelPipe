@@ -1,34 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import BackdropControls from "./BackdropControls.vue";
+import ConversionDimensions from "./ConversionDimensions.vue";
 import { useWorkspace } from "../workspace/context";
-import type { BackdropPolicy } from "../types";
 
 const workspace = useWorkspace();
 const settings = computed(() => workspace.settings.value);
-const sizes = [16, 32, 48, 64];
 
-function setSize(size: number) {
-  workspace.updateSettings({ width: size, height: size });
-}
-
-function setNumber(field: "margin" | "coverage_percent", event: Event) {
+function setNumber(field: "coverage_percent", event: Event) {
   workspace.updateSettings({
     [field]: Number((event.target as HTMLInputElement).value),
   });
-}
-
-function setBackdrop(event: Event) {
-  const type = (event.target as HTMLSelectElement).value;
-  const backdrop: BackdropPolicy =
-    type === "alpha"
-      ? { type: "alpha", alpha_threshold: 8 }
-      : {
-          type: "border_connected",
-          color: [255, 255, 255],
-          tolerance: 28,
-          alpha_threshold: 8,
-        };
-  workspace.updateSettings({ backdrop });
 }
 
 function setRegistration(event: Event) {
@@ -36,6 +18,24 @@ function setRegistration(event: Event) {
     | "center"
     | "bottom";
   workspace.updateSettings({ registration });
+}
+
+function setRecipe(event: Event) {
+  workspace.chooseRecipe((event.target as HTMLSelectElement).value);
+}
+
+function setComponent(field: "min" | "max", event: Event) {
+  if (!settings.value) return;
+  const input = event.target as HTMLInputElement;
+  const value = Math.min(65535, Math.max(1, Number(input.value) || 1));
+  input.value = String(value);
+  const current = settings.value.components;
+  workspace.updateSettings({
+    components:
+      field === "min"
+        ? { min: value, max: Math.max(current.max, value) }
+        : { min: Math.min(current.min, value), max: value },
+  });
 }
 
 const color = (rgba: number[]) => `rgba(${rgba.join(",")})`;
@@ -49,23 +49,25 @@ const color = (rgba: number[]) => `rgba(${rgba.join(",")})`;
         <span><i :class="{ busy: workspace.previewBusy.value }"></i>Live</span>
       </header>
 
-      <div class="inspector-control output-size">
-        <label>Output Size</label>
-        <div class="segmented-control">
-          <button
-            v-for="size in sizes"
-            :key="size"
-            :aria-pressed="settings.width === size && settings.height === size"
-            @click="setSize(size)"
-          >
-            {{ size }}
-          </button>
-        </div>
-      </div>
+      <p v-if="workspace.previewError.value" class="preview-error" role="alert">
+        Preview could not update. {{ workspace.previewError.value }}
+      </p>
 
-      <label class="inspector-row"
-        ><span>Crop</span><span class="static-value">Tight</span></label
-      >
+      <label v-if="workspace.recipes.value.length > 1" class="inspector-row">
+        <span>Starting recipe</span>
+        <select :value="workspace.recipeId.value" @change="setRecipe">
+          <option
+            v-for="recipe in workspace.recipes.value"
+            :key="recipe.id"
+            :value="recipe.id"
+          >
+            {{ recipe.id.replaceAll("-", " ") }}
+          </option>
+        </select>
+      </label>
+
+      <ConversionDimensions />
+
       <label class="inspector-row">
         <span>Registration</span>
         <select :value="settings.registration" @change="setRegistration">
@@ -73,26 +75,12 @@ const color = (rgba: number[]) => `rgba(${rgba.join(",")})`;
           <option value="bottom">Bottom Center</option>
         </select>
       </label>
+      <p class="control-help">
+        Bottom alignment keeps characters and props on a shared ground line.
+      </p>
 
-      <label class="inspector-slider">
-        <span>Padding</span>
-        <input
-          type="range"
-          min="0"
-          max="8"
-          :value="settings.margin"
-          @input="setNumber('margin', $event)"
-        />
-        <output>{{ settings.margin }}px</output>
-      </label>
+      <BackdropControls />
 
-      <label class="inspector-row">
-        <span>Background</span>
-        <select :value="settings.backdrop.type" @change="setBackdrop">
-          <option value="border_connected">Auto detect</option>
-          <option value="alpha">Transparency</option>
-        </select>
-      </label>
       <label class="inspector-row">
         <span>Palette</span
         ><span class="static-value">{{ workspace.paletteName.value }}</span>
@@ -105,16 +93,51 @@ const color = (rgba: number[]) => `rgba(${rgba.join(",")})`;
       </label>
 
       <label class="inspector-slider">
-        <span>Coverage</span>
+        <span>Shape coverage</span>
         <input
           type="range"
+          aria-label="Shape coverage"
           min="1"
           max="100"
           :value="settings.coverage_percent"
           @input="setNumber('coverage_percent', $event)"
         />
         <output>{{ settings.coverage_percent }}%</output>
+        <small>
+          Lower keeps fine details; higher produces cleaner, stronger
+          silhouettes.
+        </small>
       </label>
+
+      <details class="advanced-controls">
+        <summary>Structure validation</summary>
+        <p class="control-help">
+          Reject results outside this connected-shape range. This catches
+          accidental fragments; it does not change the artwork.
+        </p>
+        <div class="component-fields">
+          <label>
+            <span>Minimum</span>
+            <input
+              type="number"
+              min="1"
+              max="65535"
+              :value="settings.components.min"
+              @change="setComponent('min', $event)"
+            />
+          </label>
+          <label>
+            <span>Maximum</span>
+            <input
+              type="number"
+              min="1"
+              max="65535"
+              :value="settings.components.max"
+              @change="setComponent('max', $event)"
+            />
+          </label>
+        </div>
+      </details>
     </template>
 
     <template v-else>

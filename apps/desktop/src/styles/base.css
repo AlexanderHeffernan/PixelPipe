@@ -106,10 +106,7 @@ code {
   padding: 0 14px 0 78px;
   border-bottom: 1px solid var(--line);
   background: rgba(27, 27, 31, 0.94);
-  -webkit-app-region: drag;
-}
-.titlebar button {
-  -webkit-app-region: no-drag;
+  user-select: none;
 }
 .titlebar-leading,
 .titlebar-actions {

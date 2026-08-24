@@ -21,9 +21,17 @@ provideWorkspace(workspace);
       class="workstation-body"
       :inert="workspace.createAssetOpen.value || undefined"
     >
-      <ProjectSidebar v-if="workspace.leftSidebarOpen.value" />
+      <ProjectSidebar
+        :class="{ 'is-collapsed': !workspace.leftSidebarOpen.value }"
+        :inert="!workspace.leftSidebarOpen.value || undefined"
+        :aria-hidden="!workspace.leftSidebarOpen.value || undefined"
+      />
       <AssetWorkspace />
-      <ConversionInspector v-if="workspace.rightSidebarOpen.value" />
+      <ConversionInspector
+        :class="{ 'is-collapsed': !workspace.rightSidebarOpen.value }"
+        :inert="!workspace.rightSidebarOpen.value || undefined"
+        :aria-hidden="!workspace.rightSidebarOpen.value || undefined"
+      />
     </div>
     <WelcomeView v-else />
     <div
