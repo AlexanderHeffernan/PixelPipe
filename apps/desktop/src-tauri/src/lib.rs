@@ -1,10 +1,6 @@
 mod commands;
 
 use commands::{
-    agents::{
-        AgentTasks, approve_agent_connector, browse_agent_runs, cancel_agent_task,
-        detect_agent_connectors, load_agent_candidate, select_agent_candidate, start_agent_task,
-    },
     preferences::{recent_project, remember_project},
     project::{
         browse_project, commit_composition, convert_selected_reference, delete_asset, export_asset,
@@ -28,7 +24,6 @@ use commands::{
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(AgentTasks::default())
         .manage(TerminalSessions::default())
         .invoke_handler(tauri::generate_handler![
             browse_project,
@@ -38,8 +33,6 @@ pub fn run() {
             update_asset_brief,
             rename_asset,
             import_reference,
-            detect_agent_connectors,
-            approve_agent_connector,
             export_asset,
             export_asset_file,
             convert_selected_reference,
@@ -55,11 +48,6 @@ pub fn run() {
             fill_revision,
             set_asset_head,
             remap_revision,
-            browse_agent_runs,
-            load_agent_candidate,
-            select_agent_candidate,
-            start_agent_task,
-            cancel_agent_task,
             recent_project,
             remember_project,
             start_terminal,

@@ -4,8 +4,7 @@ PixelPipe is an AI-first, project-aware workstation for producing deterministic,
 game-ready pixel-art assets from selected visual references.
 
 The desktop app now presents one opinionated path: choose a game folder, create
-a sprite brief, generate smooth references with an explicitly connected Amp or
-Codex CLI (or import a PNG), select a reference, pixelize it with starter
+a sprite brief, create or import a smooth reference, pixelize it with starter
 defaults, inspect the native result, and export PNG/JSON runtime assets.
 
 - [Architecture contract](ARCHITECTURE.md)
@@ -14,7 +13,6 @@ defaults, inspect the native result, and export PNG/JSON runtime assets.
 - [Milestone 2 conversion record](docs/milestones/M2-conversion.md)
 - [Milestone 3 refinement/review record](docs/milestones/M3-review-and-refinement.md)
 - [Milestone 4 desktop review record](docs/milestones/M4-desktop-review.md)
-- [Milestone 5 configured agent record](docs/milestones/M5-agent-workflow.md)
 - [Milestone 6 pre-revision asset record](docs/milestones/M6-pre-revision-assets.md)
 
 ## Run the desktop app
@@ -30,9 +28,8 @@ npm run app
 
 Choose your game folder in the native dialog. PixelPipe creates `.pixelpipe`
 project metadata and starter 16×16, 32×32, and 64×64 sprite recipes without
-changing other files. Amp and Codex connectors are detected from the user's
-machine and require explicit approval before PixelPipe stores a user-local
-profile or runs them.
+changing other files. The embedded terminal supports the user's coding agent of
+choice; PixelPipe itself does not launch or manage agents.
 
 The Tauri CLI starts both Vite and the native Rust process. Running
 `cargo run -p pixelpipe-desktop` alone is not supported: the debug window
@@ -91,18 +88,6 @@ from an older revision creates a new identical child and acts as undo without
 moving or rewriting history. Review events never change revision bytes or the
 separate approval pointer.
 
-## M5 configured agent
-
-Agent executables are configured and explicitly approved in user-local settings,
-never `.pixelpipe/project.toml`. `pixelpipe agent run` emits typed JSON lifecycle
-events to stderr and a final JSON result to stdout. Generated candidates are
-validated and content-addressed, then require a separate
-`pixelpipe reference select` action. Critiques never change project state;
-proposals must pass through the existing explicit-parent patch/remap use cases.
-
-See the [M5 record](docs/milestones/M5-agent-workflow.md) for profile locations,
-the strict JSON protocol, safety limits, and CLI examples.
-
 ## M6 pre-revision assets
 
 ```sh
@@ -112,7 +97,9 @@ pixelpipe project set-palette --root /path/to/game \
   --id synthetic-flare --file fixtures/m6/palette.json
 pixelpipe project set-recipe --root /path/to/game \
   --file fixtures/m6/recipe.json
-# Generate with an approved user-local agent, then explicitly select a candidate.
+# Create a source with any external coding agent, then import it.
+pixelpipe reference import --root /path/to/game \
+  --asset signal-flare --file /path/to/reference.png
 pixelpipe revision convert-selected --root /path/to/game \
   --asset signal-flare --recipe synthetic-flare
 ```

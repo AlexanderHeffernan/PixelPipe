@@ -54,17 +54,17 @@ visual judgement, revision, and delivery.
    bounds, components, pivots, hashes, and preview scaling are machine-checkable.
    Readability, camera angle, contact, cluster quality, and family coherence
    remain explicit visual-review states.
-8. **Project files cannot silently execute code.** Agent executable configuration
-   is user-local or supplied explicitly, never trusted from `.pixelpipe/`.
+8. **Pixilate does not launch agents.** Users run their coding agent of choice in
+   the embedded terminal; agents operate Pixilate through the same CLI as humans.
 
 ## System shape
 
 ```text
- UI (Tauri webview)       CLI              configured user agent
-         │                 │                         │
-         └──────────┬──────┘                         │ JSON protocol
-                    ▼                                ▼
-            application/use cases ◀──────── AI workflow service
+ UI (Tauri webview)       CLI ◀──── external coding agent
+         │                 │
+         └──────────┬──────┘
+                    ▼
+            application/use cases
      briefs · references · revisions · approval · export
                     │
                     ▼
@@ -75,10 +75,9 @@ visual judgement, revision, and delivery.
           .pixelpipe project repository
 ```
 
-The dependency direction is inward. Frontends and agent adapters depend on the
-application layer; the application layer depends on project storage and the
-engine; the engine knows nothing about Tauri, filesystems, subprocesses, models,
-or game engines.
+The dependency direction is inward. Frontends depend on the application layer;
+the application layer depends on project storage and the engine; the engine
+knows nothing about Tauri, filesystems, models, or game engines.
 
 ## Proposed implementation architecture
 
@@ -94,7 +93,7 @@ Use a Rust workspace with Tauri 2 and a Vue 3 + TypeScript frontend.
   architecture does not depend on Vue, but choosing one stack now is better than
   preserving a hypothetical frontend swap.
 - A browser-only app is rejected: project-root filesystem access, indexed image
-  encoding, agent subprocesses, and game export paths are core capabilities.
+  encoding, embedded terminal access, and game export paths are core capabilities.
 - Electron is rejected for the initial product: it adds a second backend runtime
   and larger distribution footprint without solving a PixelPipe requirement.
 - Python remains useful as fixture-generation evidence, not as the production
@@ -107,7 +106,7 @@ milestone begins):
 crates/
   pixelpipe-core/       deterministic data model and pixel operations
   pixelpipe-project/    .pixelpipe schemas, storage, revisions, locking
-  pixelpipe-app/        shared use cases, AI workflow, export coordination
+  pixelpipe-app/        shared use cases and export coordination
   pixelpipe-cli/        thin command-line adapter
 apps/
   desktop/              Tauri shell and Vue frontend
@@ -170,25 +169,17 @@ through every use case.
 
 ### Application/workflow
 
-Owns briefs, candidate-reference runs, selection, recipe execution, revision
-creation, review state, approval, export mappings, and AI jobs. It is the only
-layer used by CLI commands and Tauri commands.
-
-### AI adapters
-
-Own the configured subprocess protocol, capability checks, timeouts,
-cancellation, and run capture. They return references, critiques, or proposed
-operations. They cannot write `.pixelpipe/` directly; the application imports
-and validates their results.
+Owns briefs, reference import and selection, recipe execution, revision creation,
+review state, approval, and export mappings. It is the only layer used by CLI
+commands and Tauri commands.
 
 ### Frontends
 
 The CLI is the complete scriptable interface and the preferred coding-agent
 boundary. The desktop app is a focused conversion and indexed-pixel workstation:
 one large nearest-neighbour canvas, a collapsible asset sidebar, and a collapsible
-live settings inspector. It does not permanently duplicate native and enlarged
-views or make embedded agent orchestration its main navigation. Neither frontend
-owns domain state.
+live settings inspector, and an embedded terminal. Neither frontend owns domain
+state or launches agents on Pixilate's behalf.
 
 The M4 desktop adapter is a fifth outer workspace crate at
 `apps/desktop/src-tauri`; the four M1 crates remain the engine, store,
@@ -197,12 +188,6 @@ documents and return typed results. Verified PNG bytes cross the IPC boundary as
 base64 rather than frontend-selected filesystem paths. Vue owns only transient
 path, selection, form, loading, and error state; reopening or refreshing always
 reconciles from `pixelpipe-app`.
-
-Deterministic desktop operations remain request/response commands. M5 adds one
-typed event stream only for subprocess work: started, progress/log,
-candidate-ready, completed, failed, and cancelled. Tauri owns the transient task
-registry/cancellation flags; durable run state is reconciled from the application
-and project layers rather than localStorage.
 
 ## Project-root model
 
@@ -215,9 +200,6 @@ game-root/
     project.toml                 schema, art direction, defaults, export maps
     palettes/<palette>.json      versioned ordered RGBA colours and transparent index
     recipes/<recipe>.json        complete conversion settings + palette resource ID
-    runs/<task-id>/              ignored local agent run/candidate capture
-      run.json
-      candidates/<sha256>.png
     assets/<asset-id>/
       asset.toml                 kind, lifecycle, brief, selection, head/approved
       references/
@@ -239,9 +221,9 @@ Manifests and canonical rasters are text and stable-key serialized for useful
 diffs. Native runtime PNGs and small nearest previews are tracked by default.
 Selected references are tracked only when their rights are clear and the project
 opts in; Git LFS is optional for large references. Reproducible review bundles,
-cache, temporary files, and agent runs are ignored unless explicitly recorded.
-Ignored artifacts may still be named and hashed in provenance. Exported game
-files live at paths declared in `project.toml`, normally outside `.pixelpipe/`.
+cache, and temporary files are ignored unless explicitly recorded. Ignored
+artifacts may still be named and hashed in provenance. Exported game files live
+at paths declared in `project.toml`, normally outside `.pixelpipe/`.
 
 Paths in project files are project-relative, use `/` separators, and may not
 escape the root. Asset IDs are stable lowercase slugs. Revision IDs are
@@ -251,10 +233,10 @@ branch entity. A later need for merges must be demonstrated before adding them.
 
 M6 makes `pixelpipe.asset/v2` an explicit pre-revision state machine. `draft`
 has no usable brief; a non-empty brief moves it to `awaiting_reference`; explicit
-selection of a validated run candidate moves it to `selected_reference`; only
+selection of a validated imported reference moves it to `selected_reference`; only
 successful selected-reference conversion may create the first head and move it
-to `revisioned`. The brief and selected run/candidate/reference hash live in the
-single atomically written asset manifest. Legacy `pixelpipe.asset/v1` manifests
+to `revisioned`. The brief and selected-reference hash live in the single
+atomically written asset manifest. Legacy `pixelpipe.asset/v1` manifests
 remain readable and are upgraded when a later mutation writes them.
 
 Palettes (`pixelpipe.palette/v1`) and complete recipes
@@ -272,13 +254,11 @@ A revision is an immutable snapshot, not merely a saved image. It records:
 - canonical recipe and operation parameters;
 - engine, schema, and encoder versions;
 - parent revision and initiating actor (`human`, `cli`, `desktop`, or named
-  agent run; actor is attribution, not authority);
+  coding agent; actor is attribution, not authority);
 - canonical raster, native PNG, and validation hashes;
 - palette identity and content hash;
 - pivot, registration, frame/sheet metadata, and asset-aware component rules;
 - automated validation results and pending/passed visual-review state;
-- AI adapter identifier, capability, model/provider when reported, prompt/request
-  record, and returned critique/proposal, with secrets redacted.
 
 Approval is a mutable pointer in `asset.toml` to an immutable revision. Export
 records the approved revision and output hashes. A critique never changes pixels;
@@ -317,69 +297,23 @@ The application defines versioned use cases such as:
 
 | Capability | CLI example | Desktop | Agent route |
 | --- | --- | --- | --- |
-| Create/update brief | `pixelpipe brief set` | brief editor | CLI or application request |
-| Generate references | `pixelpipe reference generate` | Generate action | configured adapter |
-| Import/select reference | `pixelpipe reference select` | candidate picker | same use case |
-| Convert/rebuild | `pixelpipe revision create` | Convert/refine action | same use case |
-| Inspect/validate | `pixelpipe asset inspect`, `validate` | review workspace | CLI structured output |
-| Apply pixel operations | `pixelpipe edit apply --ops ...` | editor tools | proposed ops, then same use case |
-| Critique/propose | `pixelpipe critique`, `refine propose` | review actions | configured adapter |
-| Approve/export | `pixelpipe approve`, `export` | explicit actions | CLI or same use case |
+| Create/update brief | `pixelpipe asset init`, `asset set-brief` | asset form | same CLI |
+| Import reference | `pixelpipe reference import` | file picker | same CLI |
+| Convert/rebuild | `pixelpipe revision pixelize` | Convert workspace | same CLI |
+| Inspect/compare | `pixelpipe revision inspect`, `compare` | review workspace | same CLI |
+| Apply pixel operations | `pixelpipe revision draw`, `fill`, `remap` | editor tools | same CLI |
+| Review | `pixelpipe revision review` | review actions | same CLI |
+| Export | `pixelpipe asset export` | explicit export action | same CLI |
 
 All CLI read commands support stable JSON output. Mutating commands support a
 non-interactive mode and return revision IDs. Interactive convenience must wrap,
-not replace, explicit arguments. The agent can drive PixelPipe through the CLI;
-the desktop app may invoke the configured adapter through the application layer.
+not replace, explicit arguments. Agents drive Pixilate through the CLI; Pixilate
+never invokes an agent.
 
 “Parity” means equivalent capability and semantics, not identical interaction.
 For example, the UI may compare images visually while the CLI emits their paths
 and hashes. Approval is available to automation but must always be explicit; AI
 generation or critique never implies approval.
-
-## Configurable agent protocol
-
-PixelPipe has no model-provider dependency in its core and no MCP requirement.
-The user configures a local executable through user-local settings. Repositories
-may name desired capabilities but may not name an executable that PixelPipe runs
-automatically.
-
-Protocol `pixelpipe.agent.v1` is a one-shot process contract:
-
-- PixelPipe writes one JSON request to stdin and closes it.
-- The adapter writes one JSON response to stdout; diagnostics go to stderr.
-- Every request includes an operation, project-context snapshot, input paths and
-  hashes, constraints, and a fresh writable output directory.
-- Output paths must remain inside that directory and are imported only after
-  validation and hashing.
-- The approved profile declares allowed capabilities; every response reports
-  adapter capabilities and metadata for verification/capture.
-- Initial operations are `generate_references`, `critique_asset`, and
-  `propose_refinement`.
-- Responses may return images, structured critique, and serialized pixel
-  operations. They may not claim approval or mutate the project.
-- Cancellation terminates the child process; timeout and output limits are user
-  policy. Prompts and responses are provenance, except configured secret fields.
-
-M5 concretizes that contract as `pixelpipe.agent-profile/v1`,
-`pixelpipe.agent-request/v1`, `pixelpipe.agent-response/v1`,
-`pixelpipe.agent-run/v1`, and `pixelpipe.agent-task-event/v1`. Profiles are read
-only from the operating system's user configuration directory, require
-`approved: true`, an absolute executable, and allowlisted capabilities, and may
-name environment variables whose values should be inherited/redacted. The child
-starts with a cleared environment and an isolated temporary working directory.
-Candidates must be relative, canonicalize inside the assigned output directory,
-decode as RGBA PNG, and match their reported SHA-256 before import.
-
-The adapter is trusted code, not an OS sandbox. PixelPipe prevents returned paths
-from escaping the import boundary and never grants an alternate project write
-API, but a user-approved executable retains that user's ambient filesystem
-permissions. A cross-platform sandbox must not be promised without a separately
-reviewed platform design.
-
-An adapter can wrap Amp, another coding agent, a local model, or a hosted provider.
-Provider-specific authentication, streaming, and retries stay inside the adapter.
-Do not build a universal provider SDK into PixelPipe until real adapters show the
-one-shot contract is insufficient.
 
 ## Desktop interaction contract
 
@@ -414,23 +348,6 @@ frontend sorting. Error and empty states remain visible, command failures receiv
 focus, list navigation supports arrow/Home/End keys, and reduced-motion/focus
 styles are part of the baseline rather than optional polish.
 
-### M5 agent task surface
-
-Generation, critique, and refinement proposal share one application task request
-and lifecycle. Final run records capture exit status, duration, redacted
-stdout/stderr, prompt, approved profile command hash, adapter identity and
-reported provider/model/capabilities, errors, and artifact hashes. Candidate
-import, explicit selected-reference mutation, critique, proposal, and revision
-application remain separate states. Proposals validate read-only against their
-named revision; accepting one still invokes the existing explicit-parent
-patch/remap use case and creates a child revision.
-
-Candidate-ready is a post-validation event: all candidates in the response must
-decode, hash, remain path-contained, and have unique IDs before any candidate is
-announced or durably stored. Failed and cancelled runs retain redacted provenance
-but always have an empty candidate list and cannot change selection, lifecycle,
-head, review, or approval.
-
 ### M6 pre-revision command surface
 
 CLI and desktop both invoke application use cases for asset initialization,
@@ -439,7 +356,7 @@ and browsing assets without heads. Both frontends consume the same validated
 resources through a recipe picker. Revision-only controls are absent or disabled
 before head exists, and their application endpoints continue to reject a missing
 explicit revision.
-Browsing, brief edits, generation, and selection never move head. A successful
+Browsing, brief edits, and reference import never move head. A successful
 conversion is the only pre-revision transition that creates `r000001`.
 
 ## Explicit non-goals for the first product arc
@@ -464,8 +381,7 @@ Milestones must preserve these executable checks once their layers exist:
 1. A fixed selected reference + recipe produces byte-identical canonical JSON and
    native PNG across repeated runs and supported platforms.
 2. CLI and Tauri adapters pass the same use-case conformance suite.
-3. An artifact outside an AI task's assigned output directory cannot be imported,
-   and an AI response cannot bypass explicit selection or revision creation.
+3. Imported references are content-addressed and verified before conversion.
 4. Every approved/exported asset resolves to immutable inputs, recipe, versions,
    validation, and hashes.
 5. Every nearest preview is an exact integer enlargement of the native raster.

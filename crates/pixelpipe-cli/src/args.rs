@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use pixelpipe_app::AgentOperation;
 use pixelpipe_project::{
     AssetKind, ReviewActorKind as ProjectReviewActorKind, ReviewDecision as ProjectReviewDecision,
 };
@@ -43,10 +42,6 @@ pub(crate) enum Command {
     Asset {
         #[command(subcommand)]
         command: AssetCommand,
-    },
-    Agent {
-        #[command(subcommand)]
-        command: AgentCommand,
     },
     Reference {
         #[command(subcommand)]
@@ -374,45 +369,6 @@ pub(crate) enum AssetCommand {
 }
 
 #[derive(Debug, Subcommand)]
-pub(crate) enum AgentCommand {
-    Detect,
-    Approve {
-        #[arg(long)]
-        connector: String,
-    },
-    Run {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        profile: String,
-        #[arg(long, value_enum)]
-        operation: AgentOperationKind,
-        #[arg(long)]
-        revision: Option<String>,
-        #[arg(long)]
-        prompt: String,
-    },
-    Runs {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-    },
-    Candidate {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        run: String,
-        #[arg(long)]
-        candidate: String,
-        #[arg(long)]
-        output: PathBuf,
-    },
-}
-
-#[derive(Debug, Subcommand)]
 pub(crate) enum ReferenceCommand {
     Import {
         #[arg(long, default_value = ".")]
@@ -421,16 +377,6 @@ pub(crate) enum ReferenceCommand {
         asset: String,
         #[arg(long)]
         file: PathBuf,
-    },
-    Select {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        run: String,
-        #[arg(long)]
-        candidate: String,
     },
 }
 
@@ -456,22 +402,6 @@ pub(crate) enum ReviewDecision {
     Reviewed,
     ChangesRequested,
     Accepted,
-}
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub(crate) enum AgentOperationKind {
-    Generate,
-    Critique,
-    Propose,
-}
-
-impl From<AgentOperationKind> for AgentOperation {
-    fn from(value: AgentOperationKind) -> Self {
-        match value {
-            AgentOperationKind::Generate => Self::GenerateReferences,
-            AgentOperationKind::Critique => Self::CritiqueAsset,
-            AgentOperationKind::Propose => Self::ProposeRefinement,
-        }
-    }
 }
 impl From<ReviewActorKind> for ProjectReviewActorKind {
     fn from(value: ReviewActorKind) -> Self {

@@ -51,7 +51,7 @@ pub struct ExportFileResult {
 /// Returns an error when the asset has no head or verification/atomic output fails.
 pub fn export_asset(request: ExportAsset) -> Result<ExportResult, AppError> {
     if !request.destination.is_dir() {
-        return Err(AppError::AgentCandidatePath(
+        return Err(AppError::InvalidExportDestination(
             "export destination must be an existing folder".to_owned(),
         ));
     }

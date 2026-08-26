@@ -80,16 +80,12 @@ at 1440×900 exercised project open, revision load, compare, independently
 scrolling work areas, and review recording against real synthetic M1/M3 outputs;
 the final dark- and light-theme WCAG 2 A/AA axe scans reported zero violations.
 
-## Proposed next milestone
+## Subsequent direction
 
-**M5 — Configured agent and reference workflow.** Implement the accepted
-one-shot `pixelpipe.agent.v1` command adapter above the deterministic engine,
-capability discovery, generation run capture, candidate import/selection,
-critique, and proposed patch/remap operations through CLI and desktop parity.
-Freeze selected reference bytes before conversion and retain prompts, adapter
-identity, reported provider/model, hashes, and redacted run records. Do not add a
-provider SDK, MCP, autonomous approval, layers/brushes, or export expansion.
+The configured-agent milestone proposed here was implemented and later removed.
+Pixilate now leaves agent execution to the user's terminal and exposes the same
+application capabilities through its CLI.
 
 ## Review gate
 
-M4 stops here until the parent approves the workstation contract and M5 scope.
+This historical milestone stopped here for review before subsequent work.

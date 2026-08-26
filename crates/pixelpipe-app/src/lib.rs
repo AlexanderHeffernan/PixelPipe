@@ -13,19 +13,12 @@ use pixelpipe_project::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-mod agent;
 mod composition;
 mod conversion_preview;
 mod export;
 mod onboarding;
 mod reference;
 
-pub use agent::{
-    AgentConnector, AgentRuntime, AgentTaskEvent, AgentTaskEventKind, AgentTaskRequest,
-    AgentTaskResult, ApproveAgentConnector, BrowseAgentRuns, LoadAgentCandidate,
-    SelectAgentCandidate, approve_agent_connector, browse_agent_runs, detect_agent_connectors,
-    load_agent_candidate, select_agent_candidate,
-};
 pub use composition::{
     CommitComposition, CompositionPreview, PreviewComposition, commit_composition,
     preview_composition,
@@ -44,8 +37,8 @@ pub use reference::{
 
 pub use pixelpipe_core::{Palette, RasterInspection};
 pub use pixelpipe_project::{
-    AgentCandidate, AgentOperation, AgentProposal, AgentRunRecord, AgentRunStatus, AssetManifest,
-    ConversionRecipeDocument, ReferenceSelection, ReviewActorKind, ReviewDecision, ReviewRecord,
+    AssetManifest, ConversionRecipeDocument, ReferenceSelection, ReviewActorKind, ReviewDecision,
+    ReviewRecord,
 };
 
 #[derive(Debug)]
@@ -395,14 +388,8 @@ pub enum AppError {
     Image(String),
     #[error("brief is not valid UTF-8: {path}")]
     BriefUtf8 { path: PathBuf },
-    #[error("agent profile error: {0}")]
-    AgentProfile(String),
-    #[error("agent process error: {0}")]
-    AgentProcess(String),
-    #[error("agent protocol error: {0}")]
-    AgentProtocol(String),
-    #[error("agent candidate path is invalid: {0}")]
-    AgentCandidatePath(String),
+    #[error("invalid export destination: {0}")]
+    InvalidExportDestination(String),
     #[error("export already exists: {0}")]
     ExportExists(PathBuf),
     #[error("unsupported export format: {0}")]
@@ -1227,9 +1214,8 @@ mod tests {
         BackdropPolicy, ComponentExpectation, IndexedRaster, Palette, RASTER_SCHEMA, Registration,
     };
     use pixelpipe_project::{
-        AGENT_RUN_SCHEMA, AgentCandidate, AgentCapability, AgentIdentity, AgentOperation,
-        AgentRunRecord, AgentRunStatus, AssetState, CONVERSION_RECIPE_SCHEMA,
-        ConversionRecipeDocument, RevisionManifest, StoredConversionMode,
+        AssetState, CONVERSION_RECIPE_SCHEMA, ConversionRecipeDocument, RevisionManifest,
+        StoredConversionMode,
     };
     use tempfile::tempdir;
 
@@ -1455,64 +1441,18 @@ mod tests {
         })
         .expect("brief");
         assert_eq!(awaiting.state, AssetState::AwaitingReference);
-        let (run, candidate, bytes) = m6_agent_run(brief);
+        let raster: IndexedRaster =
+            serde_json::from_slice(include_bytes!("../../../fixtures/m1/tiny-raster.json"))
+                .expect("synthetic source raster");
+        let bytes = render(&raster, 1).expect("synthetic source PNG").native_png;
         store
-            .store_agent_run(&run, &BTreeMap::from([(candidate.id.clone(), bytes)]))
-            .expect("validated run");
-        select_agent_candidate(SelectAgentCandidate {
-            start: temp.path().to_path_buf(),
-            asset: "signal-flare".to_owned(),
-            run: run.id,
-            candidate: candidate.id,
-        })
-        .expect("explicit selection");
+            .select_imported_reference("signal-flare", &bytes)
+            .expect("imported reference");
         assert_eq!(
             store.asset("signal-flare").expect("selected asset").state,
             AssetState::SelectedReference
         );
         (temp, store, brief)
-    }
-
-    fn m6_agent_run(brief: &str) -> (AgentRunRecord, AgentCandidate, Vec<u8>) {
-        let raster: IndexedRaster =
-            serde_json::from_slice(include_bytes!("../../../fixtures/m1/tiny-raster.json"))
-                .expect("synthetic source raster");
-        let bytes = render(&raster, 1).expect("synthetic source PNG").native_png;
-        let hash = sha256_hex(&bytes);
-        let candidate = AgentCandidate {
-            id: "candidate-one".to_owned(),
-            sha256: hash.clone(),
-            width: 4,
-            height: 4,
-            png: format!("candidates/{hash}.png"),
-        };
-        let run = AgentRunRecord {
-            schema: AGENT_RUN_SCHEMA.to_owned(),
-            id: "run-m6-fixture".to_owned(),
-            asset: "signal-flare".to_owned(),
-            operation: AgentOperation::GenerateReferences,
-            revision: None,
-            profile: "fixture-agent".to_owned(),
-            profile_command_sha256: "0".repeat(64),
-            prompt: brief.to_owned(),
-            started_unix_ms: 1,
-            duration_ms: 1,
-            status: AgentRunStatus::Completed,
-            exit_status: Some(0),
-            adapter: Some(AgentIdentity {
-                adapter: "fixture".to_owned(),
-                provider: Some("fixture".to_owned()),
-                model: Some("fixture".to_owned()),
-                capabilities: vec![AgentCapability::GenerateReferences],
-            }),
-            stdout: String::new(),
-            stderr: String::new(),
-            error: None,
-            candidates: vec![candidate.clone()],
-            critique: None,
-            proposal: None,
-        };
-        (run, candidate, bytes)
     }
 
     fn m6_resources(

@@ -4,7 +4,7 @@ Status: Accepted, 2026-08-24
 
 ## Context
 
-The staged brief → embedded agent → reference → conversion wizard proved the
+The staged brief → reference → conversion wizard proved the
 application boundaries, but it hid PixelPipe's strongest capability and made a
 simple image conversion feel like setup work. The useful daily task is tuning a
 high-resolution image into readable game art, then correcting specific indexed
@@ -27,8 +27,8 @@ application and CLI boundary without occupying the desktop's primary UI.
 - Keep Create Asset narrow: a user can choose an image or create an awaiting-
   reference asset for a coding agent. A missing optional brief defaults to the
   asset name so setup cannot dead-end conversion.
-- Keep coding-agent interaction CLI-first. Embedded adapters remain supported
-  infrastructure, not the workstation's main navigation.
+- Keep coding-agent interaction CLI-first. Pixilate never launches or manages
+  agents; users run their agent of choice in the embedded terminal.
 - Preserve UI/CLI parity: references can be imported and selected-reference
   conversions can be previewed or committed with explicit settings through the
   same application use cases.

@@ -1,4 +1,3 @@
-pub(crate) mod agents;
 pub(crate) mod preferences;
 pub(crate) mod project;
 pub(crate) mod revisions;

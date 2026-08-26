@@ -11,14 +11,13 @@ image.workspace = true
 atomicwrites.workspace = true
 pixelpipe-core = { path = "../pixelpipe-core" }
 pixelpipe-project = { path = "../pixelpipe-project" }
-reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tempfile.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 png.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

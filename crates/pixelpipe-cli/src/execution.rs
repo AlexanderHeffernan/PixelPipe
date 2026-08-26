@@ -1,28 +1,20 @@
-use std::{
-    fs,
-    path::PathBuf,
-    sync::{Arc, atomic::AtomicBool},
-};
+use std::{fs, path::PathBuf};
 
 use pixelpipe_app::{
-    AgentRunStatus, AgentRuntime, AgentTaskRequest, BrowseAgentRuns, CompareRevisions,
-    ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision, DeleteAsset,
-    ExportAsset, ImportReference, InitializeAsset, InspectRevision, LoadAgentCandidate,
-    PreviewSelectedReference, RecordReview, RenameAsset, SelectAgentCandidate, StoreProjectPalette,
-    StoreProjectRecipe, UpdateAssetBrief, UpdateAssetSource, approve_agent_connector,
-    browse_agent_runs, compare_revisions, convert_revision, convert_selected_reference,
-    create_revision, delete_asset, detect_agent_connectors, export_asset, import_reference,
-    initialize_asset, inspect_revision, load_agent_candidate, preview_selected_reference,
-    record_review, rename_asset, select_agent_candidate, store_project_palette,
-    store_project_recipe, update_asset_brief, update_asset_source,
+    CompareRevisions, ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision,
+    DeleteAsset, ExportAsset, ImportReference, InitializeAsset, InspectRevision,
+    PreviewSelectedReference, RecordReview, RenameAsset, StoreProjectPalette, StoreProjectRecipe,
+    UpdateAssetBrief, UpdateAssetSource, compare_revisions, convert_revision,
+    convert_selected_reference, create_revision, delete_asset, export_asset, import_reference,
+    initialize_asset, inspect_revision, preview_selected_reference, record_review, rename_asset,
+    store_project_palette, store_project_recipe, update_asset_brief, update_asset_source,
 };
 use pixelpipe_core::{ConversionSettings, SheetSettings};
 use pixelpipe_project::ProjectStore;
 use serde_json::json;
 
 use crate::args::{
-    AgentCommand, AssetCommand, Cli, Command, ConversionKind, ProjectCommand, ReferenceCommand,
-    RevisionCommand,
+    AssetCommand, Cli, Command, ConversionKind, ProjectCommand, ReferenceCommand, RevisionCommand,
 };
 use crate::edit::run_edit_revision;
 use crate::guide::agent_guide;
@@ -40,7 +32,6 @@ pub(crate) fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Err
         Command::Project { command } => run_project(command),
         Command::Revision { command } => run_revision(command),
         Command::Asset { command } => run_asset(command),
-        Command::Agent { command } => run_agent(command),
         Command::Reference { command } => run_reference(command),
     }
 }
@@ -48,24 +39,12 @@ pub(crate) fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Err
 fn run_reference(
     command: ReferenceCommand,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let selection = match command {
-        ReferenceCommand::Import { root, asset, file } => import_reference(ImportReference {
-            start: root,
-            asset,
-            file,
-        })?,
-        ReferenceCommand::Select {
-            root,
-            asset,
-            run,
-            candidate,
-        } => select_agent_candidate(SelectAgentCandidate {
-            start: root,
-            asset,
-            run,
-            candidate,
-        })?,
-    };
+    let ReferenceCommand::Import { root, asset, file } = command;
+    let selection = import_reference(ImportReference {
+        start: root,
+        asset,
+        file,
+    })?;
     Ok(json!({ "ok": true, "selection": selection }))
 }
 
@@ -155,75 +134,6 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
         AssetCommand::Inspect { root, asset } => {
             let store = ProjectStore::discover(&root)?;
             Ok(json!({ "ok": true, "project_root": store.root(), "asset": store.asset(&asset)? }))
-        }
-    }
-}
-
-fn run_agent(command: AgentCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    match command {
-        AgentCommand::Detect => Ok(json!({
-            "ok": true,
-            "connectors": detect_agent_connectors()?,
-        })),
-        AgentCommand::Approve { connector } => Ok(json!({
-            "ok": true,
-            "connector": approve_agent_connector(pixelpipe_app::ApproveAgentConnector {
-                id: connector,
-            })?,
-        })),
-        AgentCommand::Run {
-            root,
-            asset,
-            profile,
-            operation,
-            revision,
-            prompt,
-        } => {
-            let sink = Arc::new(|event| {
-                eprintln!(
-                    "{}",
-                    serde_json::to_string(&event).expect("agent event must serialize")
-                );
-            });
-            let result = AgentRuntime::user_local()?.run(
-                AgentTaskRequest {
-                    start: root,
-                    asset,
-                    profile,
-                    operation: operation.into(),
-                    revision,
-                    prompt,
-                },
-                &AtomicBool::new(false),
-                sink,
-            )?;
-            if result.run.status != AgentRunStatus::Completed {
-                return Err(format!(
-                    "agent run '{}' ended with {:?}",
-                    result.run.id, result.run.status
-                )
-                .into());
-            }
-            Ok(json!({ "ok": true, "run": result.run }))
-        }
-        AgentCommand::Runs { root, asset } => Ok(
-            json!({ "ok": true, "runs": browse_agent_runs(BrowseAgentRuns { start: root, asset })? }),
-        ),
-        AgentCommand::Candidate {
-            root,
-            run,
-            candidate,
-            output,
-        } => {
-            fs::write(
-                &output,
-                load_agent_candidate(LoadAgentCandidate {
-                    start: root,
-                    run,
-                    candidate,
-                })?,
-            )?;
-            Ok(json!({ "ok": true, "output": output }))
         }
     }
 }

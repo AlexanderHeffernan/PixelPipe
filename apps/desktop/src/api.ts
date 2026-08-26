@@ -1,11 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  AgentOperation,
-  AgentConnector,
   AssetKind,
   AssetManifest,
   CanvasSettings,
-  AgentRunRecord,
   ConversionPreviewResponse,
   ConversionSettings,
   PaletteColorOverride,
@@ -63,12 +60,6 @@ export const importReference = (start: string, asset: string, file: string) =>
   invoke<ReferenceSelection>("import_reference", {
     request: { start, asset, file },
   });
-
-export const detectAgentConnectors = () =>
-  invoke<AgentConnector[]>("detect_agent_connectors");
-
-export const approveAgentConnector = (id: string) =>
-  invoke<AgentConnector>("approve_agent_connector", { request: { id } });
 
 export const exportAsset = (
   start: string,
@@ -285,48 +276,4 @@ export const remapRevision = (
       preview_scale: null,
       actor,
     },
-  });
-
-export const startAgentTask = (
-  start: string,
-  asset: string,
-  profile: string,
-  operation: AgentOperation,
-  prompt: string,
-  revision?: string,
-) =>
-  invoke<string>("start_agent_task", {
-    request: {
-      start,
-      asset,
-      profile,
-      operation,
-      revision: revision ?? null,
-      prompt,
-    },
-  });
-
-export const cancelAgentTask = (task: string) =>
-  invoke<void>("cancel_agent_task", { task });
-
-export const browseAgentRuns = (start: string, asset: string) =>
-  invoke<AgentRunRecord[]>("browse_agent_runs", { request: { start, asset } });
-
-export const loadAgentCandidate = (
-  start: string,
-  run: string,
-  candidate: string,
-) =>
-  invoke<{ png_base64: string }>("load_agent_candidate", {
-    request: { start, run, candidate },
-  });
-
-export const selectAgentCandidate = (
-  start: string,
-  asset: string,
-  run: string,
-  candidate: string,
-) =>
-  invoke<ReferenceSelection>("select_agent_candidate", {
-    request: { start, asset, run, candidate },
   });

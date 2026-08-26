@@ -258,77 +258,6 @@ export interface PaletteColorOverride {
   rgba: Rgba;
 }
 
-export type AgentOperation =
-  | "generate_references"
-  | "critique_asset"
-  | "propose_refinement";
-export type AgentRunStatus = "completed" | "failed" | "cancelled";
-
-export interface AgentCandidate {
-  id: string;
-  sha256: string;
-  width: number;
-  height: number;
-  png: string;
-}
-
-export type AgentProposal =
-  | { type: "pixel_patch"; patch: { schema: string; edits: PixelEdit[] } }
-  | {
-      type: "palette_remap";
-      remap: {
-        schema: string;
-        palette: {
-          schema: string;
-          name: string;
-          transparent_index: number;
-          colors: Rgba[];
-        };
-        index_map: number[];
-      };
-    };
-
-export interface AgentRunRecord {
-  schema: string;
-  id: string;
-  asset: string;
-  operation: AgentOperation;
-  revision?: string;
-  profile: string;
-  profile_command_sha256: string;
-  prompt: string;
-  started_unix_ms: number;
-  duration_ms: number;
-  status: AgentRunStatus;
-  exit_status?: number;
-  adapter?: {
-    adapter: string;
-    provider?: string;
-    model?: string;
-    capabilities: AgentOperation[];
-  };
-  stdout: string;
-  stderr: string;
-  error?: string;
-  candidates: AgentCandidate[];
-  critique?: string;
-  proposal?: AgentProposal;
-}
-
-export interface AgentTaskEvent {
-  schema: string;
-  task: string;
-  sequence: number;
-  event:
-    | { type: "started"; operation: AgentOperation }
-    | { type: "progress"; stage: string; message: string }
-    | { type: "log"; stream: string; message: string }
-    | { type: "candidate_ready"; candidate: AgentCandidate }
-    | { type: "completed"; run: AgentRunRecord }
-    | { type: "failed"; run?: AgentRunRecord; error: string }
-    | { type: "cancelled"; run: AgentRunRecord };
-}
-
 export interface ReferenceSelection {
   schema: string;
   asset: string;
@@ -336,13 +265,6 @@ export interface ReferenceSelection {
   candidate: string;
   sha256: string;
   selected_unix_ms: number;
-}
-
-export interface AgentConnector {
-  id: "amp" | "codex";
-  name: string;
-  installed: boolean;
-  approved: boolean;
 }
 
 export interface ExportResult {

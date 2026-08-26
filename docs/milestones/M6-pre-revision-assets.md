@@ -6,21 +6,21 @@ Status: ready for milestone review.
 
 M6 closes the product's first complete headless/UI-parity workflow:
 
-`brief → generate references → select reference → deterministic conversion → r000001`
+`brief → import reference → deterministic conversion → r000001`
 
 An asset is no longer synonymous with a revision head. It has a stable ID, kind,
 project-owned brief, explicit lifecycle, and optional selected-reference record.
-The desktop can create and browse these assets, edit their brief, run the existing
-configured agent, select a candidate, choose a project recipe, and create the
-first immutable revision. Both frontends expose the same typed asset, file-oriented
-palette/recipe import, and conversion use cases.
+The desktop can create and browse these assets, edit their brief, import a
+reference, choose a project recipe, and create the first immutable revision.
+Both frontends expose the same typed asset, file-oriented palette/recipe import,
+and conversion use cases.
 
 ## Lifecycle contract
 
 | State | Invariant | Allowed next work |
 |---|---|---|
 | `draft` | no head, empty brief, no selection | edit brief |
-| `awaiting_reference` | no head, non-empty brief, no selection | generate/select |
+| `awaiting_reference` | no head, non-empty brief, no selection | import reference |
 | `selected_reference` | no head, non-empty brief, verified selection | convert |
 | `revisioned` | head exists | existing inspect/review/refinement flow |
 
@@ -44,7 +44,7 @@ asset; that asset must use selected-reference conversion for its first head.
 - `.pixelpipe/recipes/<id>.json` is a complete
   `pixelpipe.conversion-recipe/v1` resource naming asset kind, palette ID,
   preview scale, and reference/sheet settings.
-- The versioned brief and selected run/candidate/reference hash are stored in
+- The versioned brief and selected-reference hash are stored in
   `pixelpipe.asset/v2`.
 - Conversion snapshots brief text, the palette embedded in canonical pixels,
   exact operation settings in `recipe.json`, and brief/palette/recipe/selection/
@@ -53,16 +53,6 @@ asset; that asset must use selected-reference conversion for its first head.
 These project resources are intentionally mutable and Git-friendly. They are
 resolved inputs, not live links from old revisions. A conformance test changes
 all three after conversion and proves the verified revision snapshot is equal.
-
-## Failed/cancelled publication invariant
-
-M6 strengthens the M5 boundary: candidate-ready events are emitted only after
-the entire response candidate set passes path, decode, hash, and uniqueness
-validation. A synthetic response with a valid first candidate and invalid second
-candidate emits no candidate-ready event and stores a failed run with no
-candidates. A cancelled subprocess that wrote a candidate file and partial JSON
-also stores no candidate and leaves lifecycle, selection, head, and approval
-unchanged. Temporary workspace files are discarded.
 
 ## Deliberate exclusions
 

@@ -16,7 +16,7 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
         "project_root": store.root(),
         "available_recipes": recipes,
         "rules": [
-            "You are already the coding agent. Do not run 'pixelpipe agent run' or launch another agent.",
+            "Pixilate does not launch or manage agents. As the current coding agent, use its CLI directly.",
             "Do not install Python packages, rembg, image converters, or other dependencies. PixelPipe accepts PNG, JPEG, and WebP and performs deterministic background removal itself.",
             "Use your existing image-generation or drawing tool once to create one smooth local source image, then immediately run the import, convert, and inspect commands below.",
             "If the image has no alpha, keep one simple connected flat background and use '--background auto'. Do not remove that background yourself.",

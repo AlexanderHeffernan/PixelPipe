@@ -72,7 +72,7 @@ fn cli_guide_keeps_coding_agents_on_the_direct_local_workflow() {
         guide["rules"][0]
             .as_str()
             .expect("guide rule")
-            .contains("Do not run 'pixelpipe agent run'")
+            .contains("does not launch or manage agents")
     );
     assert!(
         guide["rules"]
