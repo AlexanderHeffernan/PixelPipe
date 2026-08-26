@@ -52,6 +52,36 @@ fn cli_init_create_and_inspect_share_json_contract() {
     assert_eq!(inspect["ok"], true);
     assert_eq!(inspect["asset"]["head"], "r000001");
     assert_eq!(inspect["asset"]["kind"], "sprite");
+
+    let preview_path = project.path().join("signal-flare-preview.png");
+    let preview = run(&[
+        "revision",
+        "preview",
+        "--root",
+        project.path().to_str().expect("UTF-8 project path"),
+        "--asset",
+        "signal-flare",
+        "--output",
+        preview_path.to_str().expect("UTF-8 preview path"),
+    ]);
+    assert_eq!(preview["preview"]["revision"], "r000001");
+    assert_eq!(preview["preview"]["native_width"], 4);
+    assert_eq!(preview["preview"]["native_height"], 4);
+    assert_eq!(preview["preview"]["scale"], 64);
+    assert_eq!(preview["preview"]["width"], 256);
+    assert_eq!(preview["preview"]["height"], 256);
+    assert_eq!(png_dimensions(&preview_path), (256, 256));
+    assert_eq!(
+        run(&[
+            "asset",
+            "inspect",
+            "--root",
+            project.path().to_str().expect("UTF-8 project path"),
+            "--asset",
+            "signal-flare",
+        ])["asset"]["head"],
+        "r000001"
+    );
 }
 
 #[test]
@@ -106,6 +136,13 @@ fn cli_guide_keeps_coding_agents_on_the_direct_local_workflow() {
             .expect("draw command")
             .contains("revision draw")
     );
+    assert!(
+        guide["capabilities"]["visual_preview"]
+            .as_str()
+            .expect("preview command")
+            .contains("revision preview")
+    );
+    assert_eq!(guide["steps"][6]["action"], "preview_result");
     assert!(
         guide["steps"][4]["instruction"]
             .as_str()
@@ -657,6 +694,12 @@ fn write_fixture_png(fixture_path: &Path, output_path: &Path) {
     let mut writer = encoder.write_header().expect("write PNG header");
     writer.write_image_data(&pixels).expect("write PNG data");
     writer.finish().expect("finish PNG fixture");
+}
+
+fn png_dimensions(path: &Path) -> (u32, u32) {
+    let decoder = png::Decoder::new(fs::File::open(path).expect("open PNG"));
+    let reader = decoder.read_info().expect("read PNG info");
+    (reader.info().width, reader.info().height)
 }
 
 fn run(arguments: &[&str]) -> Value {

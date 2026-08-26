@@ -300,7 +300,7 @@ The application defines versioned use cases such as:
 | Create/update brief | `pixelpipe asset init`, `asset set-brief` | asset form | same CLI |
 | Import reference | `pixelpipe reference import` | file picker | same CLI |
 | Convert/rebuild | `pixelpipe revision pixelize` | Convert workspace | same CLI |
-| Inspect/compare | `pixelpipe revision inspect`, `compare` | review workspace | same CLI |
+| Inspect/preview/compare | `pixelpipe revision inspect`, `preview`, `compare` | review workspace | same CLI |
 | Apply pixel operations | `pixelpipe revision draw`, `fill`, `remap` | editor tools | same CLI |
 | Review | `pixelpipe revision review` | review actions | same CLI |
 | Export | `pixelpipe asset export` | explicit export action | same CLI |

@@ -78,6 +78,21 @@ pub(crate) enum RevisionCommand {
         #[command(flatten)]
         options: PixelizeArgs,
     },
+    /// Render a committed revision as a vision-friendly nearest-neighbour PNG.
+    Preview {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        /// Revision to preview; defaults to the current head.
+        #[arg(long)]
+        revision: Option<String>,
+        /// Integer nearest-neighbour scale; defaults toward a 512px longest edge.
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..=64))]
+        scale: Option<u16>,
+        #[arg(long)]
+        output: PathBuf,
+    },
     Create {
         #[arg(long, default_value = ".")]
         root: PathBuf,

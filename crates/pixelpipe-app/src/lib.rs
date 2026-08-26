@@ -18,6 +18,7 @@ mod conversion_preview;
 mod export;
 mod onboarding;
 mod reference;
+mod revision_preview;
 
 pub use composition::{
     CommitComposition, CompositionPreview, PreviewComposition, commit_composition,
@@ -34,6 +35,7 @@ pub use reference::{
     ImportReference, UpdateAssetSource, UpdateAssetSourceResult, import_reference,
     update_asset_source,
 };
+pub use revision_preview::{PreviewRevision, RevisionPreview, preview_revision};
 
 pub use pixelpipe_core::{Palette, RasterInspection};
 pub use pixelpipe_project::{
@@ -1091,7 +1093,7 @@ fn component_rule(recipe: &Recipe) -> Option<ComponentRule> {
         })
 }
 
-fn resolve_revision(
+pub(crate) fn resolve_revision(
     store: &ProjectStore,
     asset: &str,
     revision: Option<String>,

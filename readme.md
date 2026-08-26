@@ -48,6 +48,22 @@ cargo run -p pixelpipe-cli -- revision create \
 
 Commands emit JSON.
 
+### Preview for visual iteration
+
+Coding agents should render and inspect the current head after every conversion
+or edit. The preview is read-only and uses exact nearest-neighbour scaling toward
+a 512-pixel longest edge, so vision tools can assess small sprites without
+blurring their pixel structure:
+
+```sh
+pixelpipe revision preview --root /path/to/game \
+  --asset signal-flare --output /tmp/signal-flare-preview.png
+```
+
+Pass `--revision r000001` to inspect an older revision or `--scale 1` for native
+resolution. The JSON response includes native/output dimensions, scale, revision,
+path, and SHA-256. Previewing never creates a revision or moves asset head.
+
 ## Try the M2 path
 
 `revision convert` accepts an RGBA PNG, a versioned palette JSON file, and a

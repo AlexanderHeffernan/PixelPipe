@@ -2,12 +2,13 @@ use std::{fs, path::PathBuf};
 
 use pixelpipe_app::{
     CompareRevisions, ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision,
-    DeleteAsset, ExportAsset, ImportReference, InitializeAsset, InspectRevision,
+    DeleteAsset, ExportAsset, ImportReference, InitializeAsset, InspectRevision, PreviewRevision,
     PreviewSelectedReference, RecordReview, RenameAsset, StoreProjectPalette, StoreProjectRecipe,
     UpdateAssetBrief, UpdateAssetSource, compare_revisions, convert_revision,
     convert_selected_reference, create_revision, delete_asset, export_asset, import_reference,
-    initialize_asset, inspect_revision, preview_selected_reference, record_review, rename_asset,
-    store_project_palette, store_project_recipe, update_asset_brief, update_asset_source,
+    initialize_asset, inspect_revision, preview_revision, preview_selected_reference,
+    record_review, rename_asset, store_project_palette, store_project_recipe, update_asset_brief,
+    update_asset_source,
 };
 use pixelpipe_core::{ConversionSettings, SheetSettings};
 use pixelpipe_project::ProjectStore;
@@ -141,6 +142,7 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
 fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match command {
         RevisionCommand::Pixelize { options } => pixelize_command(options),
+        command @ RevisionCommand::Preview { .. } => preview_command(command),
         RevisionCommand::Create {
             root,
             asset,
@@ -232,6 +234,40 @@ fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn s
             json!({ "ok": true, "review": record_review(RecordReview { start: root, asset, revision, actor, actor_kind: actor_kind.into(), decision: decision.into(), note })? }),
         ),
     }
+}
+
+fn preview_command(
+    command: RevisionCommand,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let RevisionCommand::Preview {
+        root,
+        asset,
+        revision,
+        scale,
+        output,
+    } = command
+    else {
+        unreachable!("preview_command only receives preview commands")
+    };
+    let preview = preview_revision(PreviewRevision {
+        start: root,
+        asset,
+        revision,
+        scale,
+    })?;
+    fs::write(&output, &preview.png)?;
+    Ok(json!({ "ok": true, "preview": {
+        "project_root": preview.project_root,
+        "asset": preview.asset,
+        "revision": preview.revision,
+        "native_width": preview.native_width,
+        "native_height": preview.native_height,
+        "scale": preview.scale,
+        "width": preview.width,
+        "height": preview.height,
+        "sha256": preview.sha256,
+        "output": output,
+    }}))
 }
 
 fn preview_selected_command(
