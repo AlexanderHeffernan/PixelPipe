@@ -9,6 +9,10 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib", "staticlib"]
 
+[[bin]]
+name = "Pixilate"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build.workspace = true
 

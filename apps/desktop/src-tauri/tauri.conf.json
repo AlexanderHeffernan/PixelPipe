@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "PixelPipe",
+  "productName": "Pixilate",
   "version": "0.1.0",
   "identifier": "dev.pixelpipe.workstation",
   "build": {
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "PixelPipe",
+        "title": "Pixilate",
         "width": 1440,
         "height": 900,
         "minWidth": 1040,
@@ -32,7 +32,13 @@
     }
   },
   "bundle": {
-    "active": false,
-    "icon": []
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

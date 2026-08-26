@@ -1,7 +1,10 @@
 # Desktop icon provenance
 
-`icon.png` was created for PixelPipe on 2026-08-23 from solid rectangles and
-project colors using ImageMagick. It contains no font, reference image, generated
-art, Last Light, Painter, Shipyard, or third-party material.
+The complete Pixilate macOS icon was created and provided by Alexander
+Heffernan on 2026-08-27 as `icon-source.png`. The source already contains its
+background, shape, spacing, and dark appearance.
 
-Alexander Heffernan dedicates this icon to the public domain under CC0-1.0.
+The complete icon is scaled to 800×800 and centered on a transparent 1024×1024
+canvas so its optical size matches neighboring macOS Dock icons. The desktop
+PNG, ICNS, and ICO variants were generated from that canvas with the Tauri icon
+tool. No additional background, material, or light variant is applied.
