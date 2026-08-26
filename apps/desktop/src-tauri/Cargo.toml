@@ -15,6 +15,7 @@ tauri-build.workspace = true
 [dependencies]
 base64.workspace = true
 pixelpipe-app = { path = "../../../crates/pixelpipe-app" }
+portable-pty.workspace = true
 serde.workspace = true
 tauri.workspace = true
 tauri-plugin-dialog.workspace = true

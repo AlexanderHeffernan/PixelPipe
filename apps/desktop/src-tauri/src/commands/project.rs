@@ -1,22 +1,22 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use pixelpipe_app::{
-    BrowseProject, ConvertSelectedReference, ExportAsset, ImportReference, InitializeAsset,
-    OpenProject, PreviewSelectedReference, ProjectBrowser, RasterInspection, RevisionResult,
+    BrowseProject, CommitComposition, ConvertSelectedReference, DeleteAsset, ExportAsset,
+    ExportAssetFile, ImportReference, InitializeAsset, OpenProject, PreviewComposition,
+    PreviewSelectedReference, ProjectBrowser, RasterInspection, RenameAsset, RevisionResult,
     StoreProjectPalette, StoreProjectRecipe, UpdateAssetBrief,
 };
 use serde::Serialize;
 
-use super::{CommandResult, command_error};
+use super::{CommandResult, blocking, command_error};
 
 #[tauri::command]
-pub(crate) fn browse_project(request: BrowseProject) -> CommandResult<ProjectBrowser> {
-    let BrowseProject { start } = request;
-    pixelpipe_app::browse_project(&BrowseProject { start }).map_err(|error| command_error(&error))
+pub(crate) async fn browse_project(request: BrowseProject) -> CommandResult<ProjectBrowser> {
+    blocking(move || pixelpipe_app::browse_project(&request)).await
 }
 
 #[tauri::command]
-pub(crate) fn open_project(request: OpenProject) -> CommandResult<ProjectBrowser> {
-    pixelpipe_app::open_project(request).map_err(|error| command_error(&error))
+pub(crate) async fn open_project(request: OpenProject) -> CommandResult<ProjectBrowser> {
+    blocking(move || pixelpipe_app::open_project(request)).await
 }
 
 #[tauri::command]
@@ -27,6 +27,11 @@ pub(crate) fn initialize_asset(
 }
 
 #[tauri::command]
+pub(crate) fn delete_asset(request: DeleteAsset) -> CommandResult<()> {
+    pixelpipe_app::delete_asset(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
 pub(crate) fn update_asset_brief(
     request: UpdateAssetBrief,
 ) -> CommandResult<pixelpipe_app::AssetManifest> {
@@ -34,22 +39,36 @@ pub(crate) fn update_asset_brief(
 }
 
 #[tauri::command]
-pub(crate) fn import_reference(
+pub(crate) fn rename_asset(request: RenameAsset) -> CommandResult<pixelpipe_app::AssetManifest> {
+    pixelpipe_app::rename_asset(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+pub(crate) async fn import_reference(
     request: ImportReference,
 ) -> CommandResult<pixelpipe_app::ReferenceSelection> {
-    pixelpipe_app::import_reference(request).map_err(|error| command_error(&error))
+    blocking(move || pixelpipe_app::import_reference(request)).await
 }
 
 #[tauri::command]
-pub(crate) fn export_asset(request: ExportAsset) -> CommandResult<pixelpipe_app::ExportResult> {
-    pixelpipe_app::export_asset(request).map_err(|error| command_error(&error))
+pub(crate) async fn export_asset(
+    request: ExportAsset,
+) -> CommandResult<pixelpipe_app::ExportResult> {
+    blocking(move || pixelpipe_app::export_asset(request)).await
 }
 
 #[tauri::command]
-pub(crate) fn convert_selected_reference(
+pub(crate) async fn export_asset_file(
+    request: ExportAssetFile,
+) -> CommandResult<pixelpipe_app::ExportFileResult> {
+    blocking(move || pixelpipe_app::export_asset_file(request)).await
+}
+
+#[tauri::command]
+pub(crate) async fn convert_selected_reference(
     request: ConvertSelectedReference,
 ) -> CommandResult<RevisionResult> {
-    pixelpipe_app::convert_selected_reference(request).map_err(|error| command_error(&error))
+    blocking(move || pixelpipe_app::convert_selected_reference(request)).await
 }
 
 #[derive(Debug, Serialize)]
@@ -57,19 +76,47 @@ pub(crate) struct ConversionPreviewResponse {
     inspection: RasterInspection,
     palette_name: String,
     native_png_base64: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    background_removed: Option<bool>,
 }
 
 #[tauri::command]
-pub(crate) fn preview_selected_reference(
+pub(crate) async fn preview_selected_reference(
     request: PreviewSelectedReference,
 ) -> CommandResult<ConversionPreviewResponse> {
-    let preview = pixelpipe_app::preview_selected_reference(request)
-        .map_err(|error| command_error(&error))?;
-    Ok(ConversionPreviewResponse {
-        inspection: preview.inspection,
-        palette_name: preview.palette_name,
-        native_png_base64: STANDARD.encode(preview.native_png),
+    blocking(move || {
+        let preview = pixelpipe_app::preview_selected_reference(request)?;
+        Ok(ConversionPreviewResponse {
+            inspection: preview.inspection,
+            palette_name: preview.palette_name,
+            native_png_base64: STANDARD.encode(preview.native_png),
+            background_removed: Some(preview.background_removed),
+        })
     })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn preview_composition(
+    request: PreviewComposition,
+) -> CommandResult<ConversionPreviewResponse> {
+    blocking(move || {
+        let preview = pixelpipe_app::preview_composition(request)?;
+        Ok(ConversionPreviewResponse {
+            inspection: preview.inspection,
+            palette_name: "Current sprite".to_owned(),
+            native_png_base64: STANDARD.encode(preview.native_png),
+            background_removed: None,
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn commit_composition(
+    request: CommitComposition,
+) -> CommandResult<RevisionResult> {
+    blocking(move || pixelpipe_app::commit_composition(request)).await
 }
 
 #[tauri::command]

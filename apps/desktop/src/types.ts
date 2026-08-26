@@ -13,12 +13,21 @@ export interface ProjectManifest {
 export interface AssetManifest {
   schema: string;
   id: string;
+  display_name?: string;
   kind: AssetKind;
   state: "draft" | "awaiting_reference" | "selected_reference" | "revisioned";
   brief: { schema: string; text: string };
   selected_reference?: ReferenceSelection;
   head?: string;
   approved?: string;
+  style?: AssetStyle;
+}
+
+export interface AssetStyle {
+  recipe: string;
+  palette?: string;
+  color_count?: number;
+  settings: ConversionSettings;
 }
 
 export interface RevisionManifest {
@@ -40,6 +49,17 @@ export interface ProjectBrowser {
   project: ProjectManifest;
   assets: AssetBrowser[];
   recipes: ConversionRecipeDocument[];
+  palettes: ProjectPalette[];
+}
+
+export interface ProjectPalette {
+  id: string;
+  palette: {
+    schema: string;
+    name: string;
+    transparent_index: number;
+    colors: Rgba[];
+  };
 }
 
 export interface ConversionRecipeDocument {
@@ -62,14 +82,35 @@ export type BackdropPolicy =
       alpha_threshold: number;
     };
 
+export type ColorTreatment = "original" | "warm" | "cool" | "vivid" | "muted";
+export interface ColorAdjustments {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  warmth: number;
+}
+
 export interface ConversionSettings {
   width: number;
   height: number;
+  color_treatment?: ColorTreatment;
+  color_adjustments?: ColorAdjustments;
   margin: number;
+  subject_scale_percent: number;
+  offset_x: number;
+  offset_y: number;
   coverage_percent: number;
   backdrop: BackdropPolicy;
-  registration: "center" | "bottom";
+  registration: "top" | "center" | "bottom";
   components: { min: number; max: number };
+}
+
+export interface CanvasSettings {
+  width: number;
+  height: number;
+  scale_percent: number;
+  offset_x: number;
+  offset_y: number;
 }
 
 export interface SheetSettings {
@@ -129,6 +170,12 @@ export interface RevisionViewMetadata {
   revision: string;
   parent?: string;
   inspection: RasterInspection;
+  palette: {
+    schema: string;
+    name: string;
+    transparent_index: number;
+    colors: Rgba[];
+  };
   palette_name: string;
   transparent_index: number;
   validation: {
@@ -150,6 +197,7 @@ export interface ConversionPreviewResponse {
   inspection: RasterInspection;
   palette_name: string;
   native_png_base64: string;
+  background_removed?: boolean;
 }
 
 export interface PixelDifference {
@@ -203,6 +251,11 @@ export interface PaletteDraft {
   transparentIndex: number;
   colors: Rgba[];
   indexMap: number[];
+}
+
+export interface PaletteColorOverride {
+  index: number;
+  rgba: Rgba;
 }
 
 export type AgentOperation =
@@ -297,4 +350,13 @@ export interface ExportResult {
   revision: string;
   png: string;
   metadata: string;
+}
+
+export interface ExportFileResult {
+  asset: string;
+  revision: string;
+  file: string;
+  format: "png" | "webp";
+  width: number;
+  height: number;
 }

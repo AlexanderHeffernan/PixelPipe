@@ -8,6 +8,9 @@ export const settings: ConversionSettings = {
   width: 32,
   height: 32,
   margin: 1,
+  subject_scale_percent: 100,
+  offset_x: 0,
+  offset_y: 0,
   coverage_percent: 35,
   backdrop: {
     type: "border_connected",
@@ -35,6 +38,20 @@ export const project: ProjectBrowser = {
     name: "Fixture Game",
     preview_scale: 8,
   },
+  palettes: [
+    {
+      id: "starter",
+      palette: {
+        schema: "pixelpipe.palette/v1",
+        name: "PixelPipe Starter",
+        transparent_index: 0,
+        colors: [
+          [0, 0, 0, 0],
+          [30, 24, 37, 255],
+        ],
+      },
+    },
+  ],
   assets: [
     {
       asset: {
@@ -75,6 +92,15 @@ export const revisionView: RevisionViewResponse = {
       palette: [{ index: 1, rgba: [38, 44, 62, 255], count: 100 }],
       text_rows: [],
     },
+    palette: {
+      schema: "pixelpipe.palette/v1",
+      name: "starter",
+      transparent_index: 0,
+      colors: [
+        [0, 0, 0, 0],
+        [38, 44, 62, 255],
+      ],
+    },
     palette_name: "starter",
     transparent_index: 0,
     validation: {
@@ -92,4 +118,5 @@ export const preview = {
   inspection: revisionView.metadata.inspection,
   palette_name: "starter",
   native_png_base64: "preview-native",
+  background_removed: true,
 };

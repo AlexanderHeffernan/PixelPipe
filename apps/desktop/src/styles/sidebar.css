@@ -1,29 +1,39 @@
 .project-sidebar {
+  position: relative;
   display: flex;
-  flex: 0 0 256px;
-  width: 256px;
-  flex-direction: column;
+  flex: 0 0 var(--sidebar-width);
+  width: var(--sidebar-width);
   min-height: 0;
   overflow: hidden;
   border-right: 1px solid var(--line);
   background: var(--material);
-  backdrop-filter: blur(28px) saturate(120%);
+  box-shadow: 12px 0 34px rgba(3, 0, 8, 0.15);
   transition:
     flex-basis 220ms cubic-bezier(0.22, 1, 0.36, 1),
     width 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 160ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    border-color 180ms ease,
+    box-shadow 180ms ease;
 }
 .project-sidebar.is-collapsed {
   flex-basis: 0;
   width: 0;
   border-right-color: transparent;
-  opacity: 0;
-  transform: translateX(-14px);
+  box-shadow: none;
   pointer-events: none;
 }
+.project-sidebar.is-resizing {
+  transition: none;
+}
+.project-sidebar__body {
+  display: flex;
+  flex: 0 0 var(--sidebar-width);
+  width: var(--sidebar-width);
+  min-height: 0;
+  padding-top: 38px;
+  flex-direction: column;
+}
 .sidebar-heading {
-  padding: 28px 25px 12px;
+  padding: 25px 23px 11px;
   color: var(--muted);
   font-size: 10px;
   font-weight: 700;
@@ -32,47 +42,113 @@
 }
 .asset-list {
   display: grid;
-  gap: 2px;
-  padding: 0 14px;
+  gap: 6px;
+  padding: 0 10px;
   overflow-y: auto;
 }
-.asset-list > button {
+.asset-row {
+  position: relative;
+}
+.asset-select {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
-  gap: 11px;
+  gap: 9px;
   width: 100%;
-  padding: 7px 9px;
+  padding: 4px 61px 4px 6px;
   border: 0;
-  border-radius: 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   background: transparent;
   text-align: left;
 }
-.asset-list > button:hover {
-  background: rgba(255, 255, 255, 0.055);
+.asset-select:hover {
+  background: rgba(255, 241, 235, 0.05);
 }
-.asset-list > button[aria-current="page"] {
+.asset-row[aria-current="page"] .asset-select {
   background: var(--accent-soft);
+  border-color: rgba(251, 119, 31, 0.16);
+}
+.asset-delete {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: grid;
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 6px;
+  color: transparent;
+  background: transparent;
+  pointer-events: none;
+}
+.asset-rename {
+  position: absolute;
+  top: 50%;
+  right: 32px;
+  display: grid;
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 6px;
+  color: transparent;
+  background: transparent;
+  pointer-events: none;
+}
+.asset-rename svg {
+  width: 14px;
+  height: 14px;
+}
+.asset-delete svg {
+  width: 15px;
+  height: 15px;
+}
+.asset-row:hover .asset-delete,
+.asset-delete:focus-visible,
+.asset-row:hover .asset-rename,
+.asset-rename:focus-visible,
+.asset-row.is-renaming .asset-rename {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  pointer-events: auto;
+}
+.asset-row:hover .asset-delete,
+.asset-delete:focus-visible {
+  color: #ffaaa4;
+  background: rgba(120, 23, 31, 0.35);
+}
+.asset-rename-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 27px;
+  padding: 3px 6px;
+  font-size: 11px;
 }
 .asset-thumbnail {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
+  width: 42px;
+  height: 42px;
   overflow: hidden;
   border-radius: 6px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  background: rgba(10, 7, 13, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(255, 238, 231, 0.07);
 }
 .asset-thumbnail img {
-  max-width: 38px;
-  max-height: 38px;
+  max-width: 35px;
+  max-height: 35px;
   image-rendering: pixelated;
 }
 .asset-thumbnail svg {
   width: 21px;
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.25);
-  stroke-width: 1.2;
+  color: rgba(255, 255, 255, 0.25);
 }
 .asset-name {
   overflow: hidden;
@@ -106,7 +182,39 @@
 .create-asset-button:hover {
   color: white;
 }
-.create-asset-button span {
-  font-size: 17px;
-  font-weight: 300;
+.create-asset-button svg {
+  width: 16px;
+  height: 16px;
+}
+.sidebar-resize-handle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-resize-handle--right {
+  right: 0;
+}
+.sidebar-resize-handle--left {
+  left: 0;
+}
+.is-collapsed .sidebar-resize-handle {
+  display: none;
+}
+.sidebar-resize-handle::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  content: "";
+  background: transparent;
+  transition: background 120ms ease;
+}
+.sidebar-resize-handle:hover::after,
+.is-resizing .sidebar-resize-handle::after {
+  background: var(--resize-indicator);
 }

@@ -1,4 +1,4 @@
-import { confirm, open } from "@tauri-apps/plugin-dialog";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 
 export async function chooseProjectFolder(): Promise<string | undefined> {
   const selected = await open({
@@ -9,20 +9,46 @@ export async function chooseProjectFolder(): Promise<string | undefined> {
   return typeof selected === "string" ? selected : undefined;
 }
 
-export async function chooseReferenceImage(): Promise<string | undefined> {
+export async function chooseReferenceImages(): Promise<string[]> {
   const selected = await open({
-    multiple: false,
-    title: "Choose a smooth reference image",
-    filters: [{ name: "PNG image", extensions: ["png"] }],
+    multiple: true,
+    title: "Import artwork",
+    filters: [
+      {
+        name: "Images",
+        extensions: [
+          "png",
+          "jpg",
+          "jpeg",
+          "webp",
+          "gif",
+          "bmp",
+          "tif",
+          "tiff",
+          "ico",
+          "pnm",
+        ],
+      },
+    ],
   });
-  return typeof selected === "string" ? selected : undefined;
+  if (Array.isArray(selected)) return selected;
+  return typeof selected === "string" ? [selected] : [];
 }
 
-export async function chooseExportFolder(): Promise<string | undefined> {
-  const selected = await open({
-    directory: true,
-    multiple: false,
-    title: "Export game-ready sprite",
+export async function chooseReferenceImage(): Promise<string | undefined> {
+  return (await chooseReferenceImages())[0];
+}
+
+export async function chooseExportFile(
+  asset: string,
+): Promise<string | undefined> {
+  const selected = await save({
+    title: "Export sprite at native resolution",
+    defaultPath: `${asset}.png`,
+    filters: [
+      { name: "PNG image", extensions: ["png"] },
+      { name: "Lossless WebP image", extensions: ["webp"] },
+    ],
   });
   return typeof selected === "string" ? selected : undefined;
 }
@@ -38,13 +64,13 @@ export const confirmAgentConnector = (name: string) =>
     },
   );
 
-export const confirmExport = (asset: string) =>
+export const confirmDeleteAsset = (asset: string) =>
   confirm(
-    `Export ${asset}.png and ${asset}.json? Existing files with those names will be replaced.`,
+    `Delete “${asset}” and all of its revision history? This cannot be undone.`,
     {
-      title: "Export Sprite",
-      kind: "info",
-      okLabel: "Export",
+      title: "Delete Asset",
+      kind: "warning",
+      okLabel: "Delete",
       cancelLabel: "Cancel",
     },
   );

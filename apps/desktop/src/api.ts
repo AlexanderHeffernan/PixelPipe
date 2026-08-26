@@ -4,9 +4,11 @@ import type {
   AgentConnector,
   AssetKind,
   AssetManifest,
+  CanvasSettings,
   AgentRunRecord,
   ConversionPreviewResponse,
   ConversionSettings,
+  PaletteColorOverride,
   PaletteDraft,
   PixelEdit,
   ProjectBrowser,
@@ -18,6 +20,7 @@ import type {
   ReviewRecord,
   ReferenceSelection,
   ExportResult,
+  ExportFileResult,
 } from "./types";
 
 export const pngDataUrl = (base64: string): string =>
@@ -39,9 +42,21 @@ export const initializeAsset = (
     request: { start, asset, kind, brief },
   });
 
+export const deleteAsset = (start: string, asset: string) =>
+  invoke<void>("delete_asset", { request: { start, asset } });
+
 export const updateAssetBrief = (start: string, asset: string, brief: string) =>
   invoke<AssetManifest>("update_asset_brief", {
     request: { start, asset, brief },
+  });
+
+export const renameAsset = (
+  start: string,
+  asset: string,
+  displayName: string,
+) =>
+  invoke<AssetManifest>("rename_asset", {
+    request: { start, asset, display_name: displayName },
   });
 
 export const importReference = (start: string, asset: string, file: string) =>
@@ -65,26 +80,105 @@ export const exportAsset = (
     request: { start, asset, destination, overwrite },
   });
 
+export const exportAssetFile = (
+  start: string,
+  asset: string,
+  destination: string,
+  overwrite: boolean,
+) =>
+  invoke<ExportFileResult>("export_asset_file", {
+    request: { start, asset, destination, overwrite },
+  });
+
 export const convertSelectedReference = (
   start: string,
   asset: string,
   recipe: string,
+  palette: string | undefined,
+  colorCount: number | undefined,
+  paletteOverrides: PaletteColorOverride[],
   settings: ConversionSettings | undefined,
+  autoBackground: boolean,
   actor: string,
 ) =>
   invoke<RevisionResult>("convert_selected_reference", {
-    request: { start, asset, recipe, settings: settings ?? null, actor },
+    request: {
+      start,
+      asset,
+      recipe,
+      palette: palette ?? null,
+      color_count: colorCount ?? null,
+      palette_overrides: paletteOverrides,
+      settings: settings ?? null,
+      auto_background: autoBackground,
+      actor,
+    },
   });
 
 export const previewSelectedReference = (
   start: string,
   asset: string,
   recipe: string,
+  palette: string | undefined,
+  colorCount: number | undefined,
+  paletteOverrides: PaletteColorOverride[],
   settings: ConversionSettings | undefined,
+  autoBackground: boolean,
 ) =>
   invoke<ConversionPreviewResponse>("preview_selected_reference", {
-    request: { start, asset, recipe, settings: settings ?? null },
+    request: {
+      start,
+      asset,
+      recipe,
+      palette: palette ?? null,
+      color_count: colorCount ?? null,
+      palette_overrides: paletteOverrides,
+      settings: settings ?? null,
+      auto_background: autoBackground,
+    },
   });
+
+export const previewComposition = (
+  start: string,
+  asset: string,
+  parent: string,
+  settings: CanvasSettings,
+) =>
+  invoke<ConversionPreviewResponse>("preview_composition", {
+    request: { start, asset, parent, settings },
+  });
+
+export const commitComposition = (
+  start: string,
+  asset: string,
+  parent: string,
+  settings: CanvasSettings,
+  actor: string,
+) =>
+  invoke<RevisionResult>("commit_composition", {
+    request: { start, asset, parent, settings, actor },
+  });
+
+export const recentProject = () => invoke<string | null>("recent_project");
+
+export const rememberProject = (path: string) =>
+  invoke<void>("remember_project", { path });
+
+export const startTerminal = (
+  session: string,
+  cwd: string,
+  cols: number,
+  rows: number,
+) => invoke<void>("start_terminal", { session, cwd, cols, rows });
+
+export const writeTerminal = (session: string, data: string) =>
+  invoke<void>("write_terminal", { session, data });
+
+export const resizeTerminal = (session: string, cols: number, rows: number) =>
+  invoke<void>("resize_terminal", { session, cols, rows });
+
+export const closeTerminal = (session: string) =>
+  invoke<void>("close_terminal", { session });
 
 export const storeProjectPalette = (start: string, id: string, file: string) =>
   invoke<unknown>("store_project_palette", { request: { start, id, file } });
@@ -145,6 +239,24 @@ export const patchRevision = (
       preview_scale: null,
       actor,
     },
+  });
+
+export const fillRevision = (
+  start: string,
+  asset: string,
+  parent: string,
+  x: number,
+  y: number,
+  index: number,
+  actor: string,
+) =>
+  invoke<RevisionResult>("fill_revision", {
+    request: { start, asset, parent, x, y, index, actor },
+  });
+
+export const setAssetHead = (start: string, asset: string, revision: string) =>
+  invoke<AssetManifest>("set_asset_head", {
+    request: { start, asset, revision },
   });
 
 export const remapRevision = (

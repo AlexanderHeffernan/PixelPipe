@@ -1,11 +1,12 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use pixelpipe_app::{
-    CompareRevisions, InspectRevision, PatchRevisionDocument, RecordReview, RemapRevisionDocument,
-    ReviewRecord, RevisionComparisonMetadata, RevisionResult, RevisionViewMetadata,
+    CompareRevisions, FillRevisionDocument, InspectRevision, PatchRevisionDocument, RecordReview,
+    RemapRevisionDocument, ReviewRecord, RevisionComparisonMetadata, RevisionResult,
+    RevisionViewMetadata, SetAssetHead,
 };
 use serde::Serialize;
 
-use super::{CommandResult, command_error};
+use super::{CommandResult, blocking, command_error};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct RevisionViewResponse {
@@ -22,13 +23,16 @@ pub(crate) struct RevisionComparisonResponse {
 }
 
 #[tauri::command]
-pub(crate) fn load_revision(request: InspectRevision) -> CommandResult<RevisionViewResponse> {
-    let view = pixelpipe_app::load_revision_view(request).map_err(|error| command_error(&error))?;
-    Ok(RevisionViewResponse {
-        metadata: view.metadata,
-        native_png_base64: STANDARD.encode(view.native_png),
-        preview_png_base64: STANDARD.encode(view.preview_png),
+pub(crate) async fn load_revision(request: InspectRevision) -> CommandResult<RevisionViewResponse> {
+    blocking(move || {
+        let view = pixelpipe_app::load_revision_view(request)?;
+        Ok(RevisionViewResponse {
+            metadata: view.metadata,
+            native_png_base64: STANDARD.encode(view.native_png),
+            preview_png_base64: STANDARD.encode(view.preview_png),
+        })
     })
+    .await
 }
 
 #[tauri::command]
@@ -50,11 +54,25 @@ pub(crate) fn record_review(request: RecordReview) -> CommandResult<ReviewRecord
 }
 
 #[tauri::command]
-pub(crate) fn patch_revision(request: PatchRevisionDocument) -> CommandResult<RevisionResult> {
-    pixelpipe_app::patch_revision_document(request).map_err(|error| command_error(&error))
+pub(crate) async fn patch_revision(
+    request: PatchRevisionDocument,
+) -> CommandResult<RevisionResult> {
+    blocking(move || pixelpipe_app::patch_revision_document(request)).await
 }
 
 #[tauri::command]
-pub(crate) fn remap_revision(request: RemapRevisionDocument) -> CommandResult<RevisionResult> {
-    pixelpipe_app::remap_revision_document(request).map_err(|error| command_error(&error))
+pub(crate) async fn fill_revision(request: FillRevisionDocument) -> CommandResult<RevisionResult> {
+    blocking(move || pixelpipe_app::fill_revision_document(request)).await
+}
+
+#[tauri::command]
+pub(crate) fn set_asset_head(request: SetAssetHead) -> CommandResult<pixelpipe_app::AssetManifest> {
+    pixelpipe_app::set_asset_head(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+pub(crate) async fn remap_revision(
+    request: RemapRevisionDocument,
+) -> CommandResult<RevisionResult> {
+    blocking(move || pixelpipe_app::remap_revision_document(request)).await
 }

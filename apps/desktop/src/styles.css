@@ -2,5 +2,5 @@
 @import "./styles/sidebar.css";
 @import "./styles/workspace.css";
 @import "./styles/inspector.css";
-@import "./styles/conversion-controls.css";
-@import "./styles/dialog.css";
+@import "@xterm/xterm/css/xterm.css";
+@import "./styles/terminal.css";
