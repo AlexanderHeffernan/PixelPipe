@@ -6,6 +6,8 @@ use pixelpipe_project::{
     AssetKind, ReviewActorKind as ProjectReviewActorKind, ReviewDecision as ProjectReviewDecision,
 };
 
+use crate::pixelize::PixelizeArgs;
+
 #[derive(Debug, Parser)]
 #[command(
     name = "pixelpipe",
@@ -19,6 +21,11 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
+    /// Print the reliable workflow for a coding agent operating `PixelPipe`.
+    Guide {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+    },
     Init {
         #[arg(long, default_value = ".")]
         root: PathBuf,
@@ -71,6 +78,11 @@ pub(crate) enum ProjectCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum RevisionCommand {
+    /// Pixelize the selected source with direct creative controls.
+    Pixelize {
+        #[command(flatten)]
+        options: PixelizeArgs,
+    },
     Create {
         #[arg(long, default_value = ".")]
         root: PathBuf,
@@ -117,7 +129,13 @@ pub(crate) enum RevisionCommand {
         #[arg(long)]
         recipe: String,
         #[arg(long)]
+        palette: Option<String>,
+        #[arg(long, value_parser = clap::value_parser!(u8).range(2..=64))]
+        colors: Option<u8>,
+        #[arg(long)]
         settings: Option<PathBuf>,
+        #[arg(long)]
+        auto_background: bool,
         #[arg(long, default_value = "cli")]
         actor: String,
     },
@@ -129,7 +147,13 @@ pub(crate) enum RevisionCommand {
         #[arg(long)]
         recipe: String,
         #[arg(long)]
+        palette: Option<String>,
+        #[arg(long, value_parser = clap::value_parser!(u8).range(2..=64))]
+        colors: Option<u8>,
+        #[arg(long)]
         settings: Option<PathBuf>,
+        #[arg(long)]
+        auto_background: bool,
         #[arg(long)]
         native: PathBuf,
     },
@@ -149,6 +173,50 @@ pub(crate) enum RevisionCommand {
         #[arg(long, default_value = "cli")]
         actor: String,
     },
+    Fill {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        x: u32,
+        #[arg(long)]
+        y: u32,
+        #[arg(long)]
+        index: u8,
+        #[arg(long, default_value = "cli")]
+        actor: String,
+    },
+    Compose {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        width: u32,
+        #[arg(long)]
+        height: u32,
+        #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u16).range(25..=400))]
+        scale: u16,
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        offset_x: i16,
+        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
+        offset_y: i16,
+        #[arg(long, default_value = "cli")]
+        actor: String,
+    },
+    SetHead {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        revision: String,
+    },
     Remap {
         #[arg(long, default_value = ".")]
         root: PathBuf,
@@ -163,6 +231,36 @@ pub(crate) enum RevisionCommand {
         #[arg(long)]
         preview_scale: Option<u16>,
         #[arg(long, default_value = "cli")]
+        actor: String,
+    },
+    /// Replace palette colours without regenerating the source image.
+    Recolor {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        /// Revision to edit; defaults to the current head.
+        #[arg(long)]
+        parent: Option<String>,
+        /// Palette replacement in INDEX=#RRGGBB form. Repeat for multiple colours.
+        #[arg(long = "set", required = true)]
+        replacements: Vec<String>,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    /// Draw one or more indexed pixels as a single immutable revision.
+    Draw {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        /// Revision to edit; defaults to the current head.
+        #[arg(long)]
+        parent: Option<String>,
+        /// Pixel edit in `X,Y=PALETTE_INDEX` form. Repeat to draw a stroke.
+        #[arg(long = "pixel", required = true)]
+        pixels: Vec<String>,
+        #[arg(long, default_value = "agent")]
         actor: String,
     },
     Inspect {
@@ -209,6 +307,11 @@ pub(crate) enum RevisionCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum AssetCommand {
+    /// List project assets and their current state.
+    List {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+    },
     Init {
         #[arg(long, default_value = ".")]
         root: PathBuf,
@@ -226,6 +329,41 @@ pub(crate) enum AssetCommand {
         asset: String,
         #[arg(long)]
         brief: String,
+    },
+    Delete {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+    },
+    Rename {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        name: String,
+    },
+    /// Replace the source and reconvert with the asset's current style.
+    UpdateSource {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Export {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        destination: PathBuf,
+        #[arg(long)]
+        overwrite: bool,
     },
     Inspect {
         #[arg(long, default_value = ".")]

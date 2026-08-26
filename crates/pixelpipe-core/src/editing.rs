@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -91,6 +91,68 @@ pub fn apply_pixel_patch(
         validate_structure(&result, rule)?;
     }
     Ok(result)
+}
+
+/// Resolves a four-connected flood fill into one deterministic atomic patch.
+///
+/// # Errors
+///
+/// Returns a [`CoreError`] when the raster, coordinate, or palette index is invalid.
+pub fn flood_fill_patch(
+    raster: &IndexedRaster,
+    x: u32,
+    y: u32,
+    index: u8,
+) -> Result<PixelPatchSet, CoreError> {
+    raster.validate()?;
+    if x >= raster.width || y >= raster.height {
+        return Err(CoreError::PatchOutOfBounds { x, y });
+    }
+    if usize::from(index) >= raster.palette.colors.len() {
+        return Err(CoreError::InvalidPatchIndex { index });
+    }
+    let start = pixel_offset(raster.width, x, y)?;
+    let replaced = raster.pixels[start];
+    if replaced == index {
+        return Ok(PixelPatchSet {
+            schema: PATCH_SCHEMA.to_owned(),
+            edits: Vec::new(),
+            structure: None,
+        });
+    }
+
+    let mut visited = vec![false; raster.pixels.len()];
+    let mut queue = VecDeque::from([(x, y)]);
+    let mut edits = Vec::new();
+    while let Some((current_x, current_y)) = queue.pop_front() {
+        let offset = pixel_offset(raster.width, current_x, current_y)?;
+        if visited[offset] || raster.pixels[offset] != replaced {
+            continue;
+        }
+        visited[offset] = true;
+        edits.push(PixelPatch {
+            x: current_x,
+            y: current_y,
+            index,
+        });
+        if current_x > 0 {
+            queue.push_back((current_x - 1, current_y));
+        }
+        if current_x + 1 < raster.width {
+            queue.push_back((current_x + 1, current_y));
+        }
+        if current_y > 0 {
+            queue.push_back((current_x, current_y - 1));
+        }
+        if current_y + 1 < raster.height {
+            queue.push_back((current_x, current_y + 1));
+        }
+    }
+    Ok(PixelPatchSet {
+        schema: PATCH_SCHEMA.to_owned(),
+        edits,
+        structure: None,
+    })
 }
 
 /// Applies an explicit old-index to new-index map and replaces the palette.
@@ -272,5 +334,23 @@ mod tests {
             apply_pixel_patch(&sheet, &raster_rule),
             Err(CoreError::ComponentCount { actual: 2, .. })
         ));
+    }
+
+    #[test]
+    fn flood_fill_resolves_one_connected_region_in_stable_order() {
+        let original = raster();
+        let patch = flood_fill_patch(&original, 0, 1, 2).expect("fill");
+        assert_eq!(
+            patch.edits,
+            vec![PixelPatch {
+                x: 0,
+                y: 1,
+                index: 2
+            }]
+        );
+        assert_eq!(
+            apply_pixel_patch(&original, &patch).unwrap().pixels,
+            vec![0, 1, 2, 2]
+        );
     }
 }

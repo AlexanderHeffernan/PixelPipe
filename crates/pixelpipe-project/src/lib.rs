@@ -62,6 +62,8 @@ pub struct ExportMapping {
 pub struct AssetManifest {
     pub schema: String,
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     pub kind: AssetKind,
     #[serde(default)]
     pub state: AssetState,
@@ -73,6 +75,19 @@ pub struct AssetManifest {
     pub head: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approved: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<AssetStyle>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssetStyle {
+    pub recipe: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palette: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_count: Option<u8>,
+    pub settings: ConversionSettings,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +178,7 @@ pub struct RevisionFiles {
     pub actor: String,
     pub input_hashes: BTreeMap<String, String>,
     pub output_hashes: BTreeMap<String, String>,
+    pub style: Option<AssetStyle>,
 }
 
 struct PreparedRevision {
@@ -585,6 +601,7 @@ impl ProjectStore {
         let asset = AssetManifest {
             schema: ASSET_SCHEMA.to_owned(),
             id: id.to_owned(),
+            display_name: None,
             kind,
             state: state_for(brief, None, None),
             brief: AssetBrief {
@@ -594,6 +611,7 @@ impl ProjectStore {
             selected_reference: None,
             head: None,
             approved: None,
+            style: None,
         };
         write_file(
             &staging.join("asset.toml"),
@@ -601,6 +619,25 @@ impl ProjectStore {
         )?;
         fs::rename(&staging, &path).map_err(|source| io_at(&path, source))?;
         Ok(asset)
+    }
+
+    /// Permanently removes one complete project asset and its immutable history.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the asset ID is invalid, missing, or cannot be removed.
+    pub fn delete_asset(&self, id: &str) -> Result<(), ProjectError> {
+        validate_asset_id(id)?;
+        let _lock = self.lock()?;
+        let path = self.asset_path(id);
+        if !path.join("asset.toml").is_file() {
+            return Err(ProjectError::AssetNotReady {
+                asset: id.to_owned(),
+                operation: "delete",
+                reason: "the asset does not exist",
+            });
+        }
+        fs::remove_dir_all(&path).map_err(|source| io_at(&path, source))
     }
 
     /// Replaces the project-owned brief without changing a revision or head.
@@ -628,6 +665,35 @@ impl ProjectStore {
             asset.selected_reference.as_ref(),
             asset.head.as_deref(),
         );
+        atomic_write(
+            &self.asset_path(id).join("asset.toml"),
+            toml::to_string_pretty(&asset)?.as_bytes(),
+        )?;
+        Ok(asset)
+    }
+
+    /// Changes the project-owned display name without changing stable asset identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the name is empty or the manifest cannot be stored.
+    pub fn set_asset_display_name(
+        &self,
+        id: &str,
+        display_name: &str,
+    ) -> Result<AssetManifest, ProjectError> {
+        let display_name = display_name.trim();
+        if display_name.is_empty() {
+            return Err(ProjectError::AssetNotReady {
+                asset: id.to_owned(),
+                operation: "rename",
+                reason: "the display name cannot be empty",
+            });
+        }
+        let _lock = self.lock()?;
+        let mut asset = self.asset(id)?;
+        ASSET_SCHEMA.clone_into(&mut asset.schema);
+        asset.display_name = Some(display_name.to_owned());
         atomic_write(
             &self.asset_path(id).join("asset.toml"),
             toml::to_string_pretty(&asset)?.as_bytes(),
@@ -664,6 +730,32 @@ impl ProjectStore {
         let palette: Palette = read_json(&path)?;
         palette.validate()?;
         Ok(palette)
+    }
+
+    /// Lists validated project palettes in stable resource-ID order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the palette directory or any resource is invalid.
+    pub fn palettes(&self) -> Result<Vec<(String, Palette)>, ProjectError> {
+        let path = self.root.join(".pixelpipe/palettes");
+        if !path.is_dir() {
+            return Ok(Vec::new());
+        }
+        let mut palettes = Vec::new();
+        for entry in fs::read_dir(&path).map_err(|source| io_at(&path, source))? {
+            let entry = entry.map_err(|source| io_at(&path, source))?;
+            if entry.path().extension().and_then(|value| value.to_str()) == Some("json") {
+                let id = entry
+                    .file_name()
+                    .to_string_lossy()
+                    .trim_end_matches(".json")
+                    .to_owned();
+                palettes.push((id.clone(), self.palette(&id)?));
+            }
+        }
+        palettes.sort_by(|left, right| left.0.cmp(&right.0));
+        Ok(palettes)
     }
 
     /// Atomically stores a complete project conversion recipe.
@@ -777,6 +869,32 @@ impl ProjectStore {
         }
         revisions.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(revisions)
+    }
+
+    /// Moves an asset head to an existing immutable revision.
+    ///
+    /// This powers explicit undo, redo, and branch navigation without changing
+    /// revision contents or history.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the asset or target revision is invalid or storage fails.
+    pub fn set_asset_head(
+        &self,
+        asset_id: &str,
+        revision: &str,
+    ) -> Result<AssetManifest, ProjectError> {
+        self.revision(asset_id, revision)?;
+        let _lock = self.lock()?;
+        let mut asset = self.asset(asset_id)?;
+        ASSET_SCHEMA.clone_into(&mut asset.schema);
+        asset.head = Some(revision.to_owned());
+        asset.state = AssetState::Revisioned;
+        atomic_write(
+            &self.asset_path(asset_id).join("asset.toml"),
+            toml::to_string_pretty(&asset)?.as_bytes(),
+        )?;
+        Ok(asset)
     }
 
     /// Imports original PNG bytes into the asset's content-addressed reference store.
@@ -1262,6 +1380,7 @@ impl ProjectStore {
             AssetManifest {
                 schema: ASSET_SCHEMA.to_owned(),
                 id: asset_id.to_owned(),
+                display_name: None,
                 kind,
                 state: AssetState::Draft,
                 brief: AssetBrief {
@@ -1271,6 +1390,7 @@ impl ProjectStore {
                 selected_reference: None,
                 head: None,
                 approved: None,
+                style: None,
             }
         };
         if asset.kind != kind {
@@ -1295,6 +1415,7 @@ impl ProjectStore {
         }
         let created_unix_ms = now_unix_ms()?;
         let project_brief = files.brief.clone();
+        let style = files.style.clone();
         let prepared = prepare_revision(
             asset_id,
             &revision,
@@ -1322,6 +1443,9 @@ impl ProjectStore {
         }
         asset.head = Some(revision.clone());
         asset.state = AssetState::Revisioned;
+        if style.is_some() {
+            asset.style = style;
+        }
         atomic_write(&manifest_path, toml::to_string_pretty(&asset)?.as_bytes())?;
         drop(lock);
 
@@ -1735,6 +1859,33 @@ mod tests {
             validate_asset_id("../escape"),
             Err(ProjectError::InvalidAssetId(_))
         ));
+    }
+
+    #[test]
+    fn deletes_only_the_requested_asset() {
+        let temp = tempdir().expect("tempdir");
+        let store = ProjectStore::init(temp.path(), "Fixture Game").expect("init");
+        store
+            .create_asset("first", AssetKind::Sprite, "first")
+            .expect("first asset");
+        store
+            .create_asset("second", AssetKind::Sprite, "second")
+            .expect("second asset");
+
+        store.delete_asset("first").expect("delete first");
+
+        assert!(
+            store
+                .optional_asset("first")
+                .expect("first lookup")
+                .is_none()
+        );
+        assert!(
+            store
+                .optional_asset("second")
+                .expect("second lookup")
+                .is_some()
+        );
     }
 
     #[test]

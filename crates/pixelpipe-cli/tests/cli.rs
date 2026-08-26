@@ -55,6 +55,193 @@ fn cli_init_create_and_inspect_share_json_contract() {
 }
 
 #[test]
+fn cli_guide_keeps_coding_agents_on_the_direct_local_workflow() {
+    let project = tempdir().expect("project tempdir");
+    let root = project.path().to_str().expect("UTF-8 project path");
+    run(&["init", "--root", root, "--name", "Agent Guide Fixture"]);
+    pixelpipe_app::open_project(pixelpipe_app::OpenProject {
+        start: project.path().to_path_buf(),
+    })
+    .expect("starter resources");
+
+    let guide = run(&["guide", "--root", root]);
+
+    assert_eq!(guide["ok"], true);
+    assert_eq!(guide["workflow"], "coding_agent_sprite");
+    assert!(
+        guide["rules"][0]
+            .as_str()
+            .expect("guide rule")
+            .contains("Do not run 'pixelpipe agent run'")
+    );
+    assert!(
+        guide["rules"]
+            .as_array()
+            .expect("guide rules")
+            .iter()
+            .any(|rule| rule.as_str().is_some_and(|rule| rule.contains("rembg")))
+    );
+    assert!(
+        guide["available_recipes"]
+            .as_array()
+            .expect("recipe list")
+            .iter()
+            .any(|recipe| recipe == "sprite-64")
+    );
+    assert!(
+        guide["capabilities"]["replace_source"]
+            .as_str()
+            .expect("replace source command")
+            .contains("asset update-source")
+    );
+    assert!(
+        guide["capabilities"]["recolor"]
+            .as_str()
+            .expect("recolor command")
+            .contains("revision recolor")
+    );
+    assert!(
+        guide["capabilities"]["pencil_or_eraser"]
+            .as_str()
+            .expect("draw command")
+            .contains("revision draw")
+    );
+    assert!(
+        guide["steps"][4]["instruction"]
+            .as_str()
+            .expect("conversion instruction")
+            .contains("32px")
+    );
+
+    let assets = run(&["asset", "list", "--root", root]);
+    assert_eq!(assets["ok"], true);
+    assert_eq!(assets["assets"], serde_json::json!([]));
+}
+
+#[test]
+fn cli_updates_and_exports_an_existing_sprite_with_its_current_style() {
+    let project = tempdir().expect("project tempdir");
+    let root = project.path().to_str().expect("UTF-8 project path");
+    pixelpipe_app::open_project(pixelpipe_app::OpenProject {
+        start: project.path().to_path_buf(),
+    })
+    .expect("open project");
+    run(&[
+        "asset",
+        "init",
+        "--root",
+        root,
+        "--asset",
+        "field-medic",
+        "--brief",
+        "Top-down field medic",
+    ]);
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/m2");
+    let first_source = project.path().join("first.png");
+    let replacement = project.path().join("replacement.png");
+    write_fixture_png(&fixtures.join("reference.rgba.json"), &first_source);
+    write_fixture_png(&fixtures.join("sheet.rgba.json"), &replacement);
+    run(&[
+        "reference",
+        "import",
+        "--root",
+        root,
+        "--asset",
+        "field-medic",
+        "--file",
+        first_source.to_str().expect("source path"),
+    ]);
+    run(&[
+        "revision",
+        "pixelize",
+        "--root",
+        root,
+        "--asset",
+        "field-medic",
+        "--resolution",
+        "32",
+        "--colors",
+        "8",
+        "--mood",
+        "vivid",
+        "--background",
+        "auto",
+    ]);
+
+    let updated = run(&[
+        "asset",
+        "update-source",
+        "--root",
+        root,
+        "--asset",
+        "field-medic",
+        "--file",
+        replacement.to_str().expect("replacement path"),
+    ]);
+    assert_eq!(updated["update"]["revision"]["revision"], "r000002");
+    let inspected = run(&["asset", "inspect", "--root", root, "--asset", "field-medic"]);
+    assert_eq!(inspected["asset"]["head"], "r000002");
+    assert_eq!(inspected["asset"]["style"]["recipe"], "sprite-32");
+    assert_eq!(inspected["asset"]["style"]["color_count"], 8);
+    assert_eq!(
+        inspected["asset"]["style"]["settings"]["color_treatment"],
+        "vivid"
+    );
+
+    assert_recolor_and_draw(root);
+
+    let destination = project.path().join("exports");
+    fs::create_dir(&destination).expect("export directory");
+    let exported = run(&[
+        "asset",
+        "export",
+        "--root",
+        root,
+        "--asset",
+        "field-medic",
+        "--destination",
+        destination.to_str().expect("export path"),
+    ]);
+    assert_eq!(exported["export"]["revision"], "r000004");
+    assert!(destination.join("field-medic.png").is_file());
+}
+
+fn assert_recolor_and_draw(root: &str) {
+    let recolored = run(&[
+        "revision",
+        "recolor",
+        "--root",
+        root,
+        "--asset",
+        "field-medic",
+        "--set",
+        "1=#2455D6",
+        "--actor",
+        "agent",
+    ]);
+    assert_eq!(recolored["revision"]["revision"], "r000003");
+    assert_eq!(recolored["changed"][0]["index"], 1);
+    assert_eq!(
+        recolored["changed"][0]["rgba"],
+        serde_json::json!([36, 85, 214, 255])
+    );
+
+    let drawn = run(&[
+        "revision",
+        "draw",
+        "--root",
+        root,
+        "--asset",
+        "field-medic",
+        "--pixel",
+        "0,0=0",
+        "--actor",
+        "agent",
+    ]);
+    assert_eq!(drawn["revision"]["revision"], "r000004");
+}
+
+#[test]
 fn cli_initializes_pre_revision_asset_and_project_resources() {
     let project = tempdir().expect("project tempdir");
     run(&[

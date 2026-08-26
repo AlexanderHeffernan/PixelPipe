@@ -1,5 +1,10 @@
 mod args;
+mod draw;
+mod edit;
 mod execution;
+mod guide;
+mod pixelize;
+mod recolor;
 
 use std::process::ExitCode;
 

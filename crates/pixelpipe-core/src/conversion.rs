@@ -1,9 +1,15 @@
-use std::{collections::VecDeque, io::Cursor};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    io::Cursor,
+};
 
 use png::{ColorType, Transformations};
 use serde::{Deserialize, Serialize};
 
-use crate::{CoreError, IndexedRaster, Palette, RASTER_SCHEMA, ValidationCheck};
+use crate::{
+    ColorAdjustments, ColorTreatment, CoreError, IndexedRaster, Palette, RASTER_SCHEMA,
+    ValidationCheck,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RgbaImage {
@@ -28,6 +34,7 @@ pub enum BackdropPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Registration {
+    Top,
     Center,
     Bottom,
 }
@@ -44,7 +51,17 @@ pub struct ComponentExpectation {
 pub struct ConversionSettings {
     pub width: u32,
     pub height: u32,
+    #[serde(default, skip_serializing_if = "ColorTreatment::is_original")]
+    pub color_treatment: ColorTreatment,
+    #[serde(default, skip_serializing_if = "ColorAdjustments::is_neutral")]
+    pub color_adjustments: ColorAdjustments,
     pub margin: u16,
+    #[serde(default = "default_subject_scale")]
+    pub subject_scale_percent: u8,
+    #[serde(default)]
+    pub offset_x: i16,
+    #[serde(default)]
+    pub offset_y: i16,
     pub coverage_percent: u8,
     pub backdrop: BackdropPolicy,
     pub registration: Registration,
@@ -85,6 +102,10 @@ struct Bounds {
 struct Scale {
     numerator: u32,
     denominator: u32,
+}
+
+const fn default_subject_scale() -> u8 {
+    100
 }
 
 /// Decodes a PNG into deterministic row-major RGBA8 pixels.
@@ -134,6 +155,69 @@ pub fn decode_rgba_png(bytes: &[u8]) -> Result<RgbaImage, CoreError> {
     Ok(image)
 }
 
+/// Detects the dominant opaque colour around the source image perimeter.
+///
+/// Nearby RGB values are grouped before averaging so compressed or softly
+/// shaded solid backgrounds still resolve predictably.
+///
+/// # Errors
+///
+/// Returns [`CoreError`] when the source image is invalid.
+pub fn detect_border_color(
+    source: &RgbaImage,
+    alpha_threshold: u8,
+    tolerance: u8,
+) -> Result<Option<[u8; 3]>, CoreError> {
+    validate_source(source)?;
+    let mut groups = BTreeMap::<[u8; 3], (u32, [u64; 3])>::new();
+    let mut opaque_edges = 0_u32;
+    let mut record = |x, y| -> Result<(), CoreError> {
+        let pixel = source.pixels[source_offset(source.width, x, y)?];
+        if pixel[3] <= alpha_threshold {
+            return Ok(());
+        }
+        opaque_edges += 1;
+        let key = [pixel[0] >> 4, pixel[1] >> 4, pixel[2] >> 4];
+        let entry = groups.entry(key).or_default();
+        entry.0 += 1;
+        for (sum, value) in entry.1.iter_mut().zip(pixel) {
+            *sum += u64::from(value);
+        }
+        Ok(())
+    };
+    for x in 0..source.width {
+        record(x, 0)?;
+        if source.height > 1 {
+            record(x, source.height - 1)?;
+        }
+    }
+    for y in 1..source.height.saturating_sub(1) {
+        record(0, y)?;
+        if source.width > 1 {
+            record(source.width - 1, y)?;
+        }
+    }
+    let Some((_, (count, sums))) = groups
+        .into_iter()
+        .max_by_key(|(key, (count, _))| (*count, std::cmp::Reverse(*key)))
+    else {
+        return Ok(None);
+    };
+    if count * 2 < opaque_edges {
+        return Ok(None);
+    }
+    let color = sums.map(|sum| {
+        u8::try_from((sum + u64::from(count) / 2) / u64::from(count)).unwrap_or(u8::MAX)
+    });
+    let mut candidate = clean_backdrop(source, &BackdropPolicy::Alpha { alpha_threshold });
+    let visible = candidate.pixels.iter().filter(|pixel| pixel[3] > 0).count();
+    let removed = remove_border_connected(&mut candidate, color, tolerance);
+    if visible > 0 && removed * 100 >= visible * 96 {
+        return Ok(None);
+    }
+    Ok(Some(color))
+}
+
 /// Converts one RGBA reference into a registered indexed raster.
 ///
 /// # Errors
@@ -147,9 +231,18 @@ pub fn convert_reference(
 ) -> Result<ConversionResult, CoreError> {
     validate_settings(settings)?;
     palette.validate()?;
-    let frame = prepare_frame(source, palette, &settings.backdrop)?;
+    let frame = prepare_frame(
+        source,
+        palette,
+        &settings.backdrop,
+        settings.color_treatment,
+        settings.color_adjustments,
+    )?;
     let available = available_size(settings)?;
-    let scale = fit_scale(frame.width, frame.height, available.0, available.1);
+    let scale = subject_scale(
+        fit_scale(frame.width, frame.height, available.0, available.1),
+        settings.subject_scale_percent,
+    );
     let (raster, placement) = render_frame(&frame, palette, settings, scale)?;
     finish_conversion(raster, settings, &[frame.source_bounds], &[placement])
 }
@@ -189,7 +282,13 @@ pub fn convert_sheet(
                 source_frame_width,
                 source_frame_height,
             )?;
-            frames.push(prepare_frame(&cell, palette, &settings.frame.backdrop)?);
+            frames.push(prepare_frame(
+                &cell,
+                palette,
+                &settings.frame.backdrop,
+                settings.frame.color_treatment,
+                settings.frame.color_adjustments,
+            )?);
         }
     }
 
@@ -204,7 +303,10 @@ pub fn convert_sheet(
         .max()
         .ok_or(CoreError::EmptySource)?;
     let available = available_size(&settings.frame)?;
-    let scale = fit_scale(max_width, max_height, available.0, available.1);
+    let scale = subject_scale(
+        fit_scale(max_width, max_height, available.0, available.1),
+        settings.frame.subject_scale_percent,
+    );
     let sheet_width = settings
         .frame
         .width
@@ -264,6 +366,8 @@ fn prepare_frame(
     source: &RgbaImage,
     palette: &Palette,
     backdrop: &BackdropPolicy,
+    treatment: ColorTreatment,
+    adjustments: ColorAdjustments,
 ) -> Result<PreparedFrame, CoreError> {
     validate_source(source)?;
     let cleaned = clean_backdrop(source, backdrop);
@@ -272,7 +376,8 @@ fn prepare_frame(
     let mut pixels = Vec::with_capacity(capacity);
     for y in bounds.y..bounds.y + bounds.height {
         for x in bounds.x..bounds.x + bounds.width {
-            let pixel = cleaned.pixels[source_offset(cleaned.width, x, y)?];
+            let pixel = adjustments
+                .apply(treatment.apply(cleaned.pixels[source_offset(cleaned.width, x, y)?]));
             pixels.push((pixel[3] > 0).then(|| nearest_palette_index(pixel, palette)));
         }
     }
@@ -282,6 +387,18 @@ fn prepare_frame(
         pixels,
         source_bounds: bounds,
     })
+}
+
+pub(crate) fn cleaned_visible_pixels(
+    source: &RgbaImage,
+    policy: &BackdropPolicy,
+) -> Result<Vec<[u8; 4]>, CoreError> {
+    validate_source(source)?;
+    Ok(clean_backdrop(source, policy)
+        .pixels
+        .into_iter()
+        .filter(|pixel| pixel[3] > 0)
+        .collect())
 }
 
 fn clean_backdrop(source: &RgbaImage, policy: &BackdropPolicy) -> RgbaImage {
@@ -306,11 +423,11 @@ fn clean_backdrop(source: &RgbaImage, policy: &BackdropPolicy) -> RgbaImage {
     cleaned
 }
 
-fn remove_border_connected(image: &mut RgbaImage, color: [u8; 3], tolerance: u8) {
+fn remove_border_connected(image: &mut RgbaImage, color: [u8; 3], tolerance: u8) -> usize {
     let Ok(length) = usize::try_from(image.width)
         .and_then(|width| usize::try_from(image.height).map(|height| width.saturating_mul(height)))
     else {
-        return;
+        return 0;
     };
     let mut queued = vec![false; length];
     let mut queue = VecDeque::new();
@@ -342,11 +459,13 @@ fn remove_border_connected(image: &mut RgbaImage, color: [u8; 3], tolerance: u8)
             );
         }
     }
+    let mut removed = 0;
     while let Some((x, y)) = queue.pop_front() {
         let Ok(offset) = source_offset(image.width, x, y) else {
             continue;
         };
         image.pixels[offset][3] = 0;
+        removed += 1;
         if x > 0 {
             enqueue_background(image, x - 1, y, color, tolerance, &mut queued, &mut queue);
         }
@@ -360,6 +479,7 @@ fn remove_border_connected(image: &mut RgbaImage, color: [u8; 3], tolerance: u8)
             enqueue_background(image, x, y + 1, color, tolerance, &mut queued, &mut queue);
         }
     }
+    removed
 }
 
 fn enqueue_background(
@@ -428,6 +548,13 @@ fn fit_scale(source_width: u32, source_height: u32, width: u32, height: u32) -> 
     }
 }
 
+fn subject_scale(scale: Scale, percent: u8) -> Scale {
+    Scale {
+        numerator: scale.numerator * u32::from(percent),
+        denominator: scale.denominator * 100,
+    }
+}
+
 fn render_frame(
     frame: &PreparedFrame,
     palette: &Palette,
@@ -436,15 +563,29 @@ fn render_frame(
 ) -> Result<(IndexedRaster, Bounds), CoreError> {
     let destination_width = scaled_dimension(frame.width, scale)?;
     let destination_height = scaled_dimension(frame.height, scale)?;
-    let margin = u32::from(settings.margin);
-    let x = (settings.width - destination_width) / 2;
-    let y = match settings.registration {
-        Registration::Center => (settings.height - destination_height) / 2,
-        Registration::Bottom => settings.height - margin - destination_height,
+    let margin = i64::from(settings.margin);
+    let centered_x = (i64::from(settings.width) - i64::from(destination_width)).div_euclid(2);
+    let registered_y = match settings.registration {
+        Registration::Top => margin,
+        Registration::Center => {
+            (i64::from(settings.height) - i64::from(destination_height)).div_euclid(2)
+        }
+        Registration::Bottom => i64::from(settings.height) - margin - i64::from(destination_height),
     };
+    let x = centered_x + i64::from(settings.offset_x);
+    let y = registered_y - i64::from(settings.offset_y);
     let mut pixels = vec![palette.transparent_index; pixel_count(settings.width, settings.height)?];
     for destination_y in 0..destination_height {
         for destination_x in 0..destination_width {
+            let target_x = x + i64::from(destination_x);
+            let target_y = y + i64::from(destination_y);
+            if target_x < 0
+                || target_y < 0
+                || target_x >= i64::from(settings.width)
+                || target_y >= i64::from(settings.height)
+            {
+                continue;
+            }
             let index = dominant_cell(
                 frame,
                 destination_x,
@@ -454,18 +595,20 @@ fn render_frame(
                 settings.coverage_percent,
                 palette.transparent_index,
             )?;
-            let target_x = x + destination_x;
-            let target_y = y + destination_y;
+            let target_x = u32::try_from(target_x).map_err(|_| CoreError::DimensionOverflow)?;
+            let target_y = u32::try_from(target_y).map_err(|_| CoreError::DimensionOverflow)?;
             let offset = source_offset(settings.width, target_x, target_y)?;
             pixels[offset] = index;
         }
     }
-    let placement = Bounds {
+    let placement = clipped_placement(
         x,
         y,
-        width: destination_width,
-        height: destination_height,
-    };
+        destination_width,
+        destination_height,
+        settings.width,
+        settings.height,
+    );
     let raster = IndexedRaster {
         schema: RASTER_SCHEMA.to_owned(),
         width: settings.width,
@@ -475,8 +618,9 @@ fn render_frame(
         pivot: Some([
             i32::try_from(settings.width / 2).map_err(|_| CoreError::DimensionOverflow)?,
             i32::try_from(match settings.registration {
+                Registration::Top => u32::from(settings.margin),
                 Registration::Center => settings.height / 2,
-                Registration::Bottom => settings.height - margin,
+                Registration::Bottom => settings.height - u32::from(settings.margin),
             })
             .map_err(|_| CoreError::DimensionOverflow)?,
         ]),
@@ -484,6 +628,26 @@ fn render_frame(
     };
     raster.validate()?;
     Ok((raster, placement))
+}
+
+fn clipped_placement(
+    x: i64,
+    y: i64,
+    width: u32,
+    height: u32,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> Bounds {
+    let left = x.clamp(0, i64::from(canvas_width));
+    let top = y.clamp(0, i64::from(canvas_height));
+    let right = (x + i64::from(width)).clamp(0, i64::from(canvas_width));
+    let bottom = (y + i64::from(height)).clamp(0, i64::from(canvas_height));
+    Bounds {
+        x: u32::try_from(left).expect("clipped x fits u32"),
+        y: u32::try_from(top).expect("clipped y fits u32"),
+        width: u32::try_from((right - left).max(0)).expect("clipped width fits u32"),
+        height: u32::try_from((bottom - top).max(0)).expect("clipped height fits u32"),
+    }
 }
 
 fn dominant_cell(
@@ -760,6 +924,9 @@ fn validate_settings(settings: &ConversionSettings) -> Result<(), CoreError> {
     if settings.coverage_percent == 0 || settings.coverage_percent > 100 {
         return Err(CoreError::InvalidCoverage);
     }
+    if !(25..=200).contains(&settings.subject_scale_percent) {
+        return Err(CoreError::InvalidSubjectScale);
+    }
     if settings.components.min == 0 || settings.components.min > settings.components.max {
         return Err(CoreError::ComponentCount {
             min: settings.components.min,
@@ -874,7 +1041,12 @@ mod tests {
         ConversionSettings {
             width: 8,
             height: 8,
+            color_treatment: ColorTreatment::Original,
+            color_adjustments: ColorAdjustments::default(),
             margin: 1,
+            subject_scale_percent: 100,
+            offset_x: 0,
+            offset_y: 0,
             coverage_percent: 25,
             backdrop: BackdropPolicy::Alpha { alpha_threshold: 0 },
             registration,
@@ -926,6 +1098,41 @@ mod tests {
     }
 
     #[test]
+    fn detects_a_softly_varied_dominant_border_colour() {
+        let source = RgbaImage {
+            width: 3,
+            height: 3,
+            pixels: vec![
+                [101, 149, 199, 255],
+                [102, 150, 200, 255],
+                [100, 151, 201, 255],
+                [99, 150, 200, 255],
+                [220, 30, 40, 255],
+                [103, 148, 202, 255],
+                [100, 150, 198, 255],
+                [101, 152, 200, 255],
+                [102, 149, 201, 255],
+            ],
+        };
+
+        assert_eq!(
+            detect_border_color(&source, 0, 8).unwrap(),
+            Some([101, 150, 200])
+        );
+    }
+
+    #[test]
+    fn does_not_treat_an_edge_to_edge_tile_as_background() {
+        let source = RgbaImage {
+            width: 8,
+            height: 8,
+            pixels: vec![[36, 142, 58, 255]; 64],
+        };
+
+        assert_eq!(detect_border_color(&source, 0, 28).unwrap(), None);
+    }
+
+    #[test]
     fn bottom_registration_uses_shared_baseline() {
         let source = RgbaImage {
             width: 2,
@@ -937,6 +1144,48 @@ mod tests {
         let bounds = visible_bounds_from_raster(&converted.raster);
         assert_eq!(bounds.y + bounds.height, 7);
         assert_eq!(converted.raster.pivot, Some([4, 7]));
+    }
+
+    #[test]
+    fn subject_scale_and_offsets_allow_intentional_canvas_clipping() {
+        let source = RgbaImage {
+            width: 2,
+            height: 2,
+            pixels: vec![[220, 60, 40, 255]; 4],
+        };
+        let mut settings = settings(Registration::Center);
+        settings.subject_scale_percent = 50;
+        settings.offset_x = 4;
+        settings.offset_y = 3;
+
+        let converted = convert_reference(&source, &palette(), &settings).expect("convert");
+
+        let bounds = visible_bounds_from_raster(&converted.raster);
+        assert_eq!(
+            (bounds.x, bounds.y, bounds.width, bounds.height),
+            (6, 0, 2, 2)
+        );
+        assert_eq!(converted.raster.metadata["placements"], "6,0,2,2");
+    }
+
+    #[test]
+    fn subject_scale_can_crop_beyond_the_fitted_canvas() {
+        let source = RgbaImage {
+            width: 2,
+            height: 2,
+            pixels: vec![[220, 60, 40, 255]; 4],
+        };
+        let mut settings = settings(Registration::Center);
+        settings.subject_scale_percent = 150;
+
+        let converted = convert_reference(&source, &palette(), &settings).expect("convert");
+        let bounds = visible_bounds_from_raster(&converted.raster);
+
+        assert_eq!(
+            (bounds.x, bounds.y, bounds.width, bounds.height),
+            (0, 0, 8, 8)
+        );
+        assert_eq!(converted.raster.metadata["placements"], "0,0,8,8");
     }
 
     #[test]

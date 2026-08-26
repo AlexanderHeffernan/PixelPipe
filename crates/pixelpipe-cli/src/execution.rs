@@ -6,14 +6,15 @@ use std::{
 
 use pixelpipe_app::{
     AgentRunStatus, AgentRuntime, AgentTaskRequest, BrowseAgentRuns, CompareRevisions,
-    ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision, ImportReference,
-    InitializeAsset, InspectRevision, LoadAgentCandidate, PatchRevision, PreviewSelectedReference,
-    RecordReview, RemapRevision, SelectAgentCandidate, StoreProjectPalette, StoreProjectRecipe,
-    UpdateAssetBrief, approve_agent_connector, browse_agent_runs, compare_revisions,
-    convert_revision, convert_selected_reference, create_revision, detect_agent_connectors,
-    import_reference, initialize_asset, inspect_revision, load_agent_candidate, patch_revision,
-    preview_selected_reference, record_review, remap_revision, select_agent_candidate,
-    store_project_palette, store_project_recipe, update_asset_brief,
+    ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision, DeleteAsset,
+    ExportAsset, ImportReference, InitializeAsset, InspectRevision, LoadAgentCandidate,
+    PreviewSelectedReference, RecordReview, RenameAsset, SelectAgentCandidate, StoreProjectPalette,
+    StoreProjectRecipe, UpdateAssetBrief, UpdateAssetSource, approve_agent_connector,
+    browse_agent_runs, compare_revisions, convert_revision, convert_selected_reference,
+    create_revision, delete_asset, detect_agent_connectors, export_asset, import_reference,
+    initialize_asset, inspect_revision, load_agent_candidate, preview_selected_reference,
+    record_review, rename_asset, select_agent_candidate, store_project_palette,
+    store_project_recipe, update_asset_brief, update_asset_source,
 };
 use pixelpipe_core::{ConversionSettings, SheetSettings};
 use pixelpipe_project::ProjectStore;
@@ -23,9 +24,13 @@ use crate::args::{
     AgentCommand, AssetCommand, Cli, Command, ConversionKind, ProjectCommand, ReferenceCommand,
     RevisionCommand,
 };
+use crate::edit::run_edit_revision;
+use crate::guide::agent_guide;
+use crate::pixelize::pixelize_command;
 
 pub(crate) fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match cli.command {
+        Command::Guide { root } => agent_guide(&root),
         Command::Init { root, name } => {
             let store = ProjectStore::init(&root, &name)?;
             Ok(
@@ -89,6 +94,14 @@ fn run_project(command: ProjectCommand) -> Result<serde_json::Value, Box<dyn std
 
 fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match command {
+        AssetCommand::List { root } => {
+            let store = ProjectStore::discover(&root)?;
+            Ok(json!({
+                "ok": true,
+                "project_root": store.root(),
+                "assets": store.assets()?,
+            }))
+        }
         AssetCommand::Init {
             root,
             asset,
@@ -100,6 +113,45 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
         AssetCommand::SetBrief { root, asset, brief } => Ok(
             json!({ "ok": true, "asset": update_asset_brief(UpdateAssetBrief { start: root, asset, brief })? }),
         ),
+        AssetCommand::Delete { root, asset } => {
+            delete_asset(DeleteAsset {
+                start: root,
+                asset: asset.clone(),
+            })?;
+            Ok(json!({ "ok": true, "asset": asset, "deleted": true }))
+        }
+        AssetCommand::Rename { root, asset, name } => Ok(json!({
+            "ok": true,
+            "asset": rename_asset(RenameAsset { start: root, asset, display_name: name })?
+        })),
+        AssetCommand::UpdateSource {
+            root,
+            asset,
+            file,
+            actor,
+        } => Ok(json!({
+            "ok": true,
+            "update": update_asset_source(UpdateAssetSource {
+                start: root,
+                asset,
+                file,
+                actor,
+            })?
+        })),
+        AssetCommand::Export {
+            root,
+            asset,
+            destination,
+            overwrite,
+        } => Ok(json!({
+            "ok": true,
+            "export": export_asset(ExportAsset {
+                start: root,
+                asset,
+                destination,
+                overwrite,
+            })?
+        })),
         AssetCommand::Inspect { root, asset } => {
             let store = ProjectStore::discover(&root)?;
             Ok(json!({ "ok": true, "project_root": store.root(), "asset": store.asset(&asset)? }))
@@ -178,6 +230,7 @@ fn run_agent(command: AgentCommand) -> Result<serde_json::Value, Box<dyn std::er
 
 fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match command {
+        RevisionCommand::Pixelize { options } => pixelize_command(options),
         RevisionCommand::Create {
             root,
             asset,
@@ -194,48 +247,43 @@ fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn s
             root,
             asset,
             recipe,
+            palette,
+            colors,
             settings,
+            auto_background,
             actor,
         } => Ok(
-            json!({ "ok": true, "revision": convert_selected_reference(ConvertSelectedReference { start: root, asset, recipe, settings: read_reference_settings(settings)?, actor })? }),
+            json!({ "ok": true, "revision": convert_selected_reference(ConvertSelectedReference { start: root, asset, recipe, palette, color_count: colors, palette_overrides: Vec::new(), settings: read_reference_settings(settings)?, auto_background, actor })? }),
         ),
         RevisionCommand::PreviewSelected {
             root,
             asset,
             recipe,
+            palette,
+            colors,
             settings,
+            auto_background,
             native,
         } => preview_selected_command(
             PreviewSelectedReference {
                 start: root,
                 asset,
                 recipe,
+                palette,
+                color_count: colors,
+                palette_overrides: Vec::new(),
                 settings: read_reference_settings(settings)?,
+                auto_background,
             },
             &native,
         ),
-        RevisionCommand::Patch {
-            root,
-            asset,
-            parent,
-            patch,
-            brief,
-            preview_scale,
-            actor,
-        } => Ok(
-            json!({ "ok": true, "revision": patch_revision(PatchRevision { start: root, asset, parent, patch_path: patch, brief_path: brief, preview_scale, actor })? }),
-        ),
-        RevisionCommand::Remap {
-            root,
-            asset,
-            parent,
-            remap,
-            brief,
-            preview_scale,
-            actor,
-        } => Ok(
-            json!({ "ok": true, "revision": remap_revision(RemapRevision { start: root, asset, parent, remap_path: remap, brief_path: brief, preview_scale, actor })? }),
-        ),
+        command @ (RevisionCommand::Patch { .. }
+        | RevisionCommand::Fill { .. }
+        | RevisionCommand::Compose { .. }
+        | RevisionCommand::SetHead { .. }
+        | RevisionCommand::Remap { .. }
+        | RevisionCommand::Recolor { .. }
+        | RevisionCommand::Draw { .. }) => run_edit_revision(command),
         RevisionCommand::Inspect {
             root,
             asset,

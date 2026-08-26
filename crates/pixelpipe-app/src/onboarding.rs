@@ -44,12 +44,14 @@ pub fn open_project(request: OpenProject) -> Result<ProjectBrowser, AppError> {
 }
 
 fn install_starter_resources(store: &ProjectStore) -> Result<(), AppError> {
-    match store.palette(STARTER_PALETTE) {
-        Ok(_) => {}
-        Err(ProjectError::ResourceNotFound { .. }) => {
-            store.store_palette(STARTER_PALETTE, &starter_palette())?;
+    for (id, palette) in built_in_palettes() {
+        match store.palette(id) {
+            Ok(_) => {}
+            Err(ProjectError::ResourceNotFound { .. }) => {
+                store.store_palette(id, &palette)?;
+            }
+            Err(error) => return Err(error.into()),
         }
-        Err(error) => return Err(error.into()),
     }
     let existing = store
         .conversion_recipes()?
@@ -63,6 +65,10 @@ fn install_starter_resources(store: &ProjectStore) -> Result<(), AppError> {
         }
     }
     Ok(())
+}
+
+fn built_in_palettes() -> Vec<(&'static str, Palette)> {
+    vec![(STARTER_PALETTE, starter_palette())]
 }
 
 fn starter_palette() -> Palette {
@@ -102,7 +108,12 @@ fn starter_recipe(size: u32) -> ConversionRecipeDocument {
             settings: ConversionSettings {
                 width: size,
                 height: size,
+                color_treatment: pixelpipe_core::ColorTreatment::Original,
+                color_adjustments: pixelpipe_core::ColorAdjustments::default(),
                 margin: 1,
+                subject_scale_percent: 100,
+                offset_x: 0,
+                offset_y: 0,
                 coverage_percent: 10,
                 backdrop: BackdropPolicy::BorderConnected {
                     color: [255, 255, 255],

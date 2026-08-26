@@ -1,6 +1,7 @@
 use std::{io::Write, path::PathBuf};
 
 use atomicwrites::{AllowOverwrite, AtomicFile};
+use image::{ExtendedColorType, codecs::webp::WebPEncoder};
 use pixelpipe_core::stable_json;
 use pixelpipe_project::ProjectStore;
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,25 @@ pub struct ExportResult {
     pub revision: String,
     pub png: PathBuf,
     pub metadata: PathBuf,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExportAssetFile {
+    pub start: PathBuf,
+    pub asset: String,
+    pub destination: PathBuf,
+    #[serde(default)]
+    pub overwrite: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExportFileResult {
+    pub asset: String,
+    pub revision: String,
+    pub file: PathBuf,
+    pub format: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// Exports the verified head raster and canonical indexed data to an existing folder.
@@ -58,6 +78,70 @@ pub fn export_asset(request: ExportAsset) -> Result<ExportResult, AppError> {
         revision,
         png,
         metadata,
+    })
+}
+
+/// Exports the verified head image to an explicit native-resolution file.
+///
+/// # Errors
+///
+/// Returns an error for a missing head, unsupported extension, existing file,
+/// image encoding failure, or atomic output failure.
+pub fn export_asset_file(request: ExportAssetFile) -> Result<ExportFileResult, AppError> {
+    let parent = request.destination.parent().ok_or_else(|| {
+        AppError::UnsupportedExportFormat("destination must include a file name".to_owned())
+    })?;
+    if !parent.is_dir() {
+        return Err(AppError::UnsupportedExportFormat(
+            "export folder does not exist".to_owned(),
+        ));
+    }
+    if request.destination.exists() && !request.overwrite {
+        return Err(AppError::ExportExists(request.destination));
+    }
+    let store = ProjectStore::discover(&request.start)?;
+    let revision = store
+        .asset(&request.asset)?
+        .head
+        .ok_or_else(|| AppError::NoHead(request.asset.clone()))?;
+    let snapshot = store.revision(&request.asset, &revision)?;
+    let extension = request
+        .destination
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let (bytes, format) = match extension.as_str() {
+        "png" => (snapshot.native_png, "png"),
+        "webp" => {
+            let image = image::load_from_memory(&snapshot.native_png)
+                .map_err(|error| AppError::Image(error.to_string()))?
+                .into_rgba8();
+            let mut bytes = Vec::new();
+            WebPEncoder::new_lossless(&mut bytes)
+                .encode(
+                    image.as_raw(),
+                    image.width(),
+                    image.height(),
+                    ExtendedColorType::Rgba8,
+                )
+                .map_err(|error| AppError::Image(error.to_string()))?;
+            (bytes, "webp")
+        }
+        _ => {
+            return Err(AppError::UnsupportedExportFormat(
+                "choose a PNG or WebP file".to_owned(),
+            ));
+        }
+    };
+    atomic_write(&request.destination, &bytes)?;
+    Ok(ExportFileResult {
+        asset: request.asset,
+        revision,
+        file: request.destination,
+        format: format.to_owned(),
+        width: snapshot.raster.width,
+        height: snapshot.raster.height,
     })
 }
 

@@ -5,23 +5,29 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod color_treatment;
+mod composition;
 mod conversion;
 mod editing;
 mod inspection;
+mod palette_derivation;
 
+pub use color_treatment::{ColorAdjustments, ColorTreatment};
+pub use composition::{CanvasSettings, compose_canvas};
 pub use conversion::{
     BackdropPolicy, ComponentExpectation, ConversionResult, ConversionSettings, Registration,
     RgbaImage, SheetSettings, convert_reference, convert_sheet, decode_rgba_png,
-    validate_component_expectation, validate_sheet_component_expectation,
+    detect_border_color, validate_component_expectation, validate_sheet_component_expectation,
 };
 pub use editing::{
     ComponentRule, PALETTE_REMAP_SCHEMA, PATCH_SCHEMA, PaletteRemap, PixelPatch, PixelPatchSet,
-    apply_palette_remap, apply_pixel_patch,
+    apply_palette_remap, apply_pixel_patch, flood_fill_patch,
 };
 pub use inspection::{
     PaletteDifference, PaletteUsage, PixelDifference, RasterBounds, RasterComparison, RasterDiff,
     RasterInspection, compare_rasters, inspect_raster,
 };
+pub use palette_derivation::derive_source_palette;
 
 pub const PALETTE_SCHEMA: &str = "pixelpipe.palette/v1";
 pub const RASTER_SCHEMA: &str = "pixelpipe.raster/v1";
@@ -68,6 +74,7 @@ pub enum Operation {
     ConvertSheet { settings: SheetSettings },
     PatchPixels { patch: PixelPatchSet },
     RemapPalette { remap: PaletteRemap },
+    ComposeCanvas { settings: CanvasSettings },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +141,10 @@ pub enum CoreError {
     InvalidMargin,
     #[error("coverage percent must be between 1 and 100")]
     InvalidCoverage,
+    #[error("subject scale must be between 25 and 200 percent")]
+    InvalidSubjectScale,
+    #[error("derived colour count must be between 2 and 64")]
+    InvalidDerivedColorCount,
     #[error("sheet grid must divide the source image exactly")]
     InvalidSheetGrid,
     #[error("connected component count {actual} is outside expected range {min}..={max}")]

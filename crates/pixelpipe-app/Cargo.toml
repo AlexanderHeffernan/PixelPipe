@@ -7,6 +7,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+image.workspace = true
 atomicwrites.workspace = true
 pixelpipe-core = { path = "../pixelpipe-core" }
 pixelpipe-project = { path = "../pixelpipe-project" }

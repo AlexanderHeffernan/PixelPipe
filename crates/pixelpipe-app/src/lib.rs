@@ -4,16 +4,17 @@ use pixelpipe_core::{
     ComponentRule, ConversionSettings, IndexedRaster, Operation, PaletteRemap, PixelPatchSet,
     RECIPE_SCHEMA, RasterDiff, Recipe, SheetSettings, ValidationCheck, apply_palette_remap,
     apply_pixel_patch, compare_rasters, convert_reference, convert_sheet, decode_rgba_png,
-    inspect_raster, render, sha256_hex, stable_json,
+    flood_fill_patch, inspect_raster, render, sha256_hex, stable_json,
 };
 use pixelpipe_project::{
-    AssetKind, ProjectError, ProjectManifest, ProjectStore, RevisionFiles, RevisionManifest,
-    StoredConversionMode, StoredRevision,
+    AssetBrief, AssetKind, AssetStyle, ProjectError, ProjectManifest, ProjectStore, RevisionFiles,
+    RevisionManifest, StoredConversionMode, StoredRevision,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod agent;
+mod composition;
 mod conversion_preview;
 mod export;
 mod onboarding;
@@ -25,12 +26,21 @@ pub use agent::{
     SelectAgentCandidate, approve_agent_connector, browse_agent_runs, detect_agent_connectors,
     load_agent_candidate, select_agent_candidate,
 };
-pub use conversion_preview::{
-    ConversionPreview, PreviewSelectedReference, preview_selected_reference,
+pub use composition::{
+    CommitComposition, CompositionPreview, PreviewComposition, commit_composition,
+    preview_composition,
 };
-pub use export::{ExportAsset, ExportResult, export_asset};
+pub use conversion_preview::{
+    ConversionPreview, PaletteColorOverride, PreviewSelectedReference, preview_selected_reference,
+};
+pub use export::{
+    ExportAsset, ExportAssetFile, ExportFileResult, ExportResult, export_asset, export_asset_file,
+};
 pub use onboarding::{OpenProject, open_project};
-pub use reference::{ImportReference, import_reference};
+pub use reference::{
+    ImportReference, UpdateAssetSource, UpdateAssetSourceResult, import_reference,
+    update_asset_source,
+};
 
 pub use pixelpipe_core::{Palette, RasterInspection};
 pub use pixelpipe_project::{
@@ -78,10 +88,23 @@ pub struct InitializeAsset {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DeleteAsset {
+    pub start: PathBuf,
+    pub asset: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct UpdateAssetBrief {
     pub start: PathBuf,
     pub asset: String,
     pub brief: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RenameAsset {
+    pub start: PathBuf,
+    pub asset: String,
+    pub display_name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,7 +113,15 @@ pub struct ConvertSelectedReference {
     pub asset: String,
     pub recipe: String,
     #[serde(default)]
+    pub palette: Option<String>,
+    #[serde(default)]
+    pub color_count: Option<u8>,
+    #[serde(default)]
+    pub palette_overrides: Vec<PaletteColorOverride>,
+    #[serde(default)]
     pub settings: Option<ConversionSettings>,
+    #[serde(default)]
+    pub auto_background: bool,
     pub actor: String,
 }
 
@@ -141,6 +172,24 @@ pub struct PatchRevisionDocument {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FillRevisionDocument {
+    pub start: PathBuf,
+    pub asset: String,
+    pub parent: String,
+    pub x: u32,
+    pub y: u32,
+    pub index: u8,
+    pub actor: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetAssetHead {
+    pub start: PathBuf,
+    pub asset: String,
+    pub revision: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct RemapRevisionDocument {
     pub start: PathBuf,
     pub asset: String,
@@ -178,6 +227,13 @@ pub struct ProjectBrowser {
     pub project: ProjectManifest,
     pub assets: Vec<AssetBrowser>,
     pub recipes: Vec<ConversionRecipeDocument>,
+    pub palettes: Vec<ProjectPalette>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectPalette {
+    pub id: String,
+    pub palette: Palette,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -242,6 +298,7 @@ pub struct RevisionViewMetadata {
     pub revision: String,
     pub parent: Option<String>,
     pub inspection: RasterInspection,
+    pub palette: pixelpipe_core::Palette,
     pub palette_name: String,
     pub transparent_index: u8,
     pub validation: pixelpipe_core::ValidationReport,
@@ -266,17 +323,18 @@ pub struct RecordReview {
     pub note: String,
 }
 
-struct CommitRaster {
-    asset: String,
-    kind: AssetKind,
-    raster: IndexedRaster,
-    recipe: Recipe,
-    preview_scale: u16,
-    brief: String,
-    actor: String,
-    input_hashes: BTreeMap<String, String>,
-    additional_checks: Vec<ValidationCheck>,
-    parent: Option<String>,
+pub(crate) struct CommitRaster {
+    pub(crate) asset: String,
+    pub(crate) kind: AssetKind,
+    pub(crate) raster: IndexedRaster,
+    pub(crate) recipe: Recipe,
+    pub(crate) preview_scale: u16,
+    pub(crate) brief: String,
+    pub(crate) actor: String,
+    pub(crate) input_hashes: BTreeMap<String, String>,
+    pub(crate) additional_checks: Vec<ValidationCheck>,
+    pub(crate) parent: Option<String>,
+    pub(crate) style: Option<AssetStyle>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -333,6 +391,8 @@ pub enum AppError {
     StructureRuleConflict,
     #[error("unsupported conversion request: {0}")]
     UnsupportedConversion(String),
+    #[error("image could not be decoded: {0}")]
+    Image(String),
     #[error("brief is not valid UTF-8: {path}")]
     BriefUtf8 { path: PathBuf },
     #[error("agent profile error: {0}")]
@@ -345,6 +405,8 @@ pub enum AppError {
     AgentCandidatePath(String),
     #[error("export already exists: {0}")]
     ExportExists(PathBuf),
+    #[error("unsupported export format: {0}")]
+    UnsupportedExportFormat(String),
 }
 
 /// Validates a structured raster, renders it, and commits an immutable revision.
@@ -391,6 +453,7 @@ pub fn create_revision(request: CreateRevision) -> Result<RevisionResult, AppErr
             input_hashes,
             additional_checks: Vec::new(),
             parent: None,
+            style: None,
         },
     )
 }
@@ -450,6 +513,7 @@ pub fn convert_revision(request: ConvertRevision) -> Result<RevisionResult, AppE
             input_hashes,
             additional_checks: converted.checks,
             parent: None,
+            style: None,
         },
     )
 }
@@ -470,6 +534,17 @@ pub fn initialize_asset(request: InitializeAsset) -> Result<AssetManifest, AppEr
     Ok(store.create_asset(&asset, kind, &brief)?)
 }
 
+/// Permanently removes one project asset through the project store.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when discovery, validation, or deletion fails.
+pub fn delete_asset(request: DeleteAsset) -> Result<(), AppError> {
+    let DeleteAsset { start, asset } = request;
+    let store = ProjectStore::discover(&start)?;
+    Ok(store.delete_asset(&asset)?)
+}
+
 /// Updates the project-owned brief without changing revision history.
 ///
 /// # Errors
@@ -483,6 +558,21 @@ pub fn update_asset_brief(request: UpdateAssetBrief) -> Result<AssetManifest, Ap
     } = request;
     let store = ProjectStore::discover(&start)?;
     Ok(store.set_asset_brief(&asset, &brief)?)
+}
+
+/// Updates an asset's user-facing name while preserving its stable ID and revisions.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when discovery, validation, or storage fails.
+pub fn rename_asset(request: RenameAsset) -> Result<AssetManifest, AppError> {
+    let RenameAsset {
+        start,
+        asset,
+        display_name,
+    } = request;
+    let store = ProjectStore::discover(&start)?;
+    Ok(store.set_asset_display_name(&asset, &display_name)?)
 }
 
 /// Imports a validated palette into project-owned resources.
@@ -554,27 +644,47 @@ pub fn convert_selected_reference(
         }
         .into());
     }
-    let palette = store.palette(&resource_recipe.palette)?;
-    let canonical_palette = stable_json(&palette)?;
-    let (converted, operation) = match resource_recipe.mode.clone() {
+    let palette_id = request
+        .palette
+        .as_deref()
+        .unwrap_or(&resource_recipe.palette);
+    let reference_color_count = request.color_count.unwrap_or(16);
+    let (converted, operation, style, palette) = match resource_recipe.mode.clone() {
         StoredConversionMode::Reference { settings } => {
-            let settings = request.settings.unwrap_or(settings);
-            let converted = convert_reference(&source, &palette, &settings)?;
-            (converted, Operation::ConvertReference { settings })
+            let (converted, settings, palette) = conversion_preview::convert_source_reference(
+                &source,
+                request.settings,
+                settings,
+                request.auto_background,
+                reference_color_count,
+                &request.palette_overrides,
+            )?;
+            let style = AssetStyle {
+                recipe: resource_recipe.id.clone(),
+                palette: None,
+                color_count: Some(reference_color_count),
+                settings: settings.clone(),
+            };
+            (
+                converted,
+                Operation::ConvertReference { settings },
+                Some(style),
+                palette,
+            )
         }
         StoredConversionMode::Sheet { settings } => {
-            if request.settings.is_some() {
-                return Err(AppError::UnsupportedConversion(
-                    "sheet recipes do not accept reference settings overrides".to_owned(),
-                ));
-            }
+            ensure_no_reference_overrides(&request)?;
+            let palette = store.palette(palette_id)?;
             let converted = convert_sheet(&source, &palette, &settings)?;
-            (converted, Operation::ConvertSheet { settings })
+            (
+                converted,
+                Operation::ConvertSheet { settings },
+                None,
+                palette,
+            )
         }
     };
-    let recipe_hash = sha256_hex(&stable_json(&resource_recipe)?);
-    let brief_hash = sha256_hex(&stable_json(&asset.brief)?);
-    let selection_hash = sha256_hex(&stable_json(&selection)?);
+    let canonical_palette = stable_json(&palette)?;
     let recipe = Recipe {
         schema: RECIPE_SCHEMA.to_owned(),
         input_sha256: selection.sha256.clone(),
@@ -586,20 +696,17 @@ pub fn convert_selected_reference(
             },
         ],
     };
-    let input_hashes = BTreeMap::from([
-        ("brief".to_owned(), brief_hash),
-        ("palette".to_owned(), recipe.palette_sha256.clone()),
-        (
-            format!("project_palette:{}", resource_recipe.palette),
-            recipe.palette_sha256.clone(),
-        ),
-        (
-            format!("project_recipe:{}", resource_recipe.id),
-            recipe_hash,
-        ),
-        ("reference".to_owned(), selection.sha256.clone()),
-        ("reference_selection".to_owned(), selection_hash),
-    ]);
+    let provenance_color_count =
+        matches!(resource_recipe.mode, StoredConversionMode::Reference { .. })
+            .then_some(reference_color_count);
+    let input_hashes = conversion_input_hashes(
+        &asset.brief,
+        &selection,
+        &resource_recipe,
+        palette_id,
+        provenance_color_count,
+        &recipe.palette_sha256,
+    )?;
     commit_raster(
         &store,
         CommitRaster {
@@ -613,8 +720,49 @@ pub fn convert_selected_reference(
             input_hashes,
             additional_checks: converted.checks,
             parent: None,
+            style,
         },
     )
+}
+
+fn ensure_no_reference_overrides(request: &ConvertSelectedReference) -> Result<(), AppError> {
+    if request.settings.is_some()
+        || request.color_count.is_some()
+        || !request.palette_overrides.is_empty()
+    {
+        return Err(AppError::UnsupportedConversion(
+            "sheet recipes do not accept reference-only overrides".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn conversion_input_hashes(
+    brief: &AssetBrief,
+    selection: &ReferenceSelection,
+    recipe: &ConversionRecipeDocument,
+    palette_id: &str,
+    color_count: Option<u8>,
+    palette_hash: &str,
+) -> Result<BTreeMap<String, String>, AppError> {
+    let palette_resource = color_count.map_or_else(
+        || format!("project_palette:{palette_id}"),
+        |count| format!("source_palette:{count}"),
+    );
+    Ok(BTreeMap::from([
+        ("brief".to_owned(), sha256_hex(&stable_json(brief)?)),
+        ("palette".to_owned(), palette_hash.to_owned()),
+        (palette_resource, palette_hash.to_owned()),
+        (
+            format!("project_recipe:{}", recipe.id),
+            sha256_hex(&stable_json(recipe)?),
+        ),
+        ("reference".to_owned(), selection.sha256.clone()),
+        (
+            "reference_selection".to_owned(),
+            sha256_hex(&stable_json(selection)?),
+        ),
+    ]))
 }
 
 /// Applies a validated pixel patch to an explicit parent and creates a new revision.
@@ -692,8 +840,44 @@ pub fn patch_revision_document(request: PatchRevisionDocument) -> Result<Revisio
                 detail: patch.edits.len().to_string(),
             }],
             parent: Some(request.parent),
+            style: None,
         },
     )
+}
+
+/// Resolves and commits one deterministic four-connected fill as one revision.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when loading, fill resolution, validation, or storage fails.
+pub fn fill_revision_document(request: FillRevisionDocument) -> Result<RevisionResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let parent = store.revision(&request.asset, &request.parent)?;
+    let patch = flood_fill_patch(&parent.raster, request.x, request.y, request.index)?;
+    patch_revision_document(PatchRevisionDocument {
+        start: request.start,
+        asset: request.asset,
+        parent: request.parent,
+        patch,
+        brief: None,
+        preview_scale: None,
+        actor: request.actor,
+    })
+}
+
+/// Explicitly moves an asset head to an existing immutable revision.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] when discovery, revision verification, or storage fails.
+pub fn set_asset_head(request: SetAssetHead) -> Result<AssetManifest, AppError> {
+    let SetAssetHead {
+        start,
+        asset,
+        revision,
+    } = request;
+    let store = ProjectStore::discover(&start)?;
+    Ok(store.set_asset_head(&asset, &revision)?)
 }
 
 /// Applies an explicit palette index map to a parent and creates a new revision.
@@ -769,6 +953,7 @@ pub fn remap_revision_document(request: RemapRevisionDocument) -> Result<Revisio
                 detail: remap.index_map.len().to_string(),
             }],
             parent: Some(request.parent),
+            style: None,
         },
     )
 }
@@ -794,6 +979,11 @@ pub fn browse_project(request: &BrowseProject) -> Result<ProjectBrowser, AppErro
         project,
         assets,
         recipes: store.conversion_recipes()?,
+        palettes: store
+            .palettes()?
+            .into_iter()
+            .map(|(id, palette)| ProjectPalette { id, palette })
+            .collect(),
     })
 }
 
@@ -807,6 +997,7 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
     let revision = resolve_revision(&store, &request.asset, request.revision)?;
     let snapshot = store.revision(&request.asset, &revision)?;
     let inspection = inspect_raster(&snapshot.raster)?;
+    let palette = snapshot.raster.palette.clone();
     let palette_name = snapshot.raster.palette.name.clone();
     let transparent_index = snapshot.raster.palette.transparent_index;
     let review = store.review(&request.asset, &revision)?;
@@ -817,6 +1008,7 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
             revision,
             parent: snapshot.manifest.parent,
             inspection,
+            palette,
             palette_name,
             transparent_index,
             validation: snapshot.validation,
@@ -908,7 +1100,7 @@ fn component_rule(recipe: &Recipe) -> Option<ComponentRule> {
             }),
             Operation::PatchPixels { patch } => patch.structure,
             Operation::RemapPalette { remap } => remap.structure,
-            Operation::RenderIndexed { .. } => None,
+            Operation::ComposeCanvas { .. } | Operation::RenderIndexed { .. } => None,
         })
 }
 
@@ -970,7 +1162,10 @@ fn read_optional_brief(path: Option<PathBuf>) -> Result<Option<String>, AppError
     }
 }
 
-fn commit_raster(store: &ProjectStore, commit: CommitRaster) -> Result<RevisionResult, AppError> {
+pub(crate) fn commit_raster(
+    store: &ProjectStore,
+    commit: CommitRaster,
+) -> Result<RevisionResult, AppError> {
     let mut rendered = render(&commit.raster, commit.preview_scale)?;
     rendered.validation.checks.extend(commit.additional_checks);
     let native_sha256 = sha256_hex(&rendered.native_png);
@@ -989,6 +1184,7 @@ fn commit_raster(store: &ProjectStore, commit: CommitRaster) -> Result<RevisionR
         actor: commit.actor,
         input_hashes: commit.input_hashes,
         output_hashes,
+        style: commit.style,
     };
     let stored = match commit.parent {
         Some(parent) => store.create_revision_from(&commit.asset, commit.kind, &parent, files)?,
@@ -1135,7 +1331,7 @@ mod tests {
         impossible.mode = StoredConversionMode::Reference {
             settings: ConversionSettings {
                 components: ComponentExpectation { min: 2, max: 2 },
-                ..settings
+                ..settings.clone()
             },
         };
         store
@@ -1146,7 +1342,11 @@ mod tests {
                 start: temp.path().to_path_buf(),
                 asset: "signal-flare".to_owned(),
                 recipe: impossible.id,
+                palette: None,
+                color_count: None,
+                palette_overrides: Vec::new(),
                 settings: None,
+                auto_background: false,
                 actor: "fixture".to_owned(),
             })
             .is_err()
@@ -1163,7 +1363,11 @@ mod tests {
             start: temp.path().to_path_buf(),
             asset: "signal-flare".to_owned(),
             recipe: recipe.id.clone(),
+            palette: None,
+            color_count: None,
+            palette_overrides: Vec::new(),
             settings: None,
+            auto_background: false,
             actor: "fixture".to_owned(),
         })
         .expect("first revision");
@@ -1171,6 +1375,15 @@ mod tests {
         let asset = store.asset("signal-flare").expect("revisioned asset");
         assert_eq!(asset.state, AssetState::Revisioned);
         assert_eq!(asset.head.as_deref(), Some("r000001"));
+        assert_eq!(
+            asset.style,
+            Some(AssetStyle {
+                recipe: recipe.id.clone(),
+                palette: None,
+                color_count: Some(16),
+                settings: settings.clone(),
+            })
+        );
         let before = store.revision("signal-flare", "r000001").expect("snapshot");
         assert_eq!(before.brief, brief);
         assert!(before.provenance.inputs.contains_key("brief"));
@@ -1319,7 +1532,12 @@ mod tests {
         let settings = ConversionSettings {
             width: 4,
             height: 4,
+            color_treatment: pixelpipe_core::ColorTreatment::Original,
+            color_adjustments: pixelpipe_core::ColorAdjustments::default(),
             margin: 0,
+            subject_scale_percent: 100,
+            offset_x: 0,
+            offset_y: 0,
             coverage_percent: 1,
             backdrop: BackdropPolicy::Alpha { alpha_threshold: 0 },
             registration: Registration::Center,
