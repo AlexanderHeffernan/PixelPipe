@@ -1,27 +1,36 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import AssetWorkspace from "./components/AssetWorkspace.vue";
 import ConversionInspector from "./components/ConversionInspector.vue";
 import ProjectSidebar from "./components/ProjectSidebar.vue";
 import WelcomeView from "./components/WelcomeView.vue";
 import WorkstationTitlebar from "./components/WorkstationTitlebar.vue";
 import TerminalDrawer from "./components/TerminalDrawer.vue";
+import SettingsModal from "./updates/SettingsModal.vue";
+import UpdatePrompt from "./updates/UpdatePrompt.vue";
+import { useUpdates } from "./updates/use-updates";
 import { createWorkspace, provideWorkspace } from "./workspace/context";
 
 const workspace = createWorkspace();
 provideWorkspace(workspace);
+const settingsOpen = ref(false);
+const updates = useUpdates();
 const syncProject = () =>
   void workspace.syncExternalChanges().catch(() => undefined);
 onMounted(() => {
   void workspace.restoreRecentProject();
+  updates.startAutomaticChecks();
   window.addEventListener("focus", syncProject);
 });
-onBeforeUnmount(() => window.removeEventListener("focus", syncProject));
+onBeforeUnmount(() => {
+  updates.stopAutomaticChecks();
+  window.removeEventListener("focus", syncProject);
+});
 </script>
 
 <template>
   <main class="app-shell" :class="{ 'has-project': workspace.project.value }">
-    <WorkstationTitlebar />
+    <WorkstationTitlebar @open-settings="settingsOpen = true" />
     <div v-if="workspace.project.value" class="workstation-body">
       <ProjectSidebar
         :class="{ 'is-collapsed': !workspace.leftSidebarOpen.value }"
@@ -50,5 +59,7 @@ onBeforeUnmount(() => window.removeEventListener("focus", syncProject));
     >
       {{ workspace.error.value || workspace.notice.value }}
     </div>
+    <SettingsModal v-if="settingsOpen" @close="settingsOpen = false" />
+    <UpdatePrompt />
   </main>
 </template>

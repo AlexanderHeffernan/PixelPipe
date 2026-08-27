@@ -13,9 +13,16 @@ use crate::args::{AssetCommand, Cli, Command, ProjectCommand, ReferenceCommand, 
 use crate::edit::run_edit_revision;
 use crate::guide::agent_guide;
 use crate::pixelize::pixelize_command;
+use crate::update::update_cli;
 
 pub(crate) fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match cli.command {
+        Command::Version => Ok(json!({
+            "ok": true,
+            "version": env!("CARGO_PKG_VERSION"),
+            "target": format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
+        })),
+        Command::Update => update_cli(),
         Command::Guide { root } => agent_guide(&root),
         Command::Init { root, name } => {
             let store = ProjectStore::init(&root, &name)?;

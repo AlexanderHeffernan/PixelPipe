@@ -30,6 +30,11 @@ Choose a game folder. Pixelate creates a `.pixelate` project and supplies focuse
 pixelization defaults directly. Other game files remain untouched until an
 explicit export.
 
+The macOS app checks for signed updates when it opens and every six hours. An
+available update is always shown before anything is downloaded or installed.
+Open Settings to see the installed version, check manually, install and restart,
+or disable automatic checks.
+
 `apps/desktop` is intentional: it groups the Vue interface and its thin Tauri
 adapter as one application, separate from the reusable Rust crates. Start it
 through `npm run app`; running the Rust desktop package alone does not start the
@@ -54,6 +59,11 @@ pixelate guide --root .
 capabilities. It tells an agent how to create or update an asset, inspect state,
 refine pixels or colours, export, and visually verify its work without reading
 internal `.pixelate` files.
+
+The CLI never prints unsolicited update notices. Use `pixelate version` for
+machine-readable version information and explicitly run `pixelate update` to
+install the latest signed standalone macOS CLI. The CLI bundled inside the app
+updates with the app instead.
 
 A typical direct flow is:
 
@@ -106,6 +116,25 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets
 cd apps/desktop && npm run format:check && npm test && npm run build
 ```
+
+## Releases
+
+Every push to `main` creates the next patch release for Apple silicon and Intel
+macOS. The workflow builds the desktop app, bundles the matching CLI, publishes
+signed standalone CLI binaries, validates the complete updater manifest, and
+only then exposes the GitHub Release as latest. A rerun for an already tagged
+commit reuses its version.
+
+The repository must define these GitHub Actions secrets:
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+The committed public key belongs only to Pixelate. Keep its matching private key
+and password backed up securely; never rotate or lose them after a release,
+because installed clients trust that key for every future update. Releases
+currently use ad-hoc macOS signing; Apple Developer ID signing and notarization
+can be added before broader distribution.
 
 ## License
 

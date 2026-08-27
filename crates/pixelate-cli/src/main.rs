@@ -5,6 +5,7 @@ mod execution;
 mod guide;
 mod pixelize;
 mod recolor;
+mod update;
 
 use std::process::ExitCode;
 

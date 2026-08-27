@@ -73,9 +73,17 @@ Every desktop capability must use the same application use case as a CLI route.
 | Pixel and palette editing | `revision draw`, `fill`, `recolor`, `remap` |
 | History navigation | `revision set-head` |
 | Bundle or named image export | `asset export`, `export-file` |
+| Installed version | `version` |
+| Explicit software update | `update` |
 
 `pixelate guide --root .` is the machine-readable source of truth for agents.
 Update it whenever an agent-facing command or workflow changes.
+
+Software distribution remains adapter-specific: the desktop uses Tauri's signed
+bundle updater, while a standalone CLI verifies and replaces a signed binary.
+The CLI never checks for updates during ordinary commands. The CLI bundled in
+the desktop app is replaced as part of the app bundle rather than modifying a
+signed `.app` in place.
 
 ## Non-goals
 
