@@ -16,18 +16,7 @@ export async function chooseReferenceImages(): Promise<string[]> {
     filters: [
       {
         name: "Images",
-        extensions: [
-          "png",
-          "jpg",
-          "jpeg",
-          "webp",
-          "gif",
-          "bmp",
-          "tif",
-          "tiff",
-          "ico",
-          "pnm",
-        ],
+        extensions: ["png", "jpg", "jpeg", "webp"],
       },
     ],
   });
