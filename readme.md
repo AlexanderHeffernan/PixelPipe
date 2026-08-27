@@ -2,7 +2,7 @@
 
 Pixelate is an opinionated workstation for turning visual references into
 deterministic, game-ready pixel art. It keeps briefs, references, conversion
-settings, indexed pixels, immutable revisions, review, and exports together in a
+settings, indexed pixels, immutable revisions, and exports together in a
 game repository.
 
 The product has one workflow:
@@ -26,9 +26,9 @@ npm install
 npm run app
 ```
 
-Choose a game folder. Pixelate creates a `.pixelate` project with useful starter
-palettes and 16×16, 32×32, and 64×64 sprite recipes. Other game files remain
-untouched until an explicit export.
+Choose a game folder. Pixelate creates a `.pixelate` project and supplies focused
+pixelization defaults directly. Other game files remain untouched until an
+explicit export.
 
 `apps/desktop` is intentional: it groups the Vue interface and its thin Tauri
 adapter as one application, separate from the reusable Rust crates. Start it
@@ -60,7 +60,7 @@ A typical direct flow is:
 ```sh
 pixelate init --root /path/to/game --name "My Game"
 pixelate asset init --root /path/to/game --asset signal-flare \
-  --kind sprite --brief "Strict overhead signal flare"
+  --brief "Strict overhead signal flare"
 pixelate reference import --root /path/to/game --asset signal-flare \
   --file /path/to/reference.png
 pixelate revision pixelize --root /path/to/game --asset signal-flare \
@@ -70,6 +70,8 @@ pixelate revision preview --root /path/to/game --asset signal-flare \
   --output /tmp/signal-flare-preview.png
 pixelate asset export --root /path/to/game --asset signal-flare \
   --destination /path/to/game/assets --overwrite
+pixelate asset export-file --root /path/to/game --asset signal-flare \
+  --destination /path/to/game/assets/signal-flare.webp --overwrite
 ```
 
 ### Visual verification

@@ -31,8 +31,8 @@ pipeline or a collection of provider settings.
   the same application use case. New agent-facing workflow guidance belongs in
   the machine-readable output of `pixelate guide`.
 - Repository-controlled files may not silently select or execute a command.
-- AI generation, candidate selection, conversion, review, approval, and export
-  are separate visible states. Never auto-select, auto-apply, or auto-approve.
+- Source generation, import, conversion, visual inspection, refinement, and
+  export are separate actions. Never auto-select, auto-apply, or auto-export.
 - Prefer a few excellent built-in defaults over requiring users to create
   palettes, recipes, profiles, or JSON before their first sprite.
 
