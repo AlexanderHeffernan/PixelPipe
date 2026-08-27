@@ -1,6 +1,6 @@
-# PixelPipe engineering contract
+# Pixelate engineering contract
 
-PixelPipe is opinionated software. Build the brief → reference → pixelize →
+Pixelate is opinionated software. Build the brief → reference → pixelize →
 review → export workflow we believe is best; do not turn it into a generic image
 pipeline or a collection of provider settings.
 
@@ -25,10 +25,12 @@ pipeline or a collection of provider settings.
 
 - The deterministic pixel engine does not know about Tauri, agents, providers,
   filesystems, or UI state.
-- Amp, Codex, and future agent connectors sit above the application boundary.
-  They receive no privileged operation unavailable to CLI/UI users.
+- Pixelate never launches or manages coding agents. Users run their preferred
+  agent in the embedded terminal, and agents operate Pixelate through the CLI.
+- Every human capability must have an equivalent non-interactive CLI route over
+  the same application use case. New agent-facing workflow guidance belongs in
+  the machine-readable output of `pixelate guide`.
 - Repository-controlled files may not silently select or execute a command.
-  Connecting a detected local agent requires explicit user consent.
 - AI generation, candidate selection, conversion, review, approval, and export
   are separate visible states. Never auto-select, auto-apply, or auto-approve.
 - Prefer a few excellent built-in defaults over requiring users to create

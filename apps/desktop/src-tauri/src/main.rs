@@ -1,3 +1,3 @@
 fn main() {
-    pixelpipe_desktop::run();
+    pixelate_desktop::run();
 }

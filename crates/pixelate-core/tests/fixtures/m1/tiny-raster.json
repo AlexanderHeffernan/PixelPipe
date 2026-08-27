@@ -1,0 +1,27 @@
+{
+  "schema": "pixelate.raster/v1",
+  "width": 4,
+  "height": 4,
+  "palette": {
+    "schema": "pixelate.palette/v1",
+    "name": "signal-flare",
+    "transparent_index": 0,
+    "colors": [
+      [0, 0, 0, 0],
+      [92, 28, 24, 255],
+      [238, 76, 36, 255],
+      [255, 224, 112, 255]
+    ]
+  },
+  "pixels": [
+    0, 0, 3, 0,
+    0, 3, 2, 0,
+    0, 2, 1, 0,
+    0, 1, 1, 0
+  ],
+  "pivot": [2, 4],
+  "metadata": {
+    "fixture": "synthetic-m1",
+    "provenance": "created for Pixelate; no PoC asset copied"
+  }
+}

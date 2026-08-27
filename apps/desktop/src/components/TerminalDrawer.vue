@@ -27,7 +27,7 @@ const maximumHeight = computed(() =>
 );
 const SESSION = "project";
 const terminalHelp =
-  "Launch your preferred coding-agent CLI here, such as amp, codex, or claude. Tell it to run `pixelpipe guide --root .` before making anything. PixelPipe is available on this terminal's PATH; no MCP server or special skill is required.";
+  "Launch your preferred coding-agent CLI here, such as amp, codex, or claude. Tell it to run `pixelate guide --root .` before making anything. Pixelate is available on this terminal's PATH; no MCP server or special skill is required.";
 let terminal: XtermTerminal | undefined;
 let fit: XtermFitAddon | undefined;
 let observer: ResizeObserver | undefined;

@@ -56,5 +56,5 @@ pub fn run() {
             close_terminal
         ])
         .run(tauri::generate_context!())
-        .expect("PixelPipe desktop runtime failed");
+        .expect("Pixelate desktop runtime failed");
 }

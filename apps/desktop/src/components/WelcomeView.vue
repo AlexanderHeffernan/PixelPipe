@@ -11,7 +11,7 @@ const workspace = useWorkspace();
     <p class="eyebrow">Deterministic pixel artwork</p>
     <h1>Convert, refine, and ship<br />game-ready sprites.</h1>
     <p class="welcome-copy">
-      Open a new or existing game folder. PixelPipe keeps palettes, conversion
+      Open a new or existing game folder. Pixelate keeps palettes, conversion
       recipes, assets, and revisions together with your project.
     </p>
     <button
@@ -22,8 +22,8 @@ const workspace = useWorkspace();
       {{ workspace.busy.value ? "Opening…" : "Open Project Folder…" }}
     </button>
     <small
-      >Your existing files stay where they are. PixelPipe works from a hidden
-      <code>.pixelpipe</code> folder.</small
+      >Your existing files stay where they are. Pixelate works from a hidden
+      <code>.pixelate</code> folder.</small
     >
   </section>
 </template>

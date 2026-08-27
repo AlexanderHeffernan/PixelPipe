@@ -44,7 +44,7 @@ const commit = {
   project_root: "/game",
   asset: "field-medic",
   revision: "r000001",
-  revision_path: "/game/.pixelpipe/assets/field-medic/revisions/r000001",
+  revision_path: "/game/.pixelate/assets/field-medic/revisions/r000001",
   native_sha256: "1".repeat(64),
   preview_sha256: "2".repeat(64),
   validation: "valid_visual_review_required",

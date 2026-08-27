@@ -1,10 +1,10 @@
 [workspace]
 members = [
   "apps/desktop/src-tauri",
-  "crates/pixelpipe-core",
-  "crates/pixelpipe-project",
-  "crates/pixelpipe-app",
-  "crates/pixelpipe-cli",
+  "crates/pixelate-core",
+  "crates/pixelate-project",
+  "crates/pixelate-app",
+  "crates/pixelate-cli",
 ]
 resolver = "2"
 
@@ -12,7 +12,6 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/AlexanderHeffernan/PixelPipe"
 
 [workspace.dependencies]
 atomicwrites = "0.4"

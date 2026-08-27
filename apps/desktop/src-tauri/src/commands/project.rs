@@ -1,5 +1,5 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use pixelpipe_app::{
+use pixelate_app::{
     BrowseProject, CommitComposition, ConvertSelectedReference, DeleteAsset, ExportAsset,
     ExportAssetFile, ImportReference, InitializeAsset, OpenProject, PreviewComposition,
     PreviewSelectedReference, ProjectBrowser, RasterInspection, RenameAsset, RevisionResult,
@@ -11,64 +11,64 @@ use super::{CommandResult, blocking, command_error};
 
 #[tauri::command]
 pub(crate) async fn browse_project(request: BrowseProject) -> CommandResult<ProjectBrowser> {
-    blocking(move || pixelpipe_app::browse_project(&request)).await
+    blocking(move || pixelate_app::browse_project(&request)).await
 }
 
 #[tauri::command]
 pub(crate) async fn open_project(request: OpenProject) -> CommandResult<ProjectBrowser> {
-    blocking(move || pixelpipe_app::open_project(request)).await
+    blocking(move || pixelate_app::open_project(request)).await
 }
 
 #[tauri::command]
 pub(crate) fn initialize_asset(
     request: InitializeAsset,
-) -> CommandResult<pixelpipe_app::AssetManifest> {
-    pixelpipe_app::initialize_asset(request).map_err(|error| command_error(&error))
+) -> CommandResult<pixelate_app::AssetManifest> {
+    pixelate_app::initialize_asset(request).map_err(|error| command_error(&error))
 }
 
 #[tauri::command]
 pub(crate) fn delete_asset(request: DeleteAsset) -> CommandResult<()> {
-    pixelpipe_app::delete_asset(request).map_err(|error| command_error(&error))
+    pixelate_app::delete_asset(request).map_err(|error| command_error(&error))
 }
 
 #[tauri::command]
 pub(crate) fn update_asset_brief(
     request: UpdateAssetBrief,
-) -> CommandResult<pixelpipe_app::AssetManifest> {
-    pixelpipe_app::update_asset_brief(request).map_err(|error| command_error(&error))
+) -> CommandResult<pixelate_app::AssetManifest> {
+    pixelate_app::update_asset_brief(request).map_err(|error| command_error(&error))
 }
 
 #[tauri::command]
-pub(crate) fn rename_asset(request: RenameAsset) -> CommandResult<pixelpipe_app::AssetManifest> {
-    pixelpipe_app::rename_asset(request).map_err(|error| command_error(&error))
+pub(crate) fn rename_asset(request: RenameAsset) -> CommandResult<pixelate_app::AssetManifest> {
+    pixelate_app::rename_asset(request).map_err(|error| command_error(&error))
 }
 
 #[tauri::command]
 pub(crate) async fn import_reference(
     request: ImportReference,
-) -> CommandResult<pixelpipe_app::ReferenceSelection> {
-    blocking(move || pixelpipe_app::import_reference(request)).await
+) -> CommandResult<pixelate_app::ReferenceSelection> {
+    blocking(move || pixelate_app::import_reference(request)).await
 }
 
 #[tauri::command]
 pub(crate) async fn export_asset(
     request: ExportAsset,
-) -> CommandResult<pixelpipe_app::ExportResult> {
-    blocking(move || pixelpipe_app::export_asset(request)).await
+) -> CommandResult<pixelate_app::ExportResult> {
+    blocking(move || pixelate_app::export_asset(request)).await
 }
 
 #[tauri::command]
 pub(crate) async fn export_asset_file(
     request: ExportAssetFile,
-) -> CommandResult<pixelpipe_app::ExportFileResult> {
-    blocking(move || pixelpipe_app::export_asset_file(request)).await
+) -> CommandResult<pixelate_app::ExportFileResult> {
+    blocking(move || pixelate_app::export_asset_file(request)).await
 }
 
 #[tauri::command]
 pub(crate) async fn convert_selected_reference(
     request: ConvertSelectedReference,
 ) -> CommandResult<RevisionResult> {
-    blocking(move || pixelpipe_app::convert_selected_reference(request)).await
+    blocking(move || pixelate_app::convert_selected_reference(request)).await
 }
 
 #[derive(Debug, Serialize)]
@@ -85,7 +85,7 @@ pub(crate) async fn preview_selected_reference(
     request: PreviewSelectedReference,
 ) -> CommandResult<ConversionPreviewResponse> {
     blocking(move || {
-        let preview = pixelpipe_app::preview_selected_reference(request)?;
+        let preview = pixelate_app::preview_selected_reference(request)?;
         Ok(ConversionPreviewResponse {
             inspection: preview.inspection,
             palette_name: preview.palette_name,
@@ -101,7 +101,7 @@ pub(crate) async fn preview_composition(
     request: PreviewComposition,
 ) -> CommandResult<ConversionPreviewResponse> {
     blocking(move || {
-        let preview = pixelpipe_app::preview_composition(request)?;
+        let preview = pixelate_app::preview_composition(request)?;
         Ok(ConversionPreviewResponse {
             inspection: preview.inspection,
             palette_name: "Current sprite".to_owned(),
@@ -116,19 +116,19 @@ pub(crate) async fn preview_composition(
 pub(crate) async fn commit_composition(
     request: CommitComposition,
 ) -> CommandResult<RevisionResult> {
-    blocking(move || pixelpipe_app::commit_composition(request)).await
+    blocking(move || pixelate_app::commit_composition(request)).await
 }
 
 #[tauri::command]
 pub(crate) fn store_project_palette(
     request: StoreProjectPalette,
-) -> CommandResult<pixelpipe_app::Palette> {
-    pixelpipe_app::store_project_palette(request).map_err(|error| command_error(&error))
+) -> CommandResult<pixelate_app::Palette> {
+    pixelate_app::store_project_palette(request).map_err(|error| command_error(&error))
 }
 
 #[tauri::command]
 pub(crate) fn store_project_recipe(
     request: StoreProjectRecipe,
-) -> CommandResult<pixelpipe_app::ConversionRecipeDocument> {
-    pixelpipe_app::store_project_recipe(request).map_err(|error| command_error(&error))
+) -> CommandResult<pixelate_app::ConversionRecipeDocument> {
+    pixelate_app::store_project_recipe(request).map_err(|error| command_error(&error))
 }

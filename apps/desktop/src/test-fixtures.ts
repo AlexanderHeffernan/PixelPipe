@@ -23,7 +23,7 @@ export const settings: ConversionSettings = {
 };
 
 export const reference = {
-  schema: "pixelpipe.reference-selection/v1",
+  schema: "pixelate.reference-selection/v1",
   asset: "field-medic",
   run: "import",
   candidate: "local-file",
@@ -34,7 +34,7 @@ export const reference = {
 export const project: ProjectBrowser = {
   project_root: "/game",
   project: {
-    schema: "pixelpipe.project/v1",
+    schema: "pixelate.project/v1",
     name: "Fixture Game",
     preview_scale: 8,
   },
@@ -42,8 +42,8 @@ export const project: ProjectBrowser = {
     {
       id: "starter",
       palette: {
-        schema: "pixelpipe.palette/v1",
-        name: "PixelPipe Starter",
+        schema: "pixelate.palette/v1",
+        name: "Pixelate Starter",
         transparent_index: 0,
         colors: [
           [0, 0, 0, 0],
@@ -55,12 +55,12 @@ export const project: ProjectBrowser = {
   assets: [
     {
       asset: {
-        schema: "pixelpipe.asset/v2",
+        schema: "pixelate.asset/v2",
         id: "field-medic",
         kind: "sprite",
         state: "selected_reference",
         brief: {
-          schema: "pixelpipe.asset-brief/v1",
+          schema: "pixelate.asset-brief/v1",
           text: "Strict overhead field medic",
         },
         selected_reference: reference,
@@ -70,7 +70,7 @@ export const project: ProjectBrowser = {
   ],
   recipes: [
     {
-      schema: "pixelpipe.conversion-recipe/v1",
+      schema: "pixelate.conversion-recipe/v1",
       id: "sprite-32",
       kind: "sprite",
       palette: "starter",
@@ -93,7 +93,7 @@ export const revisionView: RevisionViewResponse = {
       text_rows: [],
     },
     palette: {
-      schema: "pixelpipe.palette/v1",
+      schema: "pixelate.palette/v1",
       name: "starter",
       transparent_index: 0,
       colors: [
@@ -103,7 +103,7 @@ export const revisionView: RevisionViewResponse = {
     },
     transparent_index: 0,
     validation: {
-      schema: "pixelpipe.validation/v1",
+      schema: "pixelate.validation/v1",
       valid: true,
       checks: [],
       visual_review: "required",

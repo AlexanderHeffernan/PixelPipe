@@ -30,7 +30,7 @@ const workspace = useWorkspace();
       <h1>Add a source image</h1>
       <p>
         Upload a smooth reference now, or ask your coding agent to add options
-        through the PixelPipe CLI.
+        through the Pixelate CLI.
       </p>
       <button class="primary" @click="workspace.importReference">
         Choose Image…

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Pixilate",
+  "productName": "Pixelate",
   "version": "0.1.0",
-  "identifier": "dev.pixelpipe.workstation",
+  "identifier": "dev.pixelate.workstation",
   "build": {
     "beforeDevCommand": "npm run prepare:cli && npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Pixilate",
+        "title": "Pixelate",
         "width": 1440,
         "height": 900,
         "minWidth": 1040,

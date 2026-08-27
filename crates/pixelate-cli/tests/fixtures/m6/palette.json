@@ -1,0 +1,11 @@
+{
+  "schema": "pixelate.palette/v1",
+  "name": "m6-synthetic-flare",
+  "transparent_index": 0,
+  "colors": [
+    [0, 0, 0, 0],
+    [92, 28, 24, 255],
+    [238, 76, 36, 255],
+    [255, 224, 112, 255]
+  ]
+}

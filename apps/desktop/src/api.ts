@@ -225,7 +225,7 @@ export const patchRevision = (
       start,
       asset,
       parent,
-      patch: { schema: "pixelpipe.patch/v1", edits },
+      patch: { schema: "pixelate.patch/v1", edits },
       brief: null,
       preview_scale: null,
       actor,
@@ -263,9 +263,9 @@ export const remapRevision = (
       asset,
       parent,
       remap: {
-        schema: "pixelpipe.palette-remap/v1",
+        schema: "pixelate.palette-remap/v1",
         palette: {
-          schema: "pixelpipe.palette/v1",
+          schema: "pixelate.palette/v1",
           name: draft.name,
           transparent_index: draft.transparentIndex,
           colors: draft.colors,

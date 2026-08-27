@@ -12,14 +12,14 @@ function setup() {
   browser.assets[0].asset.state = "revisioned";
   browser.assets[0].revisions = [
     {
-      schema: "pixelpipe.revision/v1",
+      schema: "pixelate.revision/v1",
       id: "r000001",
       asset: "field-medic",
       created_unix_ms: 1,
       files: {},
     },
     {
-      schema: "pixelpipe.revision/v1",
+      schema: "pixelate.revision/v1",
       id: "r000002",
       asset: "field-medic",
       parent: "r000001",

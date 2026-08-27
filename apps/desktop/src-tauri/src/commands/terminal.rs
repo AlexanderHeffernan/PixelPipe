@@ -63,14 +63,14 @@ pub(crate) fn start_terminal(
                 command.arg("-f");
                 command.arg("-c");
                 command.arg(
-                    "cd -- \"$PIXELPIPE_PROJECT_ROOT\" && export PS1='PixelPipe:%~ %# ' && exec \"$SHELL\" -f -i",
+                    "cd -- \"$PIXELATE_PROJECT_ROOT\" && export PS1='Pixelate:%~ %# ' && exec \"$SHELL\" -f -i",
                 );
             }
             Some("bash") => {
                 command.arg("--norc");
                 command.arg("-c");
                 command.arg(
-                    "cd -- \"$PIXELPIPE_PROJECT_ROOT\" && export PS1='PixelPipe:\\w \\$ ' && exec \"$SHELL\" --norc -i",
+                    "cd -- \"$PIXELATE_PROJECT_ROOT\" && export PS1='Pixelate:\\w \\$ ' && exec \"$SHELL\" --norc -i",
                 );
             }
             _ => {}
@@ -78,7 +78,7 @@ pub(crate) fn start_terminal(
     }
     command.cwd(&cwd);
     command.env("TERM", "xterm-256color");
-    command.env("PIXELPIPE_PROJECT_ROOT", cwd);
+    command.env("PIXELATE_PROJECT_ROOT", cwd);
     if let Some(path) = terminal_path() {
         command.env("PATH", path);
     }
@@ -128,7 +128,7 @@ fn terminal_path() -> Option<String> {
         .and_then(|executable| executable.parent().map(PathBuf::from))
         .filter(|directory| {
             directory
-                .join(format!("pixelpipe{}", env::consts::EXE_SUFFIX))
+                .join(format!("pixelate{}", env::consts::EXE_SUFFIX))
                 .is_file()
         })
     {

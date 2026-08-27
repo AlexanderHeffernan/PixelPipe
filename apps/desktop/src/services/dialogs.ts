@@ -53,17 +53,6 @@ export async function chooseExportFile(
   return typeof selected === "string" ? selected : undefined;
 }
 
-export const confirmAgentConnector = (name: string) =>
-  confirm(
-    `PixelPipe will run your installed ${name} CLI for generation and critique. The executable is stored only in your user settings and is never selected by a project. Continue?`,
-    {
-      title: `Connect ${name}`,
-      kind: "warning",
-      okLabel: `Connect ${name}`,
-      cancelLabel: "Cancel",
-    },
-  );
-
 export const confirmDeleteAsset = (asset: string) =>
   confirm(
     `Delete “${asset}” and all of its revision history? This cannot be undone.`,

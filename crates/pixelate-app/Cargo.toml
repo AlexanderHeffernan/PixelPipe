@@ -1,0 +1,22 @@
+[package]
+name = "pixelate-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+image.workspace = true
+atomicwrites.workspace = true
+pixelate-core = { path = "../pixelate-core" }
+pixelate-project = { path = "../pixelate-project" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+png.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,11 +1,11 @@
 {
-  "name": "pixelpipe-desktop-ui",
+  "name": "pixelate-desktop-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prepare:cli": "cargo build --manifest-path ../../Cargo.toml -p pixelpipe-cli",
+    "prepare:cli": "cargo build --manifest-path ../../Cargo.toml -p pixelate-cli",
     "app": "tauri dev",
     "build": "vue-tsc --noEmit && vite build",
     "format": "prettier --write 'src/**/*.{ts,vue,css}'",

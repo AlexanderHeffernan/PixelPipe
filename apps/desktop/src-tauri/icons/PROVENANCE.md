@@ -1,6 +1,6 @@
 # Desktop icon provenance
 
-The complete Pixilate macOS icon was created and provided by Alexander
+The complete Pixelate macOS icon was created and provided by Alexander
 Heffernan on 2026-08-27 as `icon-source.png`. The source already contains its
 background, shape, spacing, and dark appearance.
 

@@ -474,11 +474,11 @@ export function createWorkspace() {
   };
 }
 export type Workspace = ReturnType<typeof createWorkspace>;
-const workspaceKey = Symbol("pixelpipe-workspace");
+const workspaceKey = Symbol("pixelate-workspace");
 export const provideWorkspace = (workspace: Workspace) =>
   provide(workspaceKey, workspace);
 export const useWorkspace = () => {
   const workspace = inject<Workspace>(workspaceKey);
-  if (!workspace) throw new Error("PixelPipe workspace is unavailable");
+  if (!workspace) throw new Error("Pixelate workspace is unavailable");
   return workspace;
 };

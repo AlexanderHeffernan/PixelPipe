@@ -2492,13 +2492,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
-name = "pixelpipe-app"
+name = "pixelate-app"
 version = "0.1.0"
 dependencies = [
  "atomicwrites",
  "image",
- "pixelpipe-core",
- "pixelpipe-project",
+ "pixelate-core",
+ "pixelate-project",
  "png 0.17.16",
  "serde",
  "serde_json",
@@ -2507,13 +2507,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixelpipe-cli"
+name = "pixelate-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "pixelpipe-app",
- "pixelpipe-core",
- "pixelpipe-project",
+ "pixelate-app",
+ "pixelate-core",
+ "pixelate-project",
  "png 0.17.16",
  "serde",
  "serde_json",
@@ -2521,7 +2521,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixelpipe-core"
+name = "pixelate-core"
 version = "0.1.0"
 dependencies = [
  "png 0.17.16",
@@ -2532,11 +2532,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixelpipe-desktop"
+name = "pixelate-desktop"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "pixelpipe-app",
+ "pixelate-app",
  "portable-pty",
  "serde",
  "tauri",
@@ -2545,12 +2545,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixelpipe-project"
+name = "pixelate-project"
 version = "0.1.0"
 dependencies = [
  "atomicwrites",
  "fs2",
- "pixelpipe-core",
+ "pixelate-core",
  "serde",
  "serde_json",
  "tempfile",

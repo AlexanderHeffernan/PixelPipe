@@ -1,24 +1,24 @@
-# PixelPipe
+# Pixelate
 
-PixelPipe is an AI-first, project-aware workstation for producing deterministic,
-game-ready pixel-art assets from selected visual references.
+Pixelate is an opinionated workstation for turning visual references into
+deterministic, game-ready pixel art. It keeps briefs, references, conversion
+settings, indexed pixels, immutable revisions, review, and exports together in a
+game repository.
 
-The desktop app now presents one opinionated path: choose a game folder, create
-a sprite brief, create or import a smooth reference, pixelize it with starter
-defaults, inspect the native result, and export PNG/JSON runtime assets.
+The product has one workflow:
 
-- [Architecture contract](ARCHITECTURE.md)
-- [Milestone 0 research and decision record](docs/milestones/M0-charter.md)
-- [Milestone 1 foundation record](docs/milestones/M1-foundation.md)
-- [Milestone 2 conversion record](docs/milestones/M2-conversion.md)
-- [Milestone 3 refinement/review record](docs/milestones/M3-review-and-refinement.md)
-- [Milestone 4 desktop review record](docs/milestones/M4-desktop-review.md)
-- [Milestone 6 pre-revision asset record](docs/milestones/M6-pre-revision-assets.md)
+```text
+brief → reference → pixelize → visually review → refine → export
+```
 
-## Run the desktop app
+Pixelate never launches or manages coding agents. Run any agent in the embedded
+terminal; it receives the same capabilities as a human through the `pixelate`
+CLI and no privileged internal interface.
 
-Prerequisites: Rust 1.98+, Node.js 22+, and the platform dependencies required
-by [Tauri 2](https://v2.tauri.app/start/prerequisites/). Then:
+## Desktop
+
+Prerequisites are Rust 1.98+, Node.js 22+, and the platform dependencies required
+by [Tauri 2](https://v2.tauri.app/start/prerequisites/).
 
 ```sh
 cd apps/desktop
@@ -26,108 +26,87 @@ npm install
 npm run app
 ```
 
-Choose your game folder in the native dialog. PixelPipe creates `.pixelpipe`
-project metadata and starter 16×16, 32×32, and 64×64 sprite recipes without
-changing other files. The embedded terminal supports the user's coding agent of
-choice; PixelPipe itself does not launch or manage agents.
+Choose a game folder. Pixelate creates a `.pixelate` project with useful starter
+palettes and 16×16, 32×32, and 64×64 sprite recipes. Other game files remain
+untouched until an explicit export.
 
-The Tauri CLI starts both Vite and the native Rust process. Running
-`cargo run -p pixelpipe-desktop` alone is not supported: the debug window
-expects Vite at `http://localhost:1420` and will otherwise be blank.
+`apps/desktop` is intentional: it groups the Vue interface and its thin Tauri
+adapter as one application, separate from the reusable Rust crates. Start it
+through `npm run app`; running the Rust desktop package alone does not start the
+Vite frontend.
 
-## CLI foundation
+## CLI and coding agents
+
+Build the CLI:
 
 ```sh
-cargo run -p pixelpipe-cli -- init --root /path/to/game --name "My Game"
-cargo run -p pixelpipe-cli -- revision create \
-  --root /path/to/game \
-  --asset signal-flare \
-  --pixels fixtures/m1/tiny-raster.json \
-  --preview-scale 4
+cargo build -p pixelate-cli
 ```
 
-Commands emit JSON.
-
-### Preview for visual iteration
-
-Coding agents should render and inspect the current head after every conversion
-or edit. The preview is read-only and uses exact nearest-neighbour scaling toward
-a 512-pixel longest edge, so vision tools can assess small sprites without
-blurring their pixel structure:
+All commands are non-interactive and return JSON. From an initialized game
+folder, an agent should begin with:
 
 ```sh
-pixelpipe revision preview --root /path/to/game \
-  --asset signal-flare --output /tmp/signal-flare-preview.png
+pixelate guide --root .
 ```
 
-Pass `--revision r000001` to inspect an older revision or `--scale 1` for native
-resolution. The JSON response includes native/output dimensions, scale, revision,
-path, and SHA-256. Previewing never creates a revision or moves asset head.
+`guide` is the machine-readable source of truth for the current workflow and
+capabilities. It tells an agent how to create or update an asset, inspect state,
+refine pixels or colours, export, and visually verify its work without reading
+internal `.pixelate` files.
 
-## Try the M2 path
-
-`revision convert` accepts an RGBA PNG, a versioned palette JSON file, and a
-complete conversion-settings JSON file. The synthetic M2 fixtures are stored as
-RGBA arrays rather than a binary reference; the conformance tests encode those
-arrays to PNG in memory and exercise this command end to end.
+A typical direct flow is:
 
 ```sh
-cargo run -p pixelpipe-cli -- revision convert \
-  --root /path/to/game \
-  --asset signal-flare \
-  --source /path/to/selected-reference.png \
-  --palette /path/to/palette.json \
-  --settings /path/to/conversion.settings.json \
-  --preview-scale 8
-```
-
-Use `--conversion sheet --kind sheet` with a `SheetSettings` JSON document for
-a regular frame grid.
-
-## M3 refinement and review
-
-```sh
-pixelpipe revision inspect --root /path/to/game --asset signal-flare
-pixelpipe revision patch --root /path/to/game --asset signal-flare \
-  --parent r000001 --patch patch.json
-pixelpipe revision remap --root /path/to/game --asset signal-flare \
-  --parent r000001 --remap palette-remap.json
-pixelpipe revision compare --root /path/to/game --asset signal-flare \
-  --left r000001 --right r000002 --visual-preview diff.png
-pixelpipe revision review --root /path/to/game --asset signal-flare \
-  --revision r000002 --actor-kind human --actor alexander \
-  --decision accepted --note "Reads clearly at native size"
-```
-
-Patch/remap commands always require an explicit immutable parent. An empty patch
-from an older revision creates a new identical child and acts as undo without
-moving or rewriting history. Review events never change revision bytes or the
-separate approval pointer.
-
-## M6 pre-revision assets
-
-```sh
-pixelpipe asset init --root /path/to/game --asset signal-flare \
+pixelate init --root /path/to/game --name "My Game"
+pixelate asset init --root /path/to/game --asset signal-flare \
   --kind sprite --brief "Strict overhead signal flare"
-pixelpipe project set-palette --root /path/to/game \
-  --id synthetic-flare --file fixtures/m6/palette.json
-pixelpipe project set-recipe --root /path/to/game \
-  --file fixtures/m6/recipe.json
-# Create a source with any external coding agent, then import it.
-pixelpipe reference import --root /path/to/game \
-  --asset signal-flare --file /path/to/reference.png
-pixelpipe revision convert-selected --root /path/to/game \
-  --asset signal-flare --recipe synthetic-flare
+pixelate reference import --root /path/to/game --asset signal-flare \
+  --file /path/to/reference.png
+pixelate revision pixelize --root /path/to/game --asset signal-flare \
+  --resolution 32 --colors 16 --background auto --actor agent
+pixelate asset inspect --root /path/to/game --asset signal-flare
+pixelate revision preview --root /path/to/game --asset signal-flare \
+  --output /tmp/signal-flare-preview.png
+pixelate asset export --root /path/to/game --asset signal-flare \
+  --destination /path/to/game/assets --overwrite
 ```
 
-Assets serialize `draft`, `awaiting_reference`, `selected_reference`, and
-`revisioned` lifecycle states. Patch, remap, compare, and review remain
-revision-only. First conversion resolves project resources and snapshots their
-content and hashes into `r000001`; editing those resources later never rewrites
-the revision.
+### Visual verification
+
+Agents should run `revision preview` after every conversion or edit and inspect
+the resulting PNG with their vision tool. By default Pixelate enlarges the image
+with exact nearest-neighbour scaling toward a 512-pixel longest edge. This is
+better for vision analysis than a tiny native sprite while preserving every hard
+pixel edge and colour exactly; scaling is capped at 64×. Use `--scale 1` only
+when native resolution is specifically required.
+
+Preview is read-only: it never creates a revision or changes asset head. Its JSON
+result includes the native and output dimensions, integer scale, revision, path,
+and SHA-256.
+
+## Codebase
+
+- `crates/pixelate-core`: pure deterministic pixel model and operations.
+- `crates/pixelate-project`: `.pixelate` persistence, schemas, and revisions.
+- `crates/pixelate-app`: shared application use cases used by every frontend.
+- `crates/pixelate-cli`: complete scriptable adapter and agent guidance.
+- `apps/desktop`: Vue/Tauri human interface over the application use cases.
+
+All five workspace packages are active. See [ARCHITECTURE.md](ARCHITECTURE.md)
+for their dependency rules and product invariants.
+
+## Verification
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-targets
+cd apps/desktop && npm run format:check && npm test && npm run build
+```
 
 ## License
 
-PixelPipe source code and schemas are licensed under either the MIT License or
-Apache License 2.0, at your option. Generated/reference art is not covered by
-that blanket grant; fixture and art provenance is recorded separately.
+Pixelate source code and schemas are available under either the MIT License or
+Apache License 2.0, at your option. Generated and reference artwork is not
+covered by that blanket grant.
