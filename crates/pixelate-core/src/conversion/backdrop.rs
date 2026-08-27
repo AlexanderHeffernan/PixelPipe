@@ -98,9 +98,24 @@ pub(super) fn clean_backdrop(source: &RgbaImage, policy: &BackdropPolicy) -> Rgb
         color, tolerance, ..
     } = policy
     {
-        remove_border_connected(&mut cleaned, *color, *tolerance);
+        if is_magenta_key(*color) {
+            remove_matching_pixels(&mut cleaned, *color, *tolerance);
+        } else {
+            remove_border_connected(&mut cleaned, *color, *tolerance);
+        }
     }
     cleaned
+}
+
+fn remove_matching_pixels(image: &mut RgbaImage, color: [u8; 3], tolerance: u8) -> usize {
+    let mut removed = 0;
+    for pixel in &mut image.pixels {
+        if pixel[3] > 0 && matches_background(*pixel, color, tolerance) {
+            pixel[3] = 0;
+            removed += 1;
+        }
+    }
+    removed
 }
 
 fn remove_border_connected(image: &mut RgbaImage, color: [u8; 3], tolerance: u8) -> usize {
@@ -178,15 +193,49 @@ fn enqueue_background(
         return;
     }
     let pixel = image.pixels[offset];
-    let matches = pixel[3] > 0
-        && pixel[..3]
-            .iter()
-            .zip(color)
-            .all(|(actual, expected)| actual.abs_diff(expected) <= tolerance);
+    let matches = pixel[3] > 0 && matches_background(pixel, color, tolerance);
     if matches {
         queued[offset] = true;
         queue.push_back((x, y));
     }
+}
+
+fn matches_background(pixel: [u8; 4], color: [u8; 3], tolerance: u8) -> bool {
+    if pixel[..3]
+        .iter()
+        .zip(color)
+        .all(|(actual, expected)| actual.abs_diff(expected) <= tolerance)
+    {
+        return true;
+    }
+    if !is_magenta_key(color) {
+        return false;
+    }
+    let actual = normalized_chroma([pixel[0], pixel[1], pixel[2]]);
+    let expected = normalized_chroma(color);
+    match (actual, expected) {
+        (Some(actual), Some(expected)) => actual
+            .iter()
+            .zip(expected)
+            .all(|(actual, expected)| actual.abs_diff(expected) <= tolerance.saturating_mul(2)),
+        _ => false,
+    }
+}
+
+fn is_magenta_key(color: [u8; 3]) -> bool {
+    color[0].saturating_sub(color[1]) >= 64 && color[2].saturating_sub(color[1]) >= 64
+}
+
+fn normalized_chroma(color: [u8; 3]) -> Option<[u8; 3]> {
+    let minimum = *color.iter().min()?;
+    let maximum = *color.iter().max()?;
+    let chroma = maximum - minimum;
+    if chroma < 48 {
+        return None;
+    }
+    Some(color.map(|channel| {
+        u8::try_from(u16::from(channel - minimum) * 255 / u16::from(chroma)).unwrap_or(u8::MAX)
+    }))
 }
 
 pub(super) fn visible_bounds(image: &RgbaImage) -> Option<Bounds> {

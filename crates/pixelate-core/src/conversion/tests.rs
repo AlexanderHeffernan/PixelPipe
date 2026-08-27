@@ -2,7 +2,7 @@ use png::ColorType;
 use serde::Deserialize;
 
 use super::{
-    backdrop::visible_bounds,
+    backdrop::{clean_backdrop, visible_bounds},
     convert_reference, decode_rgba_png, detect_border_color,
     model::{
         BackdropPolicy, Bounds, ComponentExpectation, ConversionSettings, Registration, RgbaImage,
@@ -116,6 +116,47 @@ fn detects_a_softly_varied_dominant_border_colour() {
     assert_eq!(
         detect_border_color(&source, 0, 8).unwrap(),
         Some([101, 150, 200])
+    );
+}
+
+#[test]
+fn removes_varied_magenta_key_pixels_in_enclosed_background() {
+    let magenta = [211, 28, 202, 255];
+    let dark_magenta = [116, 31, 101, 255];
+    let brown = [82, 51, 36, 255];
+    let mut pixels = vec![magenta; 25];
+    for coordinate in [(1, 2), (2, 1), (2, 3), (3, 2)] {
+        pixels[coordinate.1 * 5 + coordinate.0] = brown;
+    }
+    pixels[2 * 5 + 2] = dark_magenta;
+    let source = RgbaImage {
+        width: 5,
+        height: 5,
+        pixels,
+    };
+    let color = detect_border_color(&source, 0, 28)
+        .expect("detection")
+        .expect("magenta backdrop");
+    let cleaned = clean_backdrop(
+        &source,
+        &BackdropPolicy::BorderConnected {
+            color,
+            tolerance: 28,
+            alpha_threshold: 0,
+        },
+    );
+
+    assert_eq!(cleaned.pixels[2 * 5 + 2][3], 0);
+    assert_eq!(
+        cleaned.pixels.iter().filter(|pixel| pixel[3] > 0).count(),
+        4
+    );
+    assert!(
+        cleaned
+            .pixels
+            .iter()
+            .filter(|pixel| pixel[3] > 0)
+            .all(|pixel| *pixel == brown)
     );
 }
 
