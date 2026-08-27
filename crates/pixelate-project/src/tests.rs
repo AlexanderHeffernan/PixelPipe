@@ -21,6 +21,52 @@ fn init_and_discover_project() {
 }
 
 #[test]
+fn opens_projects_with_removed_manifest_fields() {
+    let temp = tempdir().expect("tempdir");
+    let store = ProjectStore::init(temp.path(), "Fixture Game").expect("init");
+    fs::write(
+        temp.path().join(".pixelate/project.toml"),
+        "schema = \"pixelate.project/v1\"\nname = \"Fixture Game\"\npreview_scale = 8\n",
+    )
+    .expect("legacy manifest");
+
+    let manifest = store.manifest().expect("manifest");
+    assert_eq!(manifest.name, "Fixture Game");
+
+    store
+        .create_asset("legacy-asset", "Legacy asset")
+        .expect("asset");
+    fs::write(
+        temp.path().join(".pixelate/assets/legacy-asset/asset.toml"),
+        concat!(
+            "schema = \"pixelate.asset/v2\"\n",
+            "id = \"legacy-asset\"\n",
+            "kind = \"sprite\"\n",
+            "state = \"selected_reference\"\n",
+            "approved = \"r000001\"\n",
+            "[brief]\n",
+            "schema = \"pixelate.asset-brief/v1\"\n",
+            "text = \"Legacy asset\"\n",
+            "[selected_reference]\n",
+            "schema = \"pixelate.reference-selection/v1\"\n",
+            "asset = \"legacy-asset\"\n",
+            "run = \"import\"\n",
+            "candidate = \"local-file\"\n",
+            "sha256 = \"legacy-hash\"\n",
+            "selected_unix_ms = 1\n",
+        ),
+    )
+    .expect("legacy asset manifest");
+
+    let asset = store.asset("legacy-asset").expect("legacy asset");
+    assert_eq!(asset.id, "legacy-asset");
+    assert_eq!(
+        asset.selected_reference.expect("selection").sha256,
+        "legacy-hash"
+    );
+}
+
+#[test]
 fn rejects_path_like_asset_ids() {
     assert!(matches!(
         validate_asset_id("../escape"),

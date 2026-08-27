@@ -56,6 +56,13 @@ fn agent_workflow_pixelizes_previews_and_exports() {
         "auto",
     ]);
     assert_eq!(converted["revision"]["revision"], "r000001");
+    let revision_path = Path::new(
+        converted["revision"]["revision_path"]
+            .as_str()
+            .expect("revision path"),
+    );
+    assert!(!revision_path.join("preview.png").exists());
+    make_revision_legacy(revision_path);
 
     let preview_path = project.path().join("preview.png");
     let preview = run(&[
@@ -88,12 +95,6 @@ fn agent_workflow_pixelizes_previews_and_exports() {
     ]);
     assert_eq!(exported["export"]["format"], "webp");
     assert!(export_path.is_file());
-    assert!(
-        !project
-            .path()
-            .join(".pixelate/assets/signal-flare/revisions/r000001/preview.png")
-            .exists()
-    );
 }
 
 #[test]
@@ -147,6 +148,44 @@ fn write_fixture_png(fixture_path: &Path, output_path: &Path) {
         .expect("PNG header")
         .write_image_data(&pixels)
         .expect("PNG pixels");
+}
+
+fn make_revision_legacy(path: &Path) {
+    let mut recipe: Value =
+        serde_json::from_slice(&fs::read(path.join("recipe.json")).expect("recipe"))
+            .expect("recipe JSON");
+    recipe["operations"]
+        .as_array_mut()
+        .expect("operations")
+        .push(serde_json::json!({ "type": "render_indexed", "preview_scale": 8 }));
+    let recipe_hash = write_json(&path.join("recipe.json"), &recipe);
+
+    let mut validation: Value =
+        serde_json::from_slice(&fs::read(path.join("validation.json")).expect("validation"))
+            .expect("validation JSON");
+    validation["visual_review"] = Value::String("required".to_owned());
+    let validation_hash = write_json(&path.join("validation.json"), &validation);
+
+    let preview = fs::read(path.join("native.png")).expect("native PNG");
+    fs::write(path.join("preview.png"), &preview).expect("legacy preview");
+    let mut manifest: Value =
+        serde_json::from_slice(&fs::read(path.join("revision.json")).expect("manifest"))
+            .expect("manifest JSON");
+    let files = manifest["files"].as_object_mut().expect("manifest files");
+    files.insert("recipe.json".to_owned(), Value::String(recipe_hash));
+    files.insert("validation.json".to_owned(), Value::String(validation_hash));
+    files.insert(
+        "preview.png".to_owned(),
+        Value::String(pixelate_core::sha256_hex(&preview)),
+    );
+    write_json(&path.join("revision.json"), &manifest);
+}
+
+fn write_json(path: &Path, value: &Value) -> String {
+    let mut bytes = serde_json::to_vec_pretty(value).expect("JSON");
+    bytes.push(b'\n');
+    fs::write(path, &bytes).expect("write JSON");
+    pixelate_core::sha256_hex(&bytes)
 }
 
 fn run(arguments: &[&str]) -> Value {

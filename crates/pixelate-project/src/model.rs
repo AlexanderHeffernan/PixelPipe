@@ -19,14 +19,12 @@ pub(crate) const REVISION_PAYLOADS: [&str; 6] = [
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ProjectManifest {
     pub schema: String,
     pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AssetManifest {
     pub schema: String,
     pub id: String,
@@ -43,7 +41,6 @@ pub struct AssetManifest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AssetStyle {
     pub color_count: u8,
     pub settings: ConversionSettings,
@@ -130,7 +127,6 @@ pub struct RevisionSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ReferenceSelection {
     pub sha256: String,
 }

@@ -102,10 +102,13 @@ impl ProjectStore {
         if manifest.asset != asset_id || manifest.id != revision {
             return Err(ProjectError::RevisionIdentityMismatch);
         }
-        if manifest.files.len() != REVISION_PAYLOADS.len()
-            || !REVISION_PAYLOADS
-                .iter()
-                .all(|name| manifest.files.contains_key(*name))
+        if !REVISION_PAYLOADS
+            .iter()
+            .all(|name| manifest.files.contains_key(*name))
+            || manifest
+                .files
+                .keys()
+                .any(|name| name != "preview.png" && !REVISION_PAYLOADS.contains(&name.as_str()))
         {
             return Err(ProjectError::InvalidRevisionFiles);
         }
@@ -121,7 +124,7 @@ impl ProjectStore {
         }
         let raster: IndexedRaster = read_json(&path.join("pixels.json"))?;
         raster.validate()?;
-        let recipe: Recipe = read_json(&path.join("recipe.json"))?;
+        let recipe = read_recipe(&path.join("recipe.json"))?;
         ensure_schema(&recipe.schema, RECIPE_SCHEMA)?;
         let validation: ValidationReport = read_json(&path.join("validation.json"))?;
         ensure_schema(&validation.schema, VALIDATION_SCHEMA)?;
@@ -339,4 +342,17 @@ fn validate_revision_id(id: &str) -> Result<(), ProjectError> {
     } else {
         Err(ProjectError::InvalidRevisionId(id.to_owned()))
     }
+}
+
+fn read_recipe(path: &Path) -> Result<Recipe, ProjectError> {
+    let mut value: serde_json::Value = read_json(path)?;
+    if let Some(operations) = value
+        .get_mut("operations")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        operations.retain(|operation| {
+            operation.get("type").and_then(serde_json::Value::as_str) != Some("render_indexed")
+        });
+    }
+    Ok(serde_json::from_value(value)?)
 }
