@@ -8,7 +8,7 @@ use serde_json::json;
 const LATEST_URL: &str =
     "https://github.com/AlexanderHeffernan/Pixelate/releases/latest/download/latest.json";
 const RELEASES_URL: &str = "https://github.com/AlexanderHeffernan/Pixelate/releases/download";
-const PUBLIC_KEY: &str = "RWR3qMarrrU56LS4kYgS19RmVbArmidUmshk6QkHwT97k4JsK2pttkU8";
+const PUBLIC_KEY: &str = "RWS96nik+dpboaH6Ur7a0mwTVj0pP/EsO6jdEDRNKz6tn8nT6QYPqFvU";
 const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
 
 #[derive(Deserialize)]
@@ -122,5 +122,10 @@ mod tests {
             "/Applications/Pixelate.app/Contents/MacOS/pixelate"
         )));
         assert!(!is_bundled_cli(Path::new("/usr/local/bin/pixelate")));
+    }
+
+    #[test]
+    fn configured_updater_public_key_is_valid() {
+        PublicKey::from_base64(PUBLIC_KEY).expect("Pixelate updater public key");
     }
 }

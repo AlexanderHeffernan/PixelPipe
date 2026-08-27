@@ -46,7 +46,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU4MzlCNUFFQUJDNkE4NzcKUldSM3FNYXJyclU1NkxTNGtZZ1MxOVJtVmJBcm1pZFVtc2hrNlFrSHdUOTdrNEpzSzJwdHRrVTgK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEExNUJEQUY5QTQ3OEVBQkQKUldTOTZuaWsrZHBib2FINlVyN2EwbXdUVmowcFAvRXNPNmpkRURSTkt6NnRuOG5UNlFZUHFGdlUK",
       "endpoints": [
         "https://github.com/AlexanderHeffernan/Pixelate/releases/latest/download/latest.json"
       ]

@@ -130,12 +130,11 @@ The repository must define these GitHub Actions secrets:
 - `TAURI_SIGNING_PRIVATE_KEY`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
-The committed public key currently matches the established Shipyard updater
-key, so copy the corresponding secret values from Shipyard when configuring the
-Pixelate repository. Never rotate or lose that key after a release: installed
-clients trust it for every future update. Releases currently use ad-hoc macOS
-signing, matching Shipyard; Apple Developer ID signing and notarization can be
-added before broader distribution.
+The committed public key belongs only to Pixelate. Keep its matching private key
+and password backed up securely; never rotate or lose them after a release,
+because installed clients trust that key for every future update. Releases
+currently use ad-hoc macOS signing; Apple Developer ID signing and notarization
+can be added before broader distribution.
 
 ## License
 
