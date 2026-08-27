@@ -17,6 +17,10 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
+    /// Print the installed CLI version as JSON.
+    Version,
+    /// Install the latest signed standalone CLI release.
+    Update,
     /// Print the reliable workflow for a coding agent operating `Pixelate`.
     Guide {
         #[arg(long, default_value = ".")]

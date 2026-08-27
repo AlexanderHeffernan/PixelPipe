@@ -39,6 +39,8 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             { "action": "preview_result", "command": "pixelate revision preview --root . --asset <asset-id> --output /tmp/<asset-id>-preview.png", "success": "Visually inspect the enlarged PNG before completing the task." }
         ],
         "capabilities": {
+            "version": "pixelate version",
+            "update_cli": "pixelate update",
             "list": "pixelate asset list --root .",
             "show_project": "pixelate project show --root .",
             "update_brief": "pixelate asset set-brief --root . --asset <asset-id> --brief '<brief>'",

@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: version
+        run: echo "version=$(node scripts/release-version.mjs)" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: version
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+      - run: node scripts/set-release-version.mjs "${{ needs.version.outputs.version }}"
+      - run: npm ci
+        working-directory: apps/desktop
+      - name: Build signed CLI
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          cargo build --release -p pixelate-cli --target "${{ matrix.target }}"
+          mkdir -p apps/desktop/src-tauri/binaries
+          cp "target/${{ matrix.target }}/release/pixelate" \
+            "apps/desktop/src-tauri/binaries/pixelate-${{ matrix.target }}"
+          npx --prefix apps/desktop tauri signer sign \
+            "target/${{ matrix.target }}/release/pixelate"
+      - name: Build draft desktop release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: "-"
+        with:
+          projectPath: apps/desktop
+          tagName: v${{ needs.version.outputs.version }}
+          releaseName: Pixelate v${{ needs.version.outputs.version }}
+          releaseBody: Signed macOS app and CLI update for Pixelate.
+          generateReleaseNotes: true
+          releaseDraft: true
+          prerelease: false
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          args: --target ${{ matrix.target }}
+      - name: Upload signed CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          pages="$(mktemp)"
+          release="$(mktemp)"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$pages"
+          jq -s add "$pages" > "$release"
+          id="$(node scripts/release-workflow.mjs release-id "$release" "$RELEASE_TAG")"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${id}" > "$release"
+
+          upload_asset() {
+            path="$1"
+            name="$2"
+            existing="$(jq -r --arg name "$name" '.assets[] | select(.name == $name) | .id' "$release")"
+            if [ -n "$existing" ]; then
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${existing}"
+            fi
+            gh api --method POST -H 'Content-Type: application/octet-stream' \
+              --input "$path" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${id}/assets?name=${name}"
+          }
+
+          upload_asset "target/${{ matrix.target }}/release/pixelate" \
+            "pixelate-${{ matrix.target }}"
+          upload_asset "target/${{ matrix.target }}/release/pixelate.sig" \
+            "pixelate-${{ matrix.target }}.sig"
+
+  publish-release:
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate and publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          pages="$(mktemp)"
+          release="$(mktemp)"
+          manifest="$(mktemp)"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$pages"
+          jq -s add "$pages" > "$release"
+          id="$(node scripts/release-workflow.mjs release-id "$release" "$RELEASE_TAG")"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${id}" > "$release"
+          manifest_id="$(node scripts/release-workflow.mjs manifest-id "$release" "$RELEASE_TAG")"
+          gh api -H 'Accept: application/octet-stream' \
+            "repos/${GITHUB_REPOSITORY}/releases/assets/${manifest_id}" > "$manifest"
+          node scripts/release-workflow.mjs validate-manifest "$manifest" "$RELEASE_TAG"
+          node scripts/release-workflow.mjs validate-assets "$release"
+          gh api --method PATCH --field draft=false --raw-field make_latest=true \
+            "repos/${GITHUB_REPOSITORY}/releases/${id}" > "$release"
+          node scripts/release-workflow.mjs verify-published "$release" "$RELEASE_TAG"

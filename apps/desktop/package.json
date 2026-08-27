@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prepare:cli": "cargo build --manifest-path ../../Cargo.toml -p pixelate-cli",
+    "prepare:cli": "node ../../scripts/prepare-sidecar.mjs",
     "app": "tauri dev",
+    "tauri": "tauri",
     "build": "vue-tsc --noEmit && vite build",
     "format": "prettier --write 'src/**/*.{ts,vue,css}'",
     "format:check": "prettier --check 'src/**/*.{ts,vue,css}'",
@@ -17,6 +18,8 @@
     "@phosphor-icons/vue": "^2.2.1",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "2.7.2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "vue": "3.5.41"
@@ -29,6 +32,7 @@
     "@vitejs/plugin-vue": "6.0.8",
     "jsdom": "30.0.1",
     "prettier": "3.6.2",
+    "type-fest": "~2.19",
     "typescript": "5.9.3",
     "vite": "8.2.2",
     "vitest": "4.1.11",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhCaretDown, PhSidebarSimple } from "@phosphor-icons/vue";
+import { PhCaretDown, PhGear, PhSidebarSimple } from "@phosphor-icons/vue";
 import { computed } from "vue";
 import { useWorkspace } from "../workspace/context";
 import { useWindowFullscreen } from "../workspace/window-fullscreen";
@@ -7,6 +7,7 @@ import { useWindowFullscreen } from "../workspace/window-fullscreen";
 const workspace = useWorkspace();
 const fullscreen = useWindowFullscreen();
 const leadingInset = computed(() => (fullscreen.value ? 12 : 82));
+defineEmits<{ openSettings: [] }>();
 </script>
 
 <template>
@@ -39,11 +40,9 @@ const leadingInset = computed(() => (fullscreen.value ? 12 : 82));
       <PhCaretDown />
     </button>
   </div>
-  <div
-    v-if="workspace.project.value"
-    class="window-controls window-controls--trailing"
-  >
+  <div class="window-controls window-controls--trailing">
     <button
+      v-if="workspace.project.value"
       class="icon-button"
       :aria-label="
         workspace.rightSidebarOpen.value ? 'Hide inspector' : 'Show inspector'
@@ -54,6 +53,13 @@ const leadingInset = computed(() => (fullscreen.value ? 12 : 82));
       "
     >
       <PhSidebarSimple class="right-sidebar-icon" />
+    </button>
+    <button
+      class="icon-button"
+      aria-label="Open settings"
+      @click="$emit('openSettings')"
+    >
+      <PhGear />
     </button>
   </div>
 </template>

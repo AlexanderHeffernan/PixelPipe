@@ -105,6 +105,8 @@ fn guide_documents_every_agent_workflow_family() {
     let guide = run(&["guide", "--root", root]);
     assert!(guide.get("available_recipes").is_none());
     for capability in [
+        "version",
+        "update_cli",
         "list",
         "show_project",
         "update_brief",
@@ -133,6 +135,13 @@ fn guide_documents_every_agent_workflow_family() {
             .expect("rule")
             .contains("does not launch")
     );
+}
+
+#[test]
+fn version_is_available_without_update_notifications() {
+    let version = run(&["version"]);
+    assert_eq!(version["version"], env!("CARGO_PKG_VERSION"));
+    assert!(version.get("update_available").is_none());
 }
 
 fn write_fixture_png(fixture_path: &Path, output_path: &Path) {

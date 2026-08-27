@@ -35,6 +35,17 @@ pipeline or a collection of provider settings.
   export are separate actions. Never auto-select, auto-apply, or auto-export.
 - Prefer a few excellent built-in defaults over requiring users to create
   palettes, recipes, profiles, or JSON before their first sprite.
+- Ordinary CLI commands never perform or announce update checks. `version` is
+  read-only and `update` is the user's explicit consent to install.
+
+## Releases
+
+- Each push to `main` is a patch release. Keep workspace, Tauri, npm, desktop,
+  bundled CLI, and standalone CLI versions aligned through the release scripts.
+- A release stays draft until both macOS architectures, updater signatures, and
+  signed CLI assets pass manifest validation.
+- Never replace the committed updater public key without a deliberate migration;
+  released clients cannot trust artifacts signed by an unrelated key.
 
 ## Verification
 

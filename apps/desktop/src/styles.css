@@ -4,3 +4,4 @@
 @import "./styles/inspector.css";
 @import "@xterm/xterm/css/xterm.css";
 @import "./styles/terminal.css";
+@import "./styles/settings.css";

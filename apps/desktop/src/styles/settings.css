@@ -1,0 +1,109 @@
+.modal-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(7, 4, 10, 0.68);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.settings-modal,
+.update-prompt {
+  width: min(520px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--material-strong);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
+}
+.settings-modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.settings-modal h1,
+.update-prompt h1 {
+  margin: 3px 0 0;
+  font-size: 20px;
+}
+.settings-section {
+  display: grid;
+  gap: 19px;
+  padding: 24px;
+}
+.settings-section h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.settings-section p,
+.update-prompt p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(8, 6, 12, 0.28);
+}
+.settings-toggle span,
+.update-status {
+  display: grid;
+  gap: 4px;
+}
+.settings-toggle strong,
+.update-status strong {
+  font-size: 12px;
+}
+.settings-toggle small,
+.update-status small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.settings-toggle input {
+  width: 17px;
+  min-height: 17px;
+  accent-color: var(--accent);
+}
+.update-status {
+  padding: 13px 14px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+.settings-error {
+  color: #ffc8cf !important;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+.settings-button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 8px;
+  color: rgba(255, 249, 246, 0.88) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+.settings-button:hover:not(:disabled) {
+  border-color: rgba(255, 232, 226, 0.28) !important;
+  color: white !important;
+  background: rgba(255, 255, 255, 0.11) !important;
+}
+.update-prompt {
+  padding: 25px;
+}
+.update-prompt > p:not(.eyebrow) {
+  margin: 12px 0 21px;
+}
