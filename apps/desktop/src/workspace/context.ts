@@ -1,42 +1,44 @@
 import { computed, inject, provide, ref } from "vue";
 import * as api from "../api";
-import {
-  chooseExportFile,
-  chooseProjectFolder,
-  chooseReferenceImage,
-  confirmDeleteAsset,
-} from "../services/dialogs";
-import type {
-  ConversionPreviewResponse,
-  ProjectBrowser,
-  RevisionViewResponse,
-} from "../types";
+import type { ConversionPreviewResponse, RevisionViewResponse } from "../types";
+import { createAssetActions } from "./asset-actions";
 import { createConversionPreview } from "./conversion-preview";
 import { createCompositionPreview } from "./composition-preview";
 import { createAssetImport } from "./asset-import";
 import { createCanvasLoading } from "./canvas-loading";
-import { createPixelEditor, type PixelTool } from "./pixel-editor";
+import { createPixelEditor } from "./pixel-editor";
+import { createProjectSession } from "./project-session";
 import { createProjectSync, type ExternalAssetChange } from "./project-sync";
 
-export type WorkspaceMode = "convert" | "edit";
+type WorkspaceMode = "convert" | "edit";
 export function createWorkspace() {
-  const project = ref<ProjectBrowser>();
-  const assetId = ref("");
   const mode = ref<WorkspaceMode>("convert");
   const view = ref<RevisionViewResponse>();
   const preview = ref<ConversionPreviewResponse>();
-  const thumbnails = ref<Record<string, string>>({});
   const leftSidebarOpen = ref(true);
   const rightSidebarOpen = ref(true);
-  const busy = ref(false);
   const importing = ref(false);
-  const error = ref("");
-  const notice = ref("");
   const assetModes = new Map<string, WorkspaceMode>();
+  const session = createProjectSession({
+    selectAsset,
+    clearSelection() {
+      view.value = undefined;
+      preview.value = undefined;
+    },
+  });
+  const {
+    project,
+    assetId,
+    thumbnails,
+    busy,
+    error,
+    notice,
+    selectedAsset,
+    run,
+    showNotice,
+    refresh,
+  } = session;
 
-  const selectedAsset = computed(() =>
-    project.value?.assets.find(({ asset }) => asset.id === assetId.value),
-  );
   const recipes = computed(
     () =>
       project.value?.recipes.filter(
@@ -72,7 +74,6 @@ export function createWorkspace() {
     busy: previewBusy,
     error: previewError,
   } = conversion;
-  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   const composition = createCompositionPreview({
     project,
@@ -82,57 +83,6 @@ export function createWorkspace() {
     refresh,
     run,
   });
-
-  function showNotice(message: string) {
-    notice.value = message;
-    if (noticeTimer) clearTimeout(noticeTimer);
-    noticeTimer = setTimeout(() => {
-      notice.value = "";
-    }, 2400);
-  }
-
-  async function run(action: () => Promise<void>) {
-    busy.value = true;
-    error.value = "";
-    try {
-      await action();
-    } catch (caught) {
-      error.value = caught instanceof Error ? caught.message : String(caught);
-    } finally {
-      busy.value = false;
-    }
-  }
-
-  async function openPath(path: string) {
-    await run(async () => {
-      project.value = await api.openProject(path);
-      const first = project.value.assets[0]?.asset.id;
-      if (first) await selectAsset(first);
-      void loadThumbnails();
-      showNotice(`Opened ${project.value.project.name}`);
-    });
-    if (project.value?.project_root) {
-      void api
-        .rememberProject(project.value.project_root)
-        .catch(() => undefined);
-    }
-  }
-
-  async function restoreRecentProject() {
-    const path = await api.recentProject().catch(() => null);
-    if (path) await openPath(path);
-  }
-
-  async function chooseProject() {
-    const path = await chooseProjectFolder();
-    if (path) await openPath(path);
-  }
-
-  async function refresh() {
-    if (project.value) {
-      project.value = await api.browseProject(project.value.project_root);
-    }
-  }
 
   async function selectAsset(id: string) {
     await canvasLoading.run("Loading sprite…", () => loadAsset(id));
@@ -182,24 +132,6 @@ export function createWorkspace() {
     }
   }
 
-  async function setMode(next: WorkspaceMode) {
-    if (next === "convert" && !canConvert.value) return;
-    if (next === "convert") {
-      if (!settings.value) conversion.chooseDefaultRecipe();
-      mode.value = next;
-      assetModes.set(assetId.value, next);
-      await conversion.request();
-      return;
-    }
-    if (next === "edit" && mode.value === "convert") {
-      await commitConversion();
-      return;
-    }
-    preview.value = undefined;
-    mode.value = next;
-    assetModes.set(assetId.value, next);
-  }
-
   async function commitConversion() {
     if (!project.value || !recipeId.value || !settings.value) return;
     await canvasLoading.run("Preparing canvas…", () =>
@@ -239,6 +171,23 @@ export function createWorkspace() {
     run,
     notice: showNotice,
   });
+  const assetActions = createAssetActions({
+    project,
+    assetId,
+    selectedAsset,
+    mode,
+    assetModes,
+    preview,
+    canConvert,
+    conversion,
+    composition,
+    editor,
+    canvasLoading,
+    run,
+    refresh,
+    notice: showNotice,
+    commitConversion,
+  });
   const syncExternalChanges = createProjectSync({
     project,
     assetId,
@@ -271,94 +220,6 @@ export function createWorkspace() {
     () => composition.dirty.value || editor.canUndo.value,
   );
 
-  async function beginTool(tool: PixelTool) {
-    if (mode.value === "convert") await commitConversion();
-    if (mode.value === "edit") {
-      if (!(await composition.commitIfDirty())) return;
-      editor.selectTool(tool);
-    }
-  }
-
-  async function prepareEditing() {
-    return composition.commitIfDirty();
-  }
-
-  async function setDrawingColor(hex: string) {
-    if (!(await prepareEditing())) return;
-    await editor.setDrawingColor(hex);
-  }
-
-  async function undo() {
-    if (!(await prepareEditing())) return;
-    await editor.undo();
-  }
-
-  async function redo() {
-    if (!(await prepareEditing())) return;
-    await editor.redo();
-  }
-
-  async function recolorCurrent(index: number, hex: string) {
-    if (mode.value === "convert") conversion.recolor(index, hex);
-    else {
-      if (!(await composition.commitIfDirty())) return;
-      await editor.recolor(index, hex);
-    }
-  }
-
-  async function reconvert() {
-    if (!canConvert.value) return;
-    await canvasLoading.run("Pixelizing source…", async () => {
-      editor.resetHistory();
-      if (!settings.value) conversion.chooseDefaultRecipe();
-      mode.value = "convert";
-      assetModes.set(assetId.value, "convert");
-      await conversion.request();
-    });
-  }
-
-  async function exportCurrent() {
-    if (!project.value || !selectedAsset.value?.asset.head) return;
-    if (!(await composition.commitIfDirty())) return;
-    const destination = await chooseExportFile(assetId.value);
-    if (!destination) return;
-    await run(async () => {
-      const result = await api.exportAssetFile(
-        project.value!.project_root,
-        assetId.value,
-        destination,
-        true,
-      );
-      showNotice(
-        `Exported ${result.width}×${result.height} ${result.format.toUpperCase()}`,
-      );
-    });
-  }
-
-  async function replaceSource() {
-    if (!project.value || !assetId.value) return;
-    const file = await chooseReferenceImage();
-    if (!file) return;
-    await canvasLoading.run("Updating source…", () =>
-      run(async () => {
-        await api.importReference(
-          project.value!.project_root,
-          assetId.value,
-          file,
-        );
-        await refresh();
-        const asset = selectedAsset.value?.asset;
-        if (asset?.style) conversion.chooseAssetStyle(asset.style);
-        else conversion.chooseDefaultRecipe();
-        mode.value = "convert";
-        assetModes.set(assetId.value, "convert");
-        editor.resetHistory();
-        await conversion.request();
-        showNotice("Source image replaced");
-      }),
-    );
-  }
-
   const importAssets = createAssetImport({
     project,
     importing,
@@ -368,65 +229,13 @@ export function createWorkspace() {
     notice: showNotice,
   });
 
-  async function deleteAsset(id: string) {
-    if (!project.value || !(await confirmDeleteAsset(id))) return;
-    await run(async () => {
-      await api.deleteAsset(project.value!.project_root, id);
-      delete thumbnails.value[id];
-      await refresh();
-      const next = project.value?.assets[0]?.asset.id;
-      if (next) await selectAsset(next);
-      else {
-        assetId.value = "";
-        view.value = undefined;
-        preview.value = undefined;
-      }
-      showNotice("Asset deleted");
-    });
-  }
-
-  async function renameAsset(id: string, displayName: string) {
-    if (!project.value || !displayName.trim()) return;
-    await run(async () => {
-      await api.renameAsset(
-        project.value!.project_root,
-        id,
-        displayName.trim(),
-      );
-      await refresh();
-      showNotice("Asset renamed");
-    });
-  }
-
-  async function loadThumbnails() {
-    if (!project.value) return;
-    const root = project.value.project_root;
-    const loaded = await Promise.all(
-      project.value.assets
-        .filter(({ asset }) => asset.head)
-        .map(
-          async ({ asset }) =>
-            [
-              asset.id,
-              api.pngDataUrl(
-                (await api.loadRevision(root, asset.id, asset.head))
-                  .native_png_base64,
-              ),
-            ] as const,
-        ),
-    );
-    thumbnails.value = { ...thumbnails.value, ...Object.fromEntries(loaded) };
-  }
-
   return {
     project,
     assetId,
     mode,
     view,
     preview,
-    recipeId,
     colorCount,
-    paletteOverrides,
     backgroundAutomatic,
     settings,
     thumbnails,
@@ -442,38 +251,36 @@ export function createWorkspace() {
     error,
     notice,
     selectedAsset,
-    recipes,
     inspection,
     canvasImage,
     canConvert,
-    chooseProject,
+    chooseProject: session.chooseProject,
     syncExternalChanges,
-    restoreRecentProject,
-    openPath,
+    restoreRecentProject: session.restoreRecentProject,
     selectAsset,
     updateSettings: conversion.updateSettings,
     setColorCount: conversion.setColorCount,
     setBackgroundAutomatic: conversion.setBackgroundAutomatic,
-    setMode,
-    beginTool,
-    prepareEditing,
-    setDrawingColor,
-    undo,
-    redo,
+    setMode: assetActions.setMode,
+    beginTool: assetActions.beginTool,
+    prepareEditing: assetActions.prepareEditing,
+    setDrawingColor: assetActions.setDrawingColor,
+    undo: assetActions.undo,
+    redo: assetActions.redo,
     canUndo,
-    recolorCurrent,
-    reconvert,
-    exportCurrent,
+    recolorCurrent: assetActions.recolorCurrent,
+    reconvert: assetActions.reconvert,
+    exportCurrent: assetActions.exportCurrent,
     editor,
     composition,
     importAssets,
-    importReference: replaceSource,
-    replaceSource,
-    deleteAsset,
-    renameAsset,
+    importReference: assetActions.replaceSource,
+    replaceSource: assetActions.replaceSource,
+    deleteAsset: session.deleteAsset,
+    renameAsset: session.renameAsset,
   };
 }
-export type Workspace = ReturnType<typeof createWorkspace>;
+type Workspace = ReturnType<typeof createWorkspace>;
 const workspaceKey = Symbol("pixelate-workspace");
 export const provideWorkspace = (workspace: Workspace) =>
   provide(workspaceKey, workspace);
