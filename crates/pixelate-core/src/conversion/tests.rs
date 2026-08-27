@@ -3,10 +3,9 @@ use serde::Deserialize;
 
 use super::{
     backdrop::visible_bounds,
-    convert_reference, convert_sheet, decode_rgba_png, detect_border_color,
+    convert_reference, decode_rgba_png, detect_border_color,
     model::{
         BackdropPolicy, Bounds, ComponentExpectation, ConversionSettings, Registration, RgbaImage,
-        SheetSettings,
     },
 };
 use crate::{
@@ -218,33 +217,6 @@ fn palette_distance_ties_choose_lower_palette_index() {
     let converted = convert_reference(&source, &palette, &settings).expect("convert");
     assert!(converted.raster.pixels.contains(&1));
     assert!(!converted.raster.pixels.contains(&2));
-}
-
-#[test]
-fn sheet_uses_shared_scale_and_bottom_registration() {
-    let source = fixture_image(include_bytes!("../../tests/fixtures/m2/sheet.rgba.json"));
-    let palette: Palette =
-        serde_json::from_slice(include_bytes!("../../tests/fixtures/m2/palette.json"))
-            .expect("fixture palette");
-    let sheet: SheetSettings = serde_json::from_slice(include_bytes!(
-        "../../tests/fixtures/m2/sheet.settings.json"
-    ))
-    .expect("sheet settings");
-    let converted = convert_sheet(&source, &palette, &sheet).expect("sheet conversion");
-    assert_eq!((converted.raster.width, converted.raster.height), (16, 8));
-    let rendered = render(&converted.raster, 8).expect("sheet render");
-    assert_eq!(
-        rendered.native_png,
-        render(&converted.raster, 8).expect("repeat").native_png
-    );
-    assert_eq!(
-        sha256_hex(&rendered.native_png),
-        "fce359e660986518efae60130e4227af5b4dc8c0d24070bc1ee91ec8455f1132"
-    );
-    assert_eq!(
-        sha256_hex(&rendered.preview_png),
-        "871d96fabd73d3c265f1c0ff05067c1a37d545434678fe0da7241c52d93cbe9a"
-    );
 }
 
 #[test]

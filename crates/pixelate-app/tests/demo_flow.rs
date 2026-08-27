@@ -5,10 +5,9 @@ use pixelate_app::{
     InitializeAsset, OpenProject, browse_project, convert_selected_reference, export_asset,
     export_asset_file, import_reference, initialize_asset, open_project,
 };
-use pixelate_project::AssetKind;
 
 #[test]
-fn folder_to_export_uses_starter_resources_without_manual_json() {
+fn folder_to_export_uses_builtin_pixelization_defaults() {
     let game = tempfile::tempdir().unwrap();
     let reference = game.path().join("medic-reference.png");
     write_reference(&reference);
@@ -17,13 +16,11 @@ fn folder_to_export_uses_starter_resources_without_manual_json() {
         start: game.path().to_path_buf(),
     })
     .unwrap();
-    assert_eq!(opened.recipes.len(), 3);
-    assert_eq!(opened.palettes.len(), 1);
+    assert_eq!(opened.pixelization.settings.width, 32);
 
     initialize_asset(InitializeAsset {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
-        kind: AssetKind::Sprite,
         brief: "Strict overhead field medic with a compact silhouette".to_owned(),
     })
     .unwrap();
@@ -36,8 +33,6 @@ fn folder_to_export_uses_starter_resources_without_manual_json() {
     let converted = convert_selected_reference(ConvertSelectedReference {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
-        recipe: "sprite-32".to_owned(),
-        palette: None,
         color_count: Some(12),
         palette_overrides: Vec::new(),
         settings: None,
@@ -51,8 +46,7 @@ fn folder_to_export_uses_starter_resources_without_manual_json() {
     })
     .unwrap();
     let style = browser.assets[0].asset.style.as_ref().unwrap();
-    assert_eq!(style.palette, None);
-    assert_eq!(style.color_count, Some(12));
+    assert_eq!(style.color_count, 12);
     let provenance: serde_json::Value =
         serde_json::from_slice(&fs::read(converted.revision_path.join("provenance.json")).unwrap())
             .unwrap();

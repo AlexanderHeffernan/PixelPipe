@@ -77,9 +77,7 @@ pub fn update_asset_source(
     let revision = convert_selected_reference(ConvertSelectedReference {
         start: request.start,
         asset: request.asset,
-        recipe: style.recipe,
-        palette: style.palette,
-        color_count: style.color_count,
+        color_count: Some(style.color_count),
         palette_overrides: Vec::new(),
         settings: Some(style.settings),
         auto_background: true,

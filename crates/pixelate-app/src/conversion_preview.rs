@@ -2,10 +2,10 @@ use std::path::PathBuf;
 
 use pixelate_core::{
     BackdropPolicy, ConversionResult, ConversionSettings, Palette, RasterInspection, RgbaImage,
-    convert_reference, convert_sheet, decode_rgba_png, derive_source_palette, detect_border_color,
-    inspect_raster, render,
+    convert_reference, decode_rgba_png, derive_source_palette, detect_border_color, inspect_raster,
+    render,
 };
-use pixelate_project::{ProjectError, ProjectStore, StoredConversionMode};
+use pixelate_project::ProjectStore;
 use serde::{Deserialize, Serialize};
 
 use crate::AppError;
@@ -14,9 +14,6 @@ use crate::AppError;
 pub struct PreviewSelectedReference {
     pub start: PathBuf,
     pub asset: String,
-    pub recipe: String,
-    #[serde(default)]
-    pub palette: Option<String>,
     #[serde(default)]
     pub color_count: Option<u8>,
     #[serde(default)]
@@ -55,47 +52,18 @@ pub fn preview_selected_reference(
     let asset = store.asset(&request.asset)?;
     let (_, source_bytes) = store.selected_reference(&asset.id)?;
     let source = decode_rgba_png(&source_bytes)?;
-    let recipe = store.conversion_recipe(&request.recipe)?;
-    if recipe.kind != asset.kind {
-        return Err(ProjectError::AssetKindMismatch {
-            asset: asset.id,
-            existing: asset.kind,
-            requested: recipe.kind,
-        }
-        .into());
-    }
-    let (raster, palette_name, background_removed) = match recipe.mode {
-        StoredConversionMode::Reference { settings } => {
-            let (converted, resolved, palette) = convert_source_reference(
-                &source,
-                request.settings,
-                settings,
-                request.auto_background,
-                request.color_count.unwrap_or(16),
-                &request.palette_overrides,
-            )?;
-            let name = palette.name.clone();
-            (
-                converted.raster,
-                name,
-                matches!(resolved.backdrop, BackdropPolicy::BorderConnected { .. }),
-            )
-        }
-        StoredConversionMode::Sheet { settings } => {
-            if request.settings.is_some() || !request.palette_overrides.is_empty() {
-                return Err(AppError::UnsupportedConversion(
-                    "sheet recipes do not accept reference settings overrides".to_owned(),
-                ));
-            }
-            let palette = store.palette(request.palette.as_deref().unwrap_or(&recipe.palette))?;
-            let name = palette.name.clone();
-            (
-                convert_sheet(&source, &palette, &settings)?.raster,
-                name,
-                false,
-            )
-        }
-    };
+    let defaults = crate::pixelization::pixelization_defaults();
+    let (converted, resolved, palette) = convert_source_reference(
+        &source,
+        request.settings,
+        defaults.settings,
+        request.auto_background,
+        request.color_count.unwrap_or(defaults.color_count),
+        &request.palette_overrides,
+    )?;
+    let palette_name = palette.name.clone();
+    let background_removed = matches!(resolved.backdrop, BackdropPolicy::BorderConnected { .. });
+    let raster = converted.raster;
     let inspection = inspect_raster(&raster)?;
     let rendered = render(&raster, 1)?;
     Ok(ConversionPreview {

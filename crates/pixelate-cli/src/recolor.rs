@@ -47,7 +47,6 @@ pub(crate) fn recolor_command(
             structure: None,
         },
         brief: None,
-        preview_scale: None,
         actor,
     })?;
     Ok(json!({ "ok": true, "changed": changed, "revision": revision }))

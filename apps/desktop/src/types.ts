@@ -1,32 +1,22 @@
-export type AssetKind = "sprite" | "sheet" | "tile" | "ui";
-export type ReviewActorKind = "human" | "agent";
-export type ReviewDecision = "reviewed" | "changes_requested" | "accepted";
 export type Rgba = [number, number, number, number];
 
 export interface ProjectManifest {
   schema: string;
   name: string;
-  preview_scale: number;
-  default_palette?: string;
 }
 
 export interface AssetManifest {
   schema: string;
   id: string;
   display_name?: string;
-  kind: AssetKind;
-  state: "draft" | "awaiting_reference" | "selected_reference" | "revisioned";
   brief: { schema: string; text: string };
   selected_reference?: ReferenceSelection;
   head?: string;
-  approved?: string;
   style?: AssetStyle;
 }
 
 export interface AssetStyle {
-  recipe: string;
-  palette?: string;
-  color_count?: number;
+  color_count: number;
   settings: ConversionSettings;
 }
 
@@ -48,29 +38,12 @@ export interface ProjectBrowser {
   project_root: string;
   project: ProjectManifest;
   assets: AssetBrowser[];
-  recipes: ConversionRecipeDocument[];
-  palettes: ProjectPalette[];
+  pixelization: PixelizationDefaults;
 }
 
-export interface ProjectPalette {
-  id: string;
-  palette: {
-    schema: string;
-    name: string;
-    transparent_index: number;
-    colors: Rgba[];
-  };
-}
-
-export interface ConversionRecipeDocument {
-  schema: string;
-  id: string;
-  kind: AssetKind;
-  palette: string;
-  preview_scale: number;
-  mode:
-    | { type: "reference"; settings: ConversionSettings }
-    | { type: "sheet"; settings: SheetSettings };
+export interface PixelizationDefaults {
+  color_count: number;
+  settings: ConversionSettings;
 }
 
 export type BackdropPolicy =
@@ -113,12 +86,6 @@ export interface CanvasSettings {
   offset_y: number;
 }
 
-export interface SheetSettings {
-  columns: number;
-  rows: number;
-  frame: ConversionSettings;
-}
-
 export interface RasterBounds {
   x: number;
   y: number;
@@ -148,22 +115,6 @@ export interface ValidationCheck {
   detail: string;
 }
 
-export interface ReviewEvent {
-  sequence: number;
-  created_unix_ms: number;
-  actor: string;
-  actor_kind: ReviewActorKind;
-  decision: ReviewDecision;
-  note: string;
-}
-
-export interface ReviewRecord {
-  schema: string;
-  asset: string;
-  revision: string;
-  events: ReviewEvent[];
-}
-
 export interface RevisionViewMetadata {
   project_root: string;
   asset: string;
@@ -181,15 +132,12 @@ export interface RevisionViewMetadata {
     schema: string;
     valid: boolean;
     checks: ValidationCheck[];
-    visual_review: "required" | "passed";
   };
-  review?: ReviewRecord;
 }
 
 export interface RevisionViewResponse {
   metadata: RevisionViewMetadata;
   native_png_base64: string;
-  preview_png_base64: string;
 }
 
 export interface ConversionPreviewResponse {
@@ -199,35 +147,6 @@ export interface ConversionPreviewResponse {
   background_removed?: boolean;
 }
 
-export interface PixelDifference {
-  x: number;
-  y: number;
-  left_index?: number;
-  right_index?: number;
-  left_rgba?: Rgba;
-  right_rgba?: Rgba;
-}
-
-export interface RevisionComparisonResponse {
-  metadata: {
-    project_root: string;
-    asset: string;
-    left: string;
-    right: string;
-    diff: {
-      left_dimensions: [number, number];
-      right_dimensions: [number, number];
-      changed_bounds?: RasterBounds;
-      changed_pixels: PixelDifference[];
-      palette_differences: Array<{ index: number; left?: Rgba; right?: Rgba }>;
-    };
-    visual_native_sha256: string;
-    visual_preview_sha256: string;
-  };
-  visual_native_png_base64: string;
-  visual_preview_png_base64: string;
-}
-
 export interface RevisionResult {
   project_root: string;
   asset: string;
@@ -235,8 +154,6 @@ export interface RevisionResult {
   parent?: string;
   revision_path: string;
   native_sha256: string;
-  preview_sha256: string;
-  validation: string;
 }
 
 export interface PixelEdit {
@@ -258,12 +175,7 @@ export interface PaletteColorOverride {
 }
 
 export interface ReferenceSelection {
-  schema: string;
-  asset: string;
-  run: string;
-  candidate: string;
   sha256: string;
-  selected_unix_ms: number;
 }
 
 export interface ExportResult {

@@ -3,7 +3,7 @@ use std::fs;
 use pixelate_core::sha256_hex;
 use tempfile::tempdir;
 
-use crate::{AssetKind, ProjectError, ProjectStore, assets::validate_asset_id};
+use crate::{ProjectError, ProjectStore, assets::validate_asset_id};
 
 #[test]
 fn init_and_discover_project() {
@@ -32,11 +32,9 @@ fn rejects_path_like_asset_ids() {
 fn deletes_only_the_requested_asset() {
     let temp = tempdir().expect("tempdir");
     let store = ProjectStore::init(temp.path(), "Fixture Game").expect("init");
+    store.create_asset("first", "first").expect("first asset");
     store
-        .create_asset("first", AssetKind::Sprite, "first")
-        .expect("first asset");
-    store
-        .create_asset("second", AssetKind::Sprite, "second")
+        .create_asset("second", "second")
         .expect("second asset");
 
     store.delete_asset("first").expect("delete first");

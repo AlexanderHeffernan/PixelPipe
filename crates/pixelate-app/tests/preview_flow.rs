@@ -6,11 +6,10 @@ use pixelate_app::{
     convert_selected_reference, import_reference, initialize_asset, open_project,
     preview_composition, preview_selected_reference,
 };
-use pixelate_project::{AssetKind, StoredConversionMode};
 
 #[test]
 fn conversion_preview_is_ephemeral_and_accepts_settings_overrides() {
-    let (game, recipe, mut settings) = selected_reference_project();
+    let (game, mut settings) = selected_reference_project();
     settings.width = 16;
     settings.height = 16;
 
@@ -18,8 +17,6 @@ fn conversion_preview_is_ephemeral_and_accepts_settings_overrides() {
     let low_colour_preview = preview_selected_reference(PreviewSelectedReference {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
-        recipe: recipe.clone(),
-        palette: Some("pixelate-starter".to_owned()),
         color_count: Some(2),
         palette_overrides: Vec::new(),
         settings: Some(settings.clone()),
@@ -29,8 +26,6 @@ fn conversion_preview_is_ephemeral_and_accepts_settings_overrides() {
     let preview = preview_selected_reference(PreviewSelectedReference {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
-        recipe,
-        palette: None,
         color_count: Some(12),
         palette_overrides: Vec::new(),
         settings: Some(settings),
@@ -57,14 +52,12 @@ fn conversion_preview_is_ephemeral_and_accepts_settings_overrides() {
 
 #[test]
 fn preview_applies_source_palette_replacements_without_persisting() {
-    let (game, recipe, settings) = selected_reference_project();
+    let (game, settings) = selected_reference_project();
     let before = project_bytes(game.path());
 
     let preview = preview_selected_reference(PreviewSelectedReference {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
-        recipe,
-        palette: None,
         color_count: Some(4),
         palette_overrides: vec![pixelate_app::PaletteColorOverride {
             index: 1,
@@ -87,7 +80,7 @@ fn preview_applies_source_palette_replacements_without_persisting() {
 
 #[test]
 fn invalid_preview_does_not_change_project_state() {
-    let (game, recipe, mut settings) = selected_reference_project();
+    let (game, mut settings) = selected_reference_project();
     settings.width = 0;
     let before = project_bytes(game.path());
 
@@ -95,8 +88,6 @@ fn invalid_preview_does_not_change_project_state() {
         preview_selected_reference(PreviewSelectedReference {
             start: game.path().to_path_buf(),
             asset: "field-medic".to_owned(),
-            recipe,
-            palette: None,
             color_count: Some(12),
             palette_overrides: Vec::new(),
             settings: Some(settings),
@@ -109,12 +100,10 @@ fn invalid_preview_does_not_change_project_state() {
 
 #[test]
 fn canvas_composition_previews_ephemerally_then_commits_one_revision() {
-    let (game, recipe, settings) = selected_reference_project();
+    let (game, settings) = selected_reference_project();
     let converted = convert_selected_reference(ConvertSelectedReference {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
-        recipe,
-        palette: None,
         color_count: Some(12),
         palette_overrides: Vec::new(),
         settings: Some(settings),
@@ -161,7 +150,7 @@ fn canvas_composition_previews_ephemerally_then_commits_one_revision() {
     assert_eq!(browser.assets[0].revisions.len(), 2);
 }
 
-fn selected_reference_project() -> (tempfile::TempDir, String, pixelate_core::ConversionSettings) {
+fn selected_reference_project() -> (tempfile::TempDir, pixelate_core::ConversionSettings) {
     let game = tempfile::tempdir().unwrap();
     let reference = game.path().join("medic-reference.png");
     write_reference(&reference);
@@ -172,7 +161,6 @@ fn selected_reference_project() -> (tempfile::TempDir, String, pixelate_core::Co
     initialize_asset(InitializeAsset {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
-        kind: AssetKind::Sprite,
         brief: "Strict overhead field medic".to_owned(),
     })
     .unwrap();
@@ -182,16 +170,7 @@ fn selected_reference_project() -> (tempfile::TempDir, String, pixelate_core::Co
         file: reference,
     })
     .unwrap();
-    let recipe = opened
-        .recipes
-        .into_iter()
-        .find(|entry| entry.id == "sprite-32")
-        .unwrap();
-    let settings = match recipe.mode {
-        StoredConversionMode::Reference { settings } => settings,
-        StoredConversionMode::Sheet { .. } => unreachable!(),
-    };
-    (game, recipe.id, settings)
+    (game, opened.pixelization.settings)
 }
 
 fn project_bytes(root: &Path) -> Vec<u8> {

@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  AssetKind,
   AssetManifest,
   CanvasSettings,
   ConversionPreviewResponse,
@@ -9,12 +8,8 @@ import type {
   PaletteDraft,
   PixelEdit,
   ProjectBrowser,
-  RevisionComparisonResponse,
   RevisionResult,
   RevisionViewResponse,
-  ReviewActorKind,
-  ReviewDecision,
-  ReviewRecord,
   ReferenceSelection,
   ExportResult,
   ExportFileResult,
@@ -29,14 +24,9 @@ export const browseProject = (start: string) =>
 export const openProject = (start: string) =>
   invoke<ProjectBrowser>("open_project", { request: { start } });
 
-export const initializeAsset = (
-  start: string,
-  asset: string,
-  kind: AssetKind,
-  brief: string,
-) =>
+export const initializeAsset = (start: string, asset: string, brief: string) =>
   invoke<AssetManifest>("initialize_asset", {
-    request: { start, asset, kind, brief },
+    request: { start, asset, brief },
   });
 
 export const deleteAsset = (start: string, asset: string) =>
@@ -84,8 +74,6 @@ export const exportAssetFile = (
 export const convertSelectedReference = (
   start: string,
   asset: string,
-  recipe: string,
-  palette: string | undefined,
   colorCount: number | undefined,
   paletteOverrides: PaletteColorOverride[],
   settings: ConversionSettings | undefined,
@@ -96,8 +84,6 @@ export const convertSelectedReference = (
     request: {
       start,
       asset,
-      recipe,
-      palette: palette ?? null,
       color_count: colorCount ?? null,
       palette_overrides: paletteOverrides,
       settings: settings ?? null,
@@ -109,8 +95,6 @@ export const convertSelectedReference = (
 export const previewSelectedReference = (
   start: string,
   asset: string,
-  recipe: string,
-  palette: string | undefined,
   colorCount: number | undefined,
   paletteOverrides: PaletteColorOverride[],
   settings: ConversionSettings | undefined,
@@ -120,8 +104,6 @@ export const previewSelectedReference = (
     request: {
       start,
       asset,
-      recipe,
-      palette: palette ?? null,
       color_count: colorCount ?? null,
       palette_overrides: paletteOverrides,
       settings: settings ?? null,
@@ -171,46 +153,9 @@ export const resizeTerminal = (session: string, cols: number, rows: number) =>
 export const closeTerminal = (session: string) =>
   invoke<void>("close_terminal", { session });
 
-export const storeProjectPalette = (start: string, id: string, file: string) =>
-  invoke<unknown>("store_project_palette", { request: { start, id, file } });
-
-export const storeProjectRecipe = (start: string, file: string) =>
-  invoke<unknown>("store_project_recipe", { request: { start, file } });
-
 export const loadRevision = (start: string, asset: string, revision?: string) =>
   invoke<RevisionViewResponse>("load_revision", {
     request: { start, asset, revision: revision ?? null },
-  });
-
-export const compareRevisions = (
-  start: string,
-  asset: string,
-  left: string,
-  right: string,
-) =>
-  invoke<RevisionComparisonResponse>("compare_revisions", {
-    request: { start, asset, left, right, preview_scale: null },
-  });
-
-export const recordReview = (
-  start: string,
-  asset: string,
-  revision: string,
-  actor: string,
-  actorKind: ReviewActorKind,
-  decision: ReviewDecision,
-  note: string,
-) =>
-  invoke<ReviewRecord>("record_review", {
-    request: {
-      start,
-      asset,
-      revision,
-      actor,
-      actor_kind: actorKind,
-      decision,
-      note,
-    },
   });
 
 export const patchRevision = (
@@ -227,7 +172,6 @@ export const patchRevision = (
       parent,
       patch: { schema: "pixelate.patch/v1", edits },
       brief: null,
-      preview_scale: null,
       actor,
     },
   });
@@ -273,7 +217,6 @@ export const remapRevision = (
         index_map: draft.indexMap,
       },
       brief: null,
-      preview_scale: null,
       actor,
     },
   });

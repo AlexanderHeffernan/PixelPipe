@@ -1,9 +1,8 @@
 use std::path::PathBuf;
 
 use clap::{Args, ValueEnum};
-use pixelate_app::{ConvertSelectedReference, convert_selected_reference};
+use pixelate_app::{ConvertSelectedReference, convert_selected_reference, pixelization_defaults};
 use pixelate_core::{BackdropPolicy, ColorAdjustments, ColorTreatment, ComponentExpectation};
-use pixelate_project::{ProjectStore, StoredConversionMode};
 use serde_json::json;
 
 #[derive(Debug, Args)]
@@ -61,18 +60,7 @@ pub(crate) enum BackgroundArg {
 pub(crate) fn pixelize_command(
     options: PixelizeArgs,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let store = ProjectStore::discover(&options.root)?;
-    let recipes = store.conversion_recipes()?;
-    let recipe = recipes
-        .iter()
-        .find(|recipe| recipe.id == format!("sprite-{}", options.resolution))
-        .or_else(|| recipes.iter().find(|recipe| recipe.id == "sprite-32"))
-        .or_else(|| recipes.first())
-        .ok_or("project has no conversion recipes")?;
-    let StoredConversionMode::Reference { settings } = &recipe.mode else {
-        return Err(format!("recipe '{}' is not a sprite recipe", recipe.id).into());
-    };
-    let mut settings = settings.clone();
+    let mut settings = pixelization_defaults().settings;
     settings.width = options.resolution;
     settings.height = options.resolution;
     settings.color_treatment = mood(options.mood);
@@ -106,8 +94,6 @@ pub(crate) fn pixelize_command(
     let result = convert_selected_reference(ConvertSelectedReference {
         start: options.root,
         asset: options.asset,
-        recipe: recipe.id.clone(),
-        palette: None,
         color_count: Some(options.colors),
         palette_overrides: Vec::new(),
         settings: Some(settings),

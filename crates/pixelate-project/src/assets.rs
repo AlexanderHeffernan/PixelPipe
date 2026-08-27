@@ -1,8 +1,7 @@
 use std::fs;
 
 use crate::{
-    ASSET_BRIEF_SCHEMA, ASSET_SCHEMA, AssetBrief, AssetKind, AssetManifest, AssetState,
-    ProjectError, ProjectStore, REFERENCE_SELECTION_SCHEMA, ReferenceSelection,
+    ASSET_BRIEF_SCHEMA, ASSET_SCHEMA, AssetBrief, AssetManifest, ProjectError, ProjectStore,
     persistence::{atomic_write, ensure_schema, io_at, write_file},
 };
 
@@ -25,7 +24,7 @@ impl ProjectStore {
                 actual: asset.id,
             });
         }
-        validate_asset_state(&asset)?;
+        validate_asset_manifest(&asset)?;
         Ok(asset)
     }
 
@@ -48,12 +47,7 @@ impl ProjectStore {
     /// # Errors
     ///
     /// Returns an error for an invalid/duplicate ID or failed atomic storage.
-    pub fn create_asset(
-        &self,
-        id: &str,
-        kind: AssetKind,
-        brief: &str,
-    ) -> Result<AssetManifest, ProjectError> {
+    pub fn create_asset(&self, id: &str, brief: &str) -> Result<AssetManifest, ProjectError> {
         validate_asset_id(id)?;
         let _lock = self.lock()?;
         let path = self.asset_path(id);
@@ -72,15 +66,12 @@ impl ProjectStore {
             schema: ASSET_SCHEMA.to_owned(),
             id: id.to_owned(),
             display_name: None,
-            kind,
-            state: state_for(brief, None, None),
             brief: AssetBrief {
                 schema: ASSET_BRIEF_SCHEMA.to_owned(),
                 text: brief.to_owned(),
             },
             selected_reference: None,
             head: None,
-            approved: None,
             style: None,
         };
         write_file(
@@ -130,11 +121,6 @@ impl ProjectStore {
             schema: ASSET_BRIEF_SCHEMA.to_owned(),
             text: brief.to_owned(),
         };
-        asset.state = state_for(
-            brief,
-            asset.selected_reference.as_ref(),
-            asset.head.as_deref(),
-        );
         atomic_write(
             &self.asset_path(id).join("asset.toml"),
             toml::to_string_pretty(&asset)?.as_bytes(),
@@ -205,23 +191,7 @@ pub(crate) fn validate_asset_id(id: &str) -> Result<(), ProjectError> {
     }
 }
 
-pub(crate) fn state_for(
-    brief: &str,
-    selection: Option<&ReferenceSelection>,
-    head: Option<&str>,
-) -> AssetState {
-    if head.is_some() {
-        AssetState::Revisioned
-    } else if selection.is_some() {
-        AssetState::SelectedReference
-    } else if brief.trim().is_empty() {
-        AssetState::Draft
-    } else {
-        AssetState::AwaitingReference
-    }
-}
-
-fn validate_asset_state(asset: &AssetManifest) -> Result<(), ProjectError> {
+fn validate_asset_manifest(asset: &AssetManifest) -> Result<(), ProjectError> {
     ensure_schema(&asset.brief.schema, ASSET_BRIEF_SCHEMA)?;
     if asset.head.is_none()
         && asset.brief.text.trim().is_empty()
@@ -232,27 +202,6 @@ fn validate_asset_state(asset: &AssetManifest) -> Result<(), ProjectError> {
             operation: "load asset",
             reason: "a selected reference requires a non-empty brief",
         });
-    }
-    let expected = state_for(
-        &asset.brief.text,
-        asset.selected_reference.as_ref(),
-        asset.head.as_deref(),
-    );
-    if asset.state != expected {
-        return Err(ProjectError::AssetNotReady {
-            asset: asset.id.clone(),
-            operation: "load asset",
-            reason: "serialized lifecycle state does not match brief, selection, and head",
-        });
-    }
-    if let Some(selection) = &asset.selected_reference {
-        ensure_schema(&selection.schema, REFERENCE_SELECTION_SCHEMA)?;
-        if selection.asset != asset.id {
-            return Err(ProjectError::AssetIdentityMismatch {
-                expected: asset.id.clone(),
-                actual: selection.asset.clone(),
-            });
-        }
     }
     Ok(())
 }

@@ -9,7 +9,6 @@ afterEach(() => vi.restoreAllMocks());
 function setup() {
   const browser = structuredClone(project);
   browser.assets[0].asset.head = "r000001";
-  browser.assets[0].asset.state = "revisioned";
   browser.assets[0].revisions = [
     {
       schema: "pixelate.revision/v1",

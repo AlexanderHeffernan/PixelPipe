@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, io, path::PathBuf};
 
-use pixelate_core::{ConversionSettings, IndexedRaster, Recipe, SheetSettings, ValidationReport};
+use pixelate_core::{ConversionSettings, IndexedRaster, Recipe, ValidationReport};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -8,15 +8,11 @@ pub const PROJECT_SCHEMA: &str = "pixelate.project/v1";
 pub const ASSET_SCHEMA: &str = "pixelate.asset/v2";
 pub const REVISION_SCHEMA: &str = "pixelate.revision/v1";
 pub const PROVENANCE_SCHEMA: &str = "pixelate.provenance/v1";
-pub const REVIEW_SCHEMA: &str = "pixelate.review/v1";
-pub const REFERENCE_SELECTION_SCHEMA: &str = "pixelate.reference-selection/v1";
 pub const ASSET_BRIEF_SCHEMA: &str = "pixelate.asset-brief/v1";
-pub const CONVERSION_RECIPE_SCHEMA: &str = "pixelate.conversion-recipe/v1";
-pub(crate) const REVISION_PAYLOADS: [&str; 7] = [
+pub(crate) const REVISION_PAYLOADS: [&str; 6] = [
     "brief.md",
     "native.png",
     "pixels.json",
-    "preview.png",
     "provenance.json",
     "recipe.json",
     "validation.json",
@@ -27,20 +23,6 @@ pub(crate) const REVISION_PAYLOADS: [&str; 7] = [
 pub struct ProjectManifest {
     pub schema: String,
     pub name: String,
-    pub preview_scale: u16,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_palette: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub exports: Vec<ExportMapping>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExportMapping {
-    pub asset: String,
-    pub png: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,9 +32,6 @@ pub struct AssetManifest {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
-    pub kind: AssetKind,
-    #[serde(default)]
-    pub state: AssetState,
     #[serde(default)]
     pub brief: AssetBrief,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -60,30 +39,14 @@ pub struct AssetManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub approved: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub style: Option<AssetStyle>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssetStyle {
-    pub recipe: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub palette: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color_count: Option<u8>,
+    pub color_count: u8,
     pub settings: ConversionSettings,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AssetState {
-    #[default]
-    Draft,
-    AwaitingReference,
-    SelectedReference,
-    Revisioned,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,33 +63,6 @@ impl Default for AssetBrief {
             text: String::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AssetKind {
-    Sprite,
-    Sheet,
-    Tile,
-    Ui,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ConversionRecipeDocument {
-    pub schema: String,
-    pub id: String,
-    pub kind: AssetKind,
-    pub palette: String,
-    pub preview_scale: u16,
-    pub mode: StoredConversionMode,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub enum StoredConversionMode {
-    Reference { settings: ConversionSettings },
-    Sheet { settings: SheetSettings },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,7 +95,6 @@ pub struct RevisionFiles {
     pub recipe: Recipe,
     pub validation: ValidationReport,
     pub native_png: Vec<u8>,
-    pub preview_png: Vec<u8>,
     pub brief: String,
     pub actor: String,
     pub input_hashes: BTreeMap<String, String>,
@@ -192,53 +127,12 @@ pub struct RevisionSnapshot {
     pub provenance: Provenance,
     pub brief: String,
     pub native_png: Vec<u8>,
-    pub preview_png: Vec<u8>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReviewActorKind {
-    Human,
-    Agent,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReviewDecision {
-    Reviewed,
-    ChangesRequested,
-    Accepted,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReviewEvent {
-    pub sequence: u64,
-    pub created_unix_ms: u64,
-    pub actor: String,
-    pub actor_kind: ReviewActorKind,
-    pub decision: ReviewDecision,
-    pub note: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReviewRecord {
-    pub schema: String,
-    pub asset: String,
-    pub revision: String,
-    pub events: Vec<ReviewEvent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReferenceSelection {
-    pub schema: String,
-    pub asset: String,
-    pub run: String,
-    pub candidate: String,
     pub sha256: String,
-    pub selected_unix_ms: u64,
 }
 
 #[derive(Debug, Error)]
@@ -262,12 +156,6 @@ pub enum ProjectError {
     InvalidAssetId(String),
     #[error("asset manifest identity '{actual}' does not match path identity '{expected}'")]
     AssetIdentityMismatch { expected: String, actual: String },
-    #[error("asset '{asset}' already exists with kind {existing:?}, not {requested:?}")]
-    AssetKindMismatch {
-        asset: String,
-        existing: AssetKind,
-        requested: AssetKind,
-    },
     #[error("asset '{0}' already exists")]
     AssetExists(String),
     #[error("asset '{asset}' is not ready for {operation}: {reason}")]
@@ -276,12 +164,6 @@ pub enum ProjectError {
         operation: &'static str,
         reason: &'static str,
     },
-    #[error("project resource id '{0}' is invalid")]
-    InvalidResourceId(String),
-    #[error("project resource '{kind}/{id}' does not exist")]
-    ResourceNotFound { kind: &'static str, id: String },
-    #[error("project resource identity does not match its path")]
-    ResourceIdentityMismatch,
     #[error("revision directory already exists: {0}")]
     RevisionExists(PathBuf),
     #[error("revision '{revision}' does not exist for asset '{asset}'")]
@@ -294,10 +176,6 @@ pub enum ProjectError {
     RevisionIdentityMismatch,
     #[error("invalid revision id '{0}'")]
     InvalidRevisionId(String),
-    #[error("review actor must not be empty")]
-    EmptyReviewActor,
-    #[error("review record identity or event sequence is invalid")]
-    InvalidReviewRecord,
     #[error("revision brief is not valid UTF-8")]
     InvalidBriefUtf8,
     #[error("rendered output hash does not match bytes for '{name}'")]

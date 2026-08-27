@@ -1,9 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand, ValueEnum};
-use pixelate_project::{
-    AssetKind, ReviewActorKind as ProjectReviewActorKind, ReviewDecision as ProjectReviewDecision,
-};
+use clap::{Parser, Subcommand};
 
 use crate::pixelize::PixelizeArgs;
 
@@ -55,20 +52,6 @@ pub(crate) enum ProjectCommand {
         #[arg(long, default_value = ".")]
         root: PathBuf,
     },
-    SetPalette {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        id: String,
-        #[arg(long)]
-        file: PathBuf,
-    },
-    SetRecipe {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        file: PathBuf,
-    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -92,96 +75,6 @@ pub(crate) enum RevisionCommand {
         scale: Option<u16>,
         #[arg(long)]
         output: PathBuf,
-    },
-    Create {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long, value_enum, default_value_t = Kind::Sprite)]
-        kind: Kind,
-        #[arg(long)]
-        pixels: PathBuf,
-        #[arg(long)]
-        brief: Option<PathBuf>,
-        #[arg(long)]
-        preview_scale: Option<u16>,
-        #[arg(long, default_value = "cli")]
-        actor: String,
-    },
-    Convert {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long, value_enum, default_value_t = Kind::Sprite)]
-        kind: Kind,
-        #[arg(long)]
-        source: PathBuf,
-        #[arg(long)]
-        palette: PathBuf,
-        #[arg(long)]
-        settings: PathBuf,
-        #[arg(long, value_enum, default_value_t = ConversionKind::Reference)]
-        conversion: ConversionKind,
-        #[arg(long)]
-        brief: Option<PathBuf>,
-        #[arg(long)]
-        preview_scale: Option<u16>,
-        #[arg(long, default_value = "cli")]
-        actor: String,
-    },
-    ConvertSelected {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        recipe: String,
-        #[arg(long)]
-        palette: Option<String>,
-        #[arg(long, value_parser = clap::value_parser!(u8).range(2..=64))]
-        colors: Option<u8>,
-        #[arg(long)]
-        settings: Option<PathBuf>,
-        #[arg(long)]
-        auto_background: bool,
-        #[arg(long, default_value = "cli")]
-        actor: String,
-    },
-    PreviewSelected {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        recipe: String,
-        #[arg(long)]
-        palette: Option<String>,
-        #[arg(long, value_parser = clap::value_parser!(u8).range(2..=64))]
-        colors: Option<u8>,
-        #[arg(long)]
-        settings: Option<PathBuf>,
-        #[arg(long)]
-        auto_background: bool,
-        #[arg(long)]
-        native: PathBuf,
-    },
-    Patch {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        parent: String,
-        #[arg(long)]
-        patch: PathBuf,
-        #[arg(long)]
-        brief: Option<PathBuf>,
-        #[arg(long)]
-        preview_scale: Option<u16>,
-        #[arg(long, default_value = "cli")]
-        actor: String,
     },
     Fill {
         #[arg(long, default_value = ".")]
@@ -238,8 +131,6 @@ pub(crate) enum RevisionCommand {
         remap: PathBuf,
         #[arg(long)]
         brief: Option<PathBuf>,
-        #[arg(long)]
-        preview_scale: Option<u16>,
         #[arg(long, default_value = "cli")]
         actor: String,
     },
@@ -281,38 +172,6 @@ pub(crate) enum RevisionCommand {
         #[arg(long)]
         revision: Option<String>,
     },
-    Compare {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        left: String,
-        #[arg(long)]
-        right: String,
-        #[arg(long)]
-        preview_scale: Option<u16>,
-        #[arg(long)]
-        visual_native: Option<PathBuf>,
-        #[arg(long)]
-        visual_preview: Option<PathBuf>,
-    },
-    Review {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        revision: String,
-        #[arg(long)]
-        decision: ReviewDecision,
-        #[arg(long, value_enum)]
-        actor_kind: ReviewActorKind,
-        #[arg(long)]
-        actor: String,
-        #[arg(long, default_value = "")]
-        note: String,
-    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -327,8 +186,6 @@ pub(crate) enum AssetCommand {
         root: PathBuf,
         #[arg(long)]
         asset: String,
-        #[arg(long, value_enum, default_value_t = Kind::Sprite)]
-        kind: Kind,
         #[arg(long, default_value = "")]
         brief: String,
     },
@@ -375,6 +232,17 @@ pub(crate) enum AssetCommand {
         #[arg(long)]
         overwrite: bool,
     },
+    /// Export the current revision to a named PNG or WebP file.
+    ExportFile {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        destination: PathBuf,
+        #[arg(long)]
+        overwrite: bool,
+    },
     Inspect {
         #[arg(long, default_value = ".")]
         root: PathBuf,
@@ -393,55 +261,4 @@ pub(crate) enum ReferenceCommand {
         #[arg(long)]
         file: PathBuf,
     },
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub(crate) enum Kind {
-    Sprite,
-    Sheet,
-    Tile,
-    Ui,
-}
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub(crate) enum ConversionKind {
-    Reference,
-    Sheet,
-}
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub(crate) enum ReviewActorKind {
-    Human,
-    Agent,
-}
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub(crate) enum ReviewDecision {
-    Reviewed,
-    ChangesRequested,
-    Accepted,
-}
-impl From<ReviewActorKind> for ProjectReviewActorKind {
-    fn from(value: ReviewActorKind) -> Self {
-        match value {
-            ReviewActorKind::Human => Self::Human,
-            ReviewActorKind::Agent => Self::Agent,
-        }
-    }
-}
-impl From<ReviewDecision> for ProjectReviewDecision {
-    fn from(value: ReviewDecision) -> Self {
-        match value {
-            ReviewDecision::Reviewed => Self::Reviewed,
-            ReviewDecision::ChangesRequested => Self::ChangesRequested,
-            ReviewDecision::Accepted => Self::Accepted,
-        }
-    }
-}
-impl From<Kind> for AssetKind {
-    fn from(value: Kind) -> Self {
-        match value {
-            Kind::Sprite => Self::Sprite,
-            Kind::Sheet => Self::Sheet,
-            Kind::Tile => Self::Tile,
-            Kind::Ui => Self::Ui,
-        }
-    }
 }

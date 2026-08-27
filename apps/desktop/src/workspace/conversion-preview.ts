@@ -1,9 +1,8 @@
-import { onScopeDispose, ref, toRaw, type ComputedRef, type Ref } from "vue";
+import { onScopeDispose, ref, toRaw, type Ref } from "vue";
 import * as api from "../api";
 import type {
   AssetStyle,
   ConversionPreviewResponse,
-  ConversionRecipeDocument,
   ConversionSettings,
   PaletteColorOverride,
   ProjectBrowser,
@@ -14,12 +13,9 @@ interface PreviewContext {
   assetId: Ref<string>;
   preview: Ref<ConversionPreviewResponse | undefined>;
   thumbnails: Ref<Record<string, string>>;
-  recipes: ComputedRef<ConversionRecipeDocument[]>;
 }
 
 export function createConversionPreview(context: PreviewContext) {
-  const recipeId = ref("");
-  const paletteId = ref("");
   const colorCount = ref(16);
   const paletteOverrides = ref<PaletteColorOverride[]>([]);
   const backgroundAutomatic = ref(true);
@@ -45,54 +41,21 @@ export function createConversionPreview(context: PreviewContext) {
     };
   }
 
-  function chooseDefaultRecipe() {
-    const recipe =
-      context.recipes.value.find(({ id }) => id === "sprite-32") ??
-      context.recipes.value[0];
-    recipeId.value = recipe?.id ?? "";
-    paletteId.value = recipe?.palette ?? "";
-    colorCount.value = 16;
+  function chooseDefaults() {
+    const defaults = context.project.value?.pixelization;
+    colorCount.value = defaults?.color_count ?? 16;
     paletteOverrides.value = [];
     backgroundAutomatic.value = true;
-    settings.value =
-      recipe?.mode.type === "reference"
-        ? pixelizeSettings(recipe.mode.settings)
-        : undefined;
+    settings.value = defaults ? pixelizeSettings(defaults.settings) : undefined;
     error.value = "";
-  }
-
-  function chooseRecipe(id: string) {
-    const recipe = context.recipes.value.find(
-      (candidate) => candidate.id === id,
-    );
-    if (!recipe || recipe.mode.type !== "reference") return;
-    recipeId.value = recipe.id;
-    paletteId.value = recipe.palette;
-    paletteOverrides.value = [];
-    backgroundAutomatic.value = true;
-    settings.value = pixelizeSettings(recipe.mode.settings);
-    error.value = "";
-    void request();
   }
 
   function chooseAssetStyle(style: AssetStyle) {
-    if (!context.recipes.value.some(({ id }) => id === style.recipe)) {
-      chooseDefaultRecipe();
-      return;
-    }
-    recipeId.value = style.recipe;
-    paletteId.value = style.palette ?? "";
-    colorCount.value = style.color_count ?? 16;
+    colorCount.value = style.color_count;
     paletteOverrides.value = [];
     backgroundAutomatic.value = true;
     settings.value = pixelizeSettings(style.settings);
     error.value = "";
-  }
-
-  function choosePalette(id: string) {
-    paletteId.value = id;
-    error.value = "";
-    void request();
   }
 
   function updateSettings(update: Partial<ConversionSettings>) {
@@ -133,14 +96,12 @@ export function createConversionPreview(context: PreviewContext) {
 
   async function request(requested = ++sequence) {
     const project = context.project.value;
-    if (!project || !recipeId.value || !settings.value) return;
+    if (!project || !settings.value) return;
     busy.value = true;
     try {
       const result = await api.previewSelectedReference(
         project.project_root,
         context.assetId.value,
-        recipeId.value,
-        undefined,
         colorCount.value,
         paletteOverrides.value,
         settings.value,
@@ -163,18 +124,14 @@ export function createConversionPreview(context: PreviewContext) {
   }
 
   return {
-    recipeId,
-    paletteId,
     colorCount,
     paletteOverrides,
     backgroundAutomatic,
     settings,
     busy,
     error,
-    chooseDefaultRecipe,
-    chooseRecipe,
+    chooseDefaults,
     chooseAssetStyle,
-    choosePalette,
     updateSettings,
     setColorCount,
     setBackgroundAutomatic,

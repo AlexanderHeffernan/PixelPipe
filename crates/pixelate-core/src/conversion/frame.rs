@@ -184,30 +184,6 @@ pub(super) fn render_frame(
     Ok((raster, placement))
 }
 
-pub(super) fn conversion_checks(
-    source_bounds: &[Bounds],
-    placements: &[Bounds],
-    frame_count: usize,
-) -> Vec<ValidationCheck> {
-    vec![
-        ValidationCheck {
-            name: "source_bounds".to_owned(),
-            passed: true,
-            detail: bounds_detail(source_bounds),
-        },
-        ValidationCheck {
-            name: "registration".to_owned(),
-            passed: true,
-            detail: bounds_detail(placements),
-        },
-        ValidationCheck {
-            name: "sheet_frames".to_owned(),
-            passed: true,
-            detail: frame_count.to_string(),
-        },
-    ]
-}
-
 pub(super) fn conversion_metadata(
     source_bounds: &[Bounds],
     placements: &[Bounds],

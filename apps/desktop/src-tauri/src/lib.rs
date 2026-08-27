@@ -5,13 +5,9 @@ use commands::{
     project::{
         browse_project, commit_composition, convert_selected_reference, delete_asset, export_asset,
         export_asset_file, import_reference, initialize_asset, open_project, preview_composition,
-        preview_selected_reference, rename_asset, store_project_palette, store_project_recipe,
-        update_asset_brief,
+        preview_selected_reference, rename_asset, update_asset_brief,
     },
-    revisions::{
-        compare_revisions, fill_revision, load_revision, patch_revision, record_review,
-        remap_revision, set_asset_head,
-    },
+    revisions::{fill_revision, load_revision, patch_revision, remap_revision, set_asset_head},
     terminal::{TerminalSessions, close_terminal, resize_terminal, start_terminal, write_terminal},
 };
 
@@ -39,11 +35,7 @@ pub fn run() {
             preview_selected_reference,
             preview_composition,
             commit_composition,
-            store_project_palette,
-            store_project_recipe,
             load_revision,
-            compare_revisions,
-            record_review,
             patch_revision,
             fill_revision,
             set_asset_head,

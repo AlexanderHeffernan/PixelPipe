@@ -39,13 +39,6 @@ export function createWorkspace() {
     refresh,
   } = session;
 
-  const recipes = computed(
-    () =>
-      project.value?.recipes.filter(
-        ({ kind, mode }) =>
-          kind === selectedAsset.value?.asset.kind && mode.type === "reference",
-      ) ?? [],
-  );
   const inspection = computed(
     () => preview.value?.inspection ?? view.value?.metadata.inspection,
   );
@@ -63,10 +56,8 @@ export function createWorkspace() {
     assetId,
     preview,
     thumbnails,
-    recipes,
   });
   const {
-    recipeId,
     colorCount,
     paletteOverrides,
     backgroundAutomatic,
@@ -99,7 +90,7 @@ export function createWorkspace() {
     if (asset?.selected_reference && assetModes.get(id) === "convert") {
       mode.value = "convert";
       if (asset.style) conversion.chooseAssetStyle(asset.style);
-      else conversion.chooseDefaultRecipe();
+      else conversion.chooseDefaults();
       await conversion.request();
       view.value = undefined;
       return;
@@ -107,7 +98,7 @@ export function createWorkspace() {
     if (asset?.head) {
       if (asset.selected_reference) {
         if (asset.style) conversion.chooseAssetStyle(asset.style);
-        else conversion.chooseDefaultRecipe();
+        else conversion.chooseDefaults();
       }
       mode.value = "edit";
       assetModes.set(id, "edit");
@@ -123,7 +114,7 @@ export function createWorkspace() {
     } else if (asset?.selected_reference) {
       mode.value = "convert";
       assetModes.set(id, "convert");
-      conversion.chooseDefaultRecipe();
+      conversion.chooseDefaults();
       await conversion.request();
       view.value = undefined;
     } else {
@@ -133,14 +124,12 @@ export function createWorkspace() {
   }
 
   async function commitConversion() {
-    if (!project.value || !recipeId.value || !settings.value) return;
+    if (!project.value || !settings.value) return;
     await canvasLoading.run("Preparing canvas…", () =>
       run(async () => {
         const result = await api.convertSelectedReference(
           project.value!.project_root,
           assetId.value,
-          recipeId.value,
-          undefined,
           colorCount.value,
           paletteOverrides.value,
           settings.value,
@@ -208,7 +197,7 @@ export function createWorkspace() {
         if (change.sourceChanged && change.asset.selected_reference) {
           if (change.asset.style)
             conversion.chooseAssetStyle(change.asset.style);
-          else conversion.chooseDefaultRecipe();
+          else conversion.chooseDefaults();
           mode.value = "convert";
           assetModes.set(change.asset.id, "convert");
           await conversion.request();

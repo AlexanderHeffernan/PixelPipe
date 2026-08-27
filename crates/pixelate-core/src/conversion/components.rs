@@ -1,9 +1,6 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 
-use super::{
-    image::{pixel_count, source_offset},
-    model::ComponentExpectation,
-};
+use super::model::ComponentExpectation;
 use crate::{CoreError, IndexedRaster};
 
 /// Counts four-connected visible components and enforces an inclusive range.
@@ -25,58 +22,6 @@ pub fn validate_component_expectation(
         });
     }
     Ok(count)
-}
-
-/// Enforces the same four-connected component range independently per sheet frame.
-///
-/// # Errors
-///
-/// Returns a [`CoreError`] when the grid is invalid or any frame count falls
-/// outside the expected range.
-pub fn validate_sheet_component_expectation(
-    raster: &IndexedRaster,
-    columns: u16,
-    rows: u16,
-    expectation: ComponentExpectation,
-) -> Result<Vec<u16>, CoreError> {
-    let columns = u32::from(columns);
-    let rows = u32::from(rows);
-    if columns == 0
-        || rows == 0
-        || !raster.width.is_multiple_of(columns)
-        || !raster.height.is_multiple_of(rows)
-    {
-        return Err(CoreError::InvalidSheetGrid);
-    }
-    let width = raster.width / columns;
-    let height = raster.height / rows;
-    let mut counts = Vec::with_capacity(
-        usize::try_from(columns * rows).map_err(|_| CoreError::DimensionOverflow)?,
-    );
-    for row in 0..rows {
-        for column in 0..columns {
-            let mut pixels = Vec::with_capacity(pixel_count(width, height)?);
-            for y in 0..height {
-                for x in 0..width {
-                    pixels.push(
-                        raster.pixels
-                            [source_offset(raster.width, column * width + x, row * height + y)?],
-                    );
-                }
-            }
-            let frame = IndexedRaster {
-                schema: raster.schema.clone(),
-                width,
-                height,
-                palette: raster.palette.clone(),
-                pixels,
-                pivot: None,
-                metadata: BTreeMap::new(),
-            };
-            counts.push(validate_component_expectation(&frame, expectation)?);
-        }
-    }
-    Ok(counts)
 }
 
 fn component_count(raster: &IndexedRaster) -> Result<u16, CoreError> {

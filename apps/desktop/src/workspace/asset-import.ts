@@ -30,7 +30,6 @@ export function createAssetImport(context: AssetImportContext) {
           await api.initializeAsset(
             context.project.value!.project_root,
             id,
-            "sprite",
             name,
           );
           try {

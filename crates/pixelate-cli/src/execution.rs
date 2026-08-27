@@ -1,22 +1,15 @@
-use std::{fs, path::PathBuf};
+use std::fs;
 
 use pixelate_app::{
-    CompareRevisions, ConversionMode, ConvertRevision, ConvertSelectedReference, CreateRevision,
-    DeleteAsset, ExportAsset, ImportReference, InitializeAsset, InspectRevision, OpenProject,
-    PreviewRevision, PreviewSelectedReference, RecordReview, RenameAsset, StoreProjectPalette,
-    StoreProjectRecipe, UpdateAssetBrief, UpdateAssetSource, compare_revisions, convert_revision,
-    convert_selected_reference, create_revision, delete_asset, export_asset, import_reference,
-    initialize_asset, inspect_revision, open_project, preview_revision, preview_selected_reference,
-    record_review, rename_asset, store_project_palette, store_project_recipe, update_asset_brief,
-    update_asset_source,
+    DeleteAsset, ExportAsset, ExportAssetFile, ImportReference, InitializeAsset, InspectRevision,
+    OpenProject, PreviewRevision, RenameAsset, UpdateAssetBrief, UpdateAssetSource, delete_asset,
+    export_asset, export_asset_file, import_reference, initialize_asset, inspect_revision,
+    open_project, preview_revision, rename_asset, update_asset_brief, update_asset_source,
 };
-use pixelate_core::{ConversionSettings, SheetSettings};
 use pixelate_project::ProjectStore;
 use serde_json::json;
 
-use crate::args::{
-    AssetCommand, Cli, Command, ConversionKind, ProjectCommand, ReferenceCommand, RevisionCommand,
-};
+use crate::args::{AssetCommand, Cli, Command, ProjectCommand, ReferenceCommand, RevisionCommand};
 use crate::edit::run_edit_revision;
 use crate::guide::agent_guide;
 use crate::pixelize::pixelize_command;
@@ -56,26 +49,9 @@ fn run_reference(
 }
 
 fn run_project(command: ProjectCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    match command {
-        ProjectCommand::Show { root } => {
-            let store = ProjectStore::discover(&root)?;
-            Ok(
-                json!({ "ok": true, "project_root": store.root(), "project": store.manifest()?, "recipes": store.conversion_recipes()? }),
-            )
-        }
-        ProjectCommand::SetPalette { root, id, file } => {
-            store_project_palette(StoreProjectPalette {
-                start: root,
-                id: id.clone(),
-                file,
-            })?;
-            Ok(json!({ "ok": true, "palette": id }))
-        }
-        ProjectCommand::SetRecipe { root, file } => {
-            let recipe = store_project_recipe(StoreProjectRecipe { start: root, file })?;
-            Ok(json!({ "ok": true, "recipe": recipe.id }))
-        }
-    }
+    let ProjectCommand::Show { root } = command;
+    let store = ProjectStore::discover(&root)?;
+    Ok(json!({ "ok": true, "project_root": store.root(), "project": store.manifest()? }))
 }
 
 fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
@@ -88,13 +64,8 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
                 "assets": store.assets()?,
             }))
         }
-        AssetCommand::Init {
-            root,
-            asset,
-            kind,
-            brief,
-        } => Ok(
-            json!({ "ok": true, "asset": initialize_asset(InitializeAsset { start: root, asset, kind: kind.into(), brief })? }),
+        AssetCommand::Init { root, asset, brief } => Ok(
+            json!({ "ok": true, "asset": initialize_asset(InitializeAsset { start: root, asset, brief })? }),
         ),
         AssetCommand::SetBrief { root, asset, brief } => Ok(
             json!({ "ok": true, "asset": update_asset_brief(UpdateAssetBrief { start: root, asset, brief })? }),
@@ -138,6 +109,20 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
                 overwrite,
             })?
         })),
+        AssetCommand::ExportFile {
+            root,
+            asset,
+            destination,
+            overwrite,
+        } => Ok(json!({
+            "ok": true,
+            "export": export_asset_file(ExportAssetFile {
+                start: root,
+                asset,
+                destination,
+                overwrite,
+            })?
+        })),
         AssetCommand::Inspect { root, asset } => {
             let store = ProjectStore::discover(&root)?;
             Ok(json!({ "ok": true, "project_root": store.root(), "asset": store.asset(&asset)? }))
@@ -149,54 +134,7 @@ fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn s
     match command {
         RevisionCommand::Pixelize { options } => pixelize_command(options),
         command @ RevisionCommand::Preview { .. } => preview_command(command),
-        RevisionCommand::Create {
-            root,
-            asset,
-            kind,
-            pixels,
-            brief,
-            preview_scale,
-            actor,
-        } => Ok(
-            json!({ "ok": true, "revision": create_revision(CreateRevision { start: root, asset, kind: kind.into(), raster_path: pixels, brief_path: brief, preview_scale, actor })? }),
-        ),
-        command @ RevisionCommand::Convert { .. } => convert_command(command),
-        RevisionCommand::ConvertSelected {
-            root,
-            asset,
-            recipe,
-            palette,
-            colors,
-            settings,
-            auto_background,
-            actor,
-        } => Ok(
-            json!({ "ok": true, "revision": convert_selected_reference(ConvertSelectedReference { start: root, asset, recipe, palette, color_count: colors, palette_overrides: Vec::new(), settings: read_reference_settings(settings)?, auto_background, actor })? }),
-        ),
-        RevisionCommand::PreviewSelected {
-            root,
-            asset,
-            recipe,
-            palette,
-            colors,
-            settings,
-            auto_background,
-            native,
-        } => preview_selected_command(
-            PreviewSelectedReference {
-                start: root,
-                asset,
-                recipe,
-                palette,
-                color_count: colors,
-                palette_overrides: Vec::new(),
-                settings: read_reference_settings(settings)?,
-                auto_background,
-            },
-            &native,
-        ),
-        command @ (RevisionCommand::Patch { .. }
-        | RevisionCommand::Fill { .. }
+        command @ (RevisionCommand::Fill { .. }
         | RevisionCommand::Compose { .. }
         | RevisionCommand::SetHead { .. }
         | RevisionCommand::Remap { .. }
@@ -208,36 +146,6 @@ fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn s
             revision,
         } => Ok(
             json!({ "ok": true, "revision": inspect_revision(InspectRevision { start: root, asset, revision })? }),
-        ),
-        RevisionCommand::Compare {
-            root,
-            asset,
-            left,
-            right,
-            preview_scale,
-            visual_native,
-            visual_preview,
-        } => compare_command(
-            CompareRevisions {
-                start: root,
-                asset,
-                left,
-                right,
-                preview_scale,
-            },
-            visual_native,
-            visual_preview,
-        ),
-        RevisionCommand::Review {
-            root,
-            asset,
-            revision,
-            decision,
-            actor_kind,
-            actor,
-            note,
-        } => Ok(
-            json!({ "ok": true, "review": record_review(RecordReview { start: root, asset, revision, actor, actor_kind: actor_kind.into(), decision: decision.into(), note })? }),
         ),
     }
 }
@@ -273,78 +181,5 @@ fn preview_command(
         "height": preview.height,
         "sha256": preview.sha256,
         "output": output,
-    }}))
-}
-
-fn preview_selected_command(
-    request: PreviewSelectedReference,
-    native: &std::path::Path,
-) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let preview = preview_selected_reference(request)?;
-    fs::write(native, &preview.native_png)?;
-    Ok(json!({ "ok": true, "preview": {
-        "inspection": preview.inspection,
-        "palette_name": preview.palette_name,
-        "native": native,
-    }}))
-}
-
-fn read_reference_settings(
-    path: Option<PathBuf>,
-) -> Result<Option<ConversionSettings>, Box<dyn std::error::Error>> {
-    path.map(|path| Ok(serde_json::from_slice(&fs::read(path)?)?))
-        .transpose()
-}
-
-fn convert_command(
-    command: RevisionCommand,
-) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let RevisionCommand::Convert {
-        root,
-        asset,
-        kind,
-        source,
-        palette,
-        settings,
-        conversion,
-        brief,
-        preview_scale,
-        actor,
-    } = command
-    else {
-        unreachable!("convert_command only receives convert commands")
-    };
-    let settings = fs::read(settings)?;
-    let mode = match conversion {
-        ConversionKind::Reference => {
-            ConversionMode::Reference(serde_json::from_slice::<ConversionSettings>(&settings)?)
-        }
-        ConversionKind::Sheet => {
-            ConversionMode::Sheet(serde_json::from_slice::<SheetSettings>(&settings)?)
-        }
-    };
-    Ok(
-        json!({ "ok": true, "revision": convert_revision(ConvertRevision { start: root, asset, kind: kind.into(), source_path: source, palette_path: palette, mode, brief_path: brief, preview_scale, actor })? }),
-    )
-}
-
-fn compare_command(
-    request: CompareRevisions,
-    visual_native: Option<PathBuf>,
-    visual_preview: Option<PathBuf>,
-) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let comparison = compare_revisions(request)?;
-    let visual_native = visual_native
-        .map(|path| fs::write(&path, &comparison.visual_native_png).map(|()| path))
-        .transpose()?;
-    let visual_preview = visual_preview
-        .map(|path| fs::write(&path, &comparison.visual_preview_png).map(|()| path))
-        .transpose()?;
-    Ok(json!({ "ok": true, "comparison": {
-        "project_root": comparison.project_root, "asset": comparison.asset,
-        "left": comparison.left, "right": comparison.right, "diff": comparison.diff,
-        "visual_native": visual_native, "visual_preview": visual_preview,
-        "visual_native_sha256": comparison.visual_native_sha256,
-        "visual_preview_sha256": comparison.visual_preview_sha256,
     }}))
 }

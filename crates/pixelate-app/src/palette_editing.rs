@@ -22,7 +22,6 @@ pub struct RemapRevision {
     pub parent: String,
     pub remap_path: PathBuf,
     pub brief_path: Option<PathBuf>,
-    pub preview_scale: Option<u16>,
     pub actor: String,
 }
 
@@ -40,7 +39,6 @@ pub struct RemapRevisionDocument {
     pub parent: String,
     pub remap: PaletteRemap,
     pub brief: Option<String>,
-    pub preview_scale: Option<u16>,
     pub actor: String,
 }
 
@@ -79,7 +77,6 @@ pub fn remap_revision(request: RemapRevision) -> Result<RevisionResult, AppError
         parent: request.parent,
         remap,
         brief,
-        preview_scale: request.preview_scale,
         actor: request.actor,
     })
 }
@@ -95,34 +92,25 @@ pub fn remap_revision_document(request: RemapRevisionDocument) -> Result<Revisio
     let mut remap = request.remap;
     inherit_structure(&mut remap.structure, component_rule(&parent.recipe))?;
     let raster = apply_palette_remap(&parent.raster, &remap)?;
-    let preview_scale = request
-        .preview_scale
-        .unwrap_or(store.manifest()?.preview_scale);
     let recipe = Recipe {
         schema: RECIPE_SCHEMA.to_owned(),
         input_sha256: sha256_hex(&stable_json(&parent.raster)?),
         palette_sha256: sha256_hex(&stable_json(&raster.palette)?),
-        operations: vec![
-            Operation::RemapPalette {
-                remap: remap.clone(),
-            },
-            Operation::RenderIndexed { preview_scale },
-        ],
+        operations: vec![Operation::RemapPalette {
+            remap: remap.clone(),
+        }],
     };
     let brief = request.brief.unwrap_or(parent.brief);
     let input_hashes = BTreeMap::from([
         ("palette".to_owned(), recipe.palette_sha256.clone()),
         ("parent_pixels".to_owned(), recipe.input_sha256.clone()),
     ]);
-    let kind = store.asset(&request.asset)?.kind;
     commit_raster(
         &store,
         CommitRaster {
             asset: request.asset,
-            kind,
             raster,
             recipe,
-            preview_scale,
             brief,
             actor: request.actor,
             input_hashes,

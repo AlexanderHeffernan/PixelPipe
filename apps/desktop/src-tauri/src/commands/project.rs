@@ -3,7 +3,7 @@ use pixelate_app::{
     BrowseProject, CommitComposition, ConvertSelectedReference, DeleteAsset, ExportAsset,
     ExportAssetFile, ImportReference, InitializeAsset, OpenProject, PreviewComposition,
     PreviewSelectedReference, ProjectBrowser, RasterInspection, RenameAsset, RevisionResult,
-    StoreProjectPalette, StoreProjectRecipe, UpdateAssetBrief,
+    UpdateAssetBrief,
 };
 use serde::Serialize;
 
@@ -117,18 +117,4 @@ pub(crate) async fn commit_composition(
     request: CommitComposition,
 ) -> CommandResult<RevisionResult> {
     blocking(move || pixelate_app::commit_composition(request)).await
-}
-
-#[tauri::command]
-pub(crate) fn store_project_palette(
-    request: StoreProjectPalette,
-) -> CommandResult<pixelate_app::Palette> {
-    pixelate_app::store_project_palette(request).map_err(|error| command_error(&error))
-}
-
-#[tauri::command]
-pub(crate) fn store_project_recipe(
-    request: StoreProjectRecipe,
-) -> CommandResult<pixelate_app::ConversionRecipeDocument> {
-    pixelate_app::store_project_recipe(request).map_err(|error| command_error(&error))
 }

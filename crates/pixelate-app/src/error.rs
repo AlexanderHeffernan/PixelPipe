@@ -33,12 +33,6 @@ pub enum AppError {
         #[source]
         source: serde_json::Error,
     },
-    #[error("invalid project resource JSON in {path}: {source}")]
-    ProjectResourceJson {
-        path: PathBuf,
-        #[source]
-        source: serde_json::Error,
-    },
     #[error("asset '{0}' has no head revision")]
     NoHead(String),
     #[error("operation structure rule conflicts with its inherited revision rule")]

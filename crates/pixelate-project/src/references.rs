@@ -3,10 +3,9 @@ use std::fs;
 use pixelate_core::sha256_hex;
 
 use crate::{
-    ASSET_SCHEMA, ProjectError, ProjectStore, REFERENCE_SELECTION_SCHEMA, ReferenceSelection,
-    StoredReference,
-    assets::{state_for, validate_asset_id},
-    persistence::{atomic_write, io_at, now_unix_ms},
+    ASSET_SCHEMA, ProjectError, ProjectStore, ReferenceSelection, StoredReference,
+    assets::validate_asset_id,
+    persistence::{atomic_write, io_at},
 };
 
 impl ProjectStore {
@@ -60,20 +59,10 @@ impl ProjectStore {
         }
         let stored = self.import_reference(asset, png_bytes)?;
         let selection = ReferenceSelection {
-            schema: REFERENCE_SELECTION_SCHEMA.to_owned(),
-            asset: asset.to_owned(),
-            run: "import".to_owned(),
-            candidate: "local-file".to_owned(),
             sha256: stored.sha256,
-            selected_unix_ms: now_unix_ms()?,
         };
         ASSET_SCHEMA.clone_into(&mut manifest.schema);
         manifest.selected_reference = Some(selection.clone());
-        manifest.state = state_for(
-            &manifest.brief.text,
-            manifest.selected_reference.as_ref(),
-            manifest.head.as_deref(),
-        );
         atomic_write(
             &self.asset_path(asset).join("asset.toml"),
             toml::to_string_pretty(&manifest)?.as_bytes(),

@@ -34,7 +34,6 @@ pub(crate) fn draw_command(
             structure: None,
         },
         brief: None,
-        preview_scale: None,
         actor,
     })?;
     Ok(json!({ "ok": true, "revision": revision }))

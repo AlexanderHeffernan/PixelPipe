@@ -11,8 +11,8 @@ const workspace = useWorkspace();
     <p class="eyebrow">Deterministic pixel artwork</p>
     <h1>Convert, refine, and ship<br />game-ready sprites.</h1>
     <p class="welcome-copy">
-      Open a new or existing game folder. Pixelate keeps palettes, conversion
-      recipes, assets, and revisions together with your project.
+      Open a new or existing game folder. Pixelate keeps assets and revisions
+      together with your project.
     </p>
     <button
       class="primary large"

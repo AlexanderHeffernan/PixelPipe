@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{CoreError, IndexedRaster, Palette, RASTER_SCHEMA, RenderedRaster, render, sha256_hex};
+use crate::{CoreError, IndexedRaster};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,43 +29,6 @@ pub struct RasterInspection {
     pub visible_pixels: u64,
     pub palette: Vec<PaletteUsage>,
     pub text_rows: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PixelDifference {
-    pub x: u32,
-    pub y: u32,
-    pub left_index: Option<u8>,
-    pub right_index: Option<u8>,
-    pub left_rgba: Option<[u8; 4]>,
-    pub right_rgba: Option<[u8; 4]>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PaletteDifference {
-    pub index: u16,
-    pub left: Option<[u8; 4]>,
-    pub right: Option<[u8; 4]>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RasterDiff {
-    pub left_dimensions: [u32; 2],
-    pub right_dimensions: [u32; 2],
-    pub changed_bounds: Option<RasterBounds>,
-    pub changed_pixels: Vec<PixelDifference>,
-    pub palette_differences: Vec<PaletteDifference>,
-}
-
-#[derive(Debug)]
-pub struct RasterComparison {
-    pub diff: RasterDiff,
-    pub visual: RenderedRaster,
-    pub visual_native_sha256: String,
-    pub visual_preview_sha256: String,
 }
 
 /// Produces deterministic palette usage, visible bounds, and an indexed text grid.
@@ -122,118 +85,6 @@ pub fn inspect_raster(raster: &IndexedRaster) -> Result<RasterInspection, CoreEr
     })
 }
 
-/// Compares canonical pixel colors and returns a machine diff plus indexed visual diff.
-///
-/// # Errors
-///
-/// Returns a [`CoreError`] when either raster is invalid or rendering overflows.
-pub fn compare_rasters(
-    left: &IndexedRaster,
-    right: &IndexedRaster,
-    preview_scale: u16,
-) -> Result<RasterComparison, CoreError> {
-    left.validate()?;
-    right.validate()?;
-    let width = left.width.max(right.width);
-    let height = left.height.max(right.height);
-    let mut changed_pixels = Vec::new();
-    let mut changed_bounds = BoundsAccumulator::new(width, height);
-    let mut visual_pixels = Vec::with_capacity(pixel_count(width, height)?);
-    for y in 0..height {
-        for x in 0..width {
-            let left_pixel = pixel_at(left, x, y)?;
-            let right_pixel = pixel_at(right, x, y)?;
-            let same_color = left_pixel.map(|pixel| pixel.1) == right_pixel.map(|pixel| pixel.1);
-            if same_color {
-                visual_pixels.push(0);
-                continue;
-            }
-            changed_bounds.include(x, y);
-            changed_pixels.push(PixelDifference {
-                x,
-                y,
-                left_index: left_pixel.map(|pixel| pixel.0),
-                right_index: right_pixel.map(|pixel| pixel.0),
-                left_rgba: left_pixel.map(|pixel| pixel.1),
-                right_rgba: right_pixel.map(|pixel| pixel.1),
-            });
-            visual_pixels.push(
-                match (is_visible(left, left_pixel), is_visible(right, right_pixel)) {
-                    (true, false) => 1,
-                    (false, true) => 2,
-                    _ => 3,
-                },
-            );
-        }
-    }
-
-    let palette_differences = compare_palettes(&left.palette, &right.palette);
-    let visual_raster = IndexedRaster {
-        schema: RASTER_SCHEMA.to_owned(),
-        width,
-        height,
-        palette: Palette::new(
-            "pixelate-diff",
-            0,
-            vec![
-                [0, 0, 0, 0],
-                [239, 68, 68, 255],
-                [34, 197, 94, 255],
-                [217, 70, 239, 255],
-            ],
-        ),
-        pixels: visual_pixels,
-        pivot: None,
-        metadata: std::collections::BTreeMap::from([
-            ("removed".to_owned(), "palette:1".to_owned()),
-            ("added".to_owned(), "palette:2".to_owned()),
-            ("changed".to_owned(), "palette:3".to_owned()),
-        ]),
-    };
-    let visual = render(&visual_raster, preview_scale)?;
-    let visual_native_sha256 = sha256_hex(&visual.native_png);
-    let visual_preview_sha256 = sha256_hex(&visual.preview_png);
-    Ok(RasterComparison {
-        diff: RasterDiff {
-            left_dimensions: [left.width, left.height],
-            right_dimensions: [right.width, right.height],
-            changed_bounds: changed_bounds.finish(),
-            changed_pixels,
-            palette_differences,
-        },
-        visual,
-        visual_native_sha256,
-        visual_preview_sha256,
-    })
-}
-
-fn pixel_at(raster: &IndexedRaster, x: u32, y: u32) -> Result<Option<(u8, [u8; 4])>, CoreError> {
-    if x >= raster.width || y >= raster.height {
-        return Ok(None);
-    }
-    let index = raster.pixels[pixel_offset(raster.width, x, y)?];
-    Ok(Some((index, raster.palette.colors[usize::from(index)])))
-}
-
-fn is_visible(raster: &IndexedRaster, pixel: Option<(u8, [u8; 4])>) -> bool {
-    pixel.is_some_and(|pixel| pixel.0 != raster.palette.transparent_index)
-}
-
-fn compare_palettes(left: &Palette, right: &Palette) -> Vec<PaletteDifference> {
-    let count = left.colors.len().max(right.colors.len());
-    (0..count)
-        .filter_map(|index| {
-            let left = left.colors.get(index).copied();
-            let right = right.colors.get(index).copied();
-            (left != right).then(|| PaletteDifference {
-                index: u16::try_from(index).expect("palette comparison has at most 256 entries"),
-                left,
-                right,
-            })
-        })
-        .collect()
-}
-
 struct BoundsAccumulator {
     min_x: u32,
     min_y: u32,
@@ -276,15 +127,11 @@ fn pixel_offset(width: u32, x: u32, y: u32) -> Result<usize, CoreError> {
         .map_err(|_| CoreError::DimensionOverflow)
 }
 
-fn pixel_count(width: u32, height: u32) -> Result<usize, CoreError> {
-    usize::try_from(u64::from(width) * u64::from(height)).map_err(|_| CoreError::DimensionOverflow)
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::PALETTE_SCHEMA;
+    use crate::{PALETTE_SCHEMA, Palette, RASTER_SCHEMA};
 
     use super::*;
 
@@ -319,34 +166,5 @@ mod tests {
             })
         );
         assert_eq!(inspection.palette[1].count, 2);
-    }
-
-    #[test]
-    fn comparison_uses_rgba_semantics_and_stable_coordinate_order() {
-        let left = raster(vec![0, 1, 2, 1]);
-        let right = raster(vec![1, 1, 1, 0]);
-        let comparison = compare_rasters(&left, &right, 4).expect("compare");
-        assert_eq!(
-            comparison
-                .diff
-                .changed_pixels
-                .iter()
-                .map(|pixel| (pixel.x, pixel.y))
-                .collect::<Vec<_>>(),
-            vec![(0, 0), (0, 1), (1, 1)]
-        );
-        assert_eq!(
-            comparison.diff.changed_bounds,
-            Some(RasterBounds {
-                x: 0,
-                y: 0,
-                width: 2,
-                height: 2
-            })
-        );
-        assert_eq!(
-            comparison.visual.validation.visual_review,
-            crate::VisualReview::Required
-        );
     }
 }

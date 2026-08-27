@@ -5,16 +5,10 @@ use serde_json::json;
 
 pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let store = ProjectStore::discover(root)?;
-    let recipes = store
-        .conversion_recipes()?
-        .into_iter()
-        .map(|recipe| recipe.id)
-        .collect::<Vec<_>>();
     Ok(json!({
         "ok": true,
         "workflow": "coding_agent_sprite",
         "project_root": store.root(),
-        "available_recipes": recipes,
         "rules": [
             "Pixelate does not launch or manage agents. As the current coding agent, use its CLI directly.",
             "Do not install Python packages, rembg, image converters, or other dependencies. Pixelate accepts PNG, JPEG, and WebP and performs deterministic background removal itself.",
@@ -30,7 +24,7 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
         "fast_path": "Run the steps in order without dependency installation or intermediate image processing. A flat-background source goes directly into Pixelate.",
         "steps": [
             { "action": "choose_identity", "instruction": "Choose a lowercase-hyphen asset ID and a concise creative brief." },
-            { "action": "create_asset", "command": "pixelate asset init --root . --asset <asset-id> --kind sprite --brief '<brief>'" },
+            { "action": "create_asset", "command": "pixelate asset init --root . --asset <asset-id> --brief '<brief>'" },
             { "action": "create_source", "instruction": "Create a smooth PNG/JPEG/WebP source as a normal local file. Alpha is ideal; otherwise use one connected flat contrasting background. Do not pre-pixelate or remove the background. If an Amp image tool returns an attachment URL, download it with 'amp files get <url> -o <source-image>'." },
             { "action": "import_source", "command": "pixelate reference import --root . --asset <asset-id> --file <source-image>" },
             { "action": "convert", "instruction": "Use 32px when resolution is unspecified. The direct command exposes colour mood, fine tuning, and background controls through --help.", "command": "pixelate revision pixelize --root . --asset <asset-id> --resolution 32 --colors 16 --background auto --actor agent" },
@@ -46,6 +40,8 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
         ],
         "capabilities": {
             "list": "pixelate asset list --root .",
+            "show_project": "pixelate project show --root .",
+            "update_brief": "pixelate asset set-brief --root . --asset <asset-id> --brief '<brief>'",
             "rename": "pixelate asset rename --root . --asset <asset-id> --name '<display-name>'",
             "delete": "pixelate asset delete --root . --asset <asset-id>",
             "replace_source": "pixelate asset update-source --root . --asset <asset-id> --file <source-image>",
@@ -58,7 +54,8 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             "pencil_or_eraser": "pixelate revision draw --root . --asset <asset-id> --pixel '12,8=3' --pixel '13,8=3' --actor agent",
             "fill": "pixelate revision fill --root . --asset <asset-id> --x <px> --y <px> --index <palette-index> --actor agent",
             "undo_redo": "pixelate revision set-head --root . --asset <asset-id> --revision <revision-id>",
-            "export": "pixelate asset export --root . --asset <asset-id> --destination <folder> --overwrite"
+            "export_bundle": "pixelate asset export --root . --asset <asset-id> --destination <folder> --overwrite",
+            "export_image": "pixelate asset export-file --root . --asset <asset-id> --destination <name.png|name.webp> --overwrite"
         }
     }))
 }

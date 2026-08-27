@@ -34,7 +34,7 @@ export function createAssetActions(context: AssetActionContext) {
     if (next === "convert" && !context.canConvert.value) return;
     if (next === "convert") {
       if (!context.conversion.settings.value)
-        context.conversion.chooseDefaultRecipe();
+        context.conversion.chooseDefaults();
       context.mode.value = next;
       context.assetModes.set(context.assetId.value, next);
       await context.conversion.request();
@@ -90,7 +90,7 @@ export function createAssetActions(context: AssetActionContext) {
     await context.canvasLoading.run("Pixelizing source…", async () => {
       context.editor.resetHistory();
       if (!context.conversion.settings.value)
-        context.conversion.chooseDefaultRecipe();
+        context.conversion.chooseDefaults();
       context.mode.value = "convert";
       context.assetModes.set(context.assetId.value, "convert");
       await context.conversion.request();
@@ -130,7 +130,7 @@ export function createAssetActions(context: AssetActionContext) {
         await context.refresh();
         const asset = context.selectedAsset.value?.asset;
         if (asset?.style) context.conversion.chooseAssetStyle(asset.style);
-        else context.conversion.chooseDefaultRecipe();
+        else context.conversion.chooseDefaults();
         context.mode.value = "convert";
         context.assetModes.set(context.assetId.value, "convert");
         context.editor.resetHistory();

@@ -23,12 +23,7 @@ export const settings: ConversionSettings = {
 };
 
 export const reference = {
-  schema: "pixelate.reference-selection/v1",
-  asset: "field-medic",
-  run: "import",
-  candidate: "local-file",
   sha256: "0".repeat(64),
-  selected_unix_ms: 1,
 };
 
 export const project: ProjectBrowser = {
@@ -36,29 +31,12 @@ export const project: ProjectBrowser = {
   project: {
     schema: "pixelate.project/v1",
     name: "Fixture Game",
-    preview_scale: 8,
   },
-  palettes: [
-    {
-      id: "starter",
-      palette: {
-        schema: "pixelate.palette/v1",
-        name: "Pixelate Starter",
-        transparent_index: 0,
-        colors: [
-          [0, 0, 0, 0],
-          [30, 24, 37, 255],
-        ],
-      },
-    },
-  ],
   assets: [
     {
       asset: {
         schema: "pixelate.asset/v2",
         id: "field-medic",
-        kind: "sprite",
-        state: "selected_reference",
         brief: {
           schema: "pixelate.asset-brief/v1",
           text: "Strict overhead field medic",
@@ -68,16 +46,7 @@ export const project: ProjectBrowser = {
       revisions: [],
     },
   ],
-  recipes: [
-    {
-      schema: "pixelate.conversion-recipe/v1",
-      id: "sprite-32",
-      kind: "sprite",
-      palette: "starter",
-      preview_scale: 8,
-      mode: { type: "reference", settings },
-    },
-  ],
+  pixelization: { color_count: 16, settings },
 };
 
 export const revisionView: RevisionViewResponse = {
@@ -106,11 +75,9 @@ export const revisionView: RevisionViewResponse = {
       schema: "pixelate.validation/v1",
       valid: true,
       checks: [],
-      visual_review: "required",
     },
   },
   native_png_base64: "native",
-  preview_png_base64: "preview",
 };
 
 export const preview = {

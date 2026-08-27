@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use pixelate_app::{
-    CommitComposition, FillRevisionDocument, PatchRevision, RemapRevision, SetAssetHead,
-    commit_composition, fill_revision_document, patch_revision, remap_revision, set_asset_head,
+    CommitComposition, FillRevisionDocument, RemapRevision, SetAssetHead, commit_composition,
+    fill_revision_document, remap_revision, set_asset_head,
 };
 use pixelate_core::CanvasSettings;
 use pixelate_project::ProjectStore;
@@ -14,17 +14,6 @@ pub(crate) fn run_edit_revision(
     command: RevisionCommand,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match command {
-        RevisionCommand::Patch {
-            root,
-            asset,
-            parent,
-            patch,
-            brief,
-            preview_scale,
-            actor,
-        } => Ok(
-            json!({ "ok": true, "revision": patch_revision(PatchRevision { start: root, asset, parent, patch_path: patch, brief_path: brief, preview_scale, actor })? }),
-        ),
         RevisionCommand::Fill {
             root,
             asset,
@@ -82,10 +71,9 @@ pub(crate) fn run_edit_revision(
             parent,
             remap,
             brief,
-            preview_scale,
             actor,
         } => Ok(
-            json!({ "ok": true, "revision": remap_revision(RemapRevision { start: root, asset, parent, remap_path: remap, brief_path: brief, preview_scale, actor })? }),
+            json!({ "ok": true, "revision": remap_revision(RemapRevision { start: root, asset, parent, remap_path: remap, brief_path: brief, actor })? }),
         ),
         RevisionCommand::Recolor {
             root,

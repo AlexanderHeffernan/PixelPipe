@@ -31,16 +31,11 @@ impl ProjectStore {
         }
 
         fs::create_dir_all(pixelate.join("assets")).map_err(|source| io_at(&pixelate, source))?;
-        fs::create_dir_all(pixelate.join("palettes")).map_err(|source| io_at(&pixelate, source))?;
-        fs::create_dir_all(pixelate.join("recipes")).map_err(|source| io_at(&pixelate, source))?;
         fs::create_dir_all(pixelate.join("tmp")).map_err(|source| io_at(&pixelate, source))?;
 
         let manifest = ProjectManifest {
             schema: PROJECT_SCHEMA.to_owned(),
             name: name.to_owned(),
-            preview_scale: 8,
-            default_palette: None,
-            exports: Vec::new(),
         };
         atomic_write(
             &pixelate.join("project.toml"),
@@ -99,19 +94,6 @@ impl ProjectStore {
 
     pub(crate) fn asset_path(&self, id: &str) -> PathBuf {
         self.root.join(".pixelate/assets").join(id)
-    }
-
-    pub(crate) fn resource_path(&self, kind: &str, id: &str) -> PathBuf {
-        self.root
-            .join(".pixelate")
-            .join(kind)
-            .join(format!("{id}.json"))
-    }
-
-    pub(crate) fn review_path(&self, asset_id: &str, revision: &str) -> PathBuf {
-        self.asset_path(asset_id)
-            .join("reviews")
-            .join(format!("{revision}.json"))
     }
 
     pub(crate) fn lock(&self) -> Result<File, ProjectError> {

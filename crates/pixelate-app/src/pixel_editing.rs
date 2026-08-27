@@ -22,7 +22,6 @@ pub struct PatchRevision {
     pub parent: String,
     pub patch_path: PathBuf,
     pub brief_path: Option<PathBuf>,
-    pub preview_scale: Option<u16>,
     pub actor: String,
 }
 
@@ -33,7 +32,6 @@ pub struct PatchRevisionDocument {
     pub parent: String,
     pub patch: PixelPatchSet,
     pub brief: Option<String>,
-    pub preview_scale: Option<u16>,
     pub actor: String,
 }
 
@@ -70,7 +68,6 @@ pub fn patch_revision(request: PatchRevision) -> Result<RevisionResult, AppError
         parent: request.parent,
         patch,
         brief,
-        preview_scale: request.preview_scale,
         actor: request.actor,
     })
 }
@@ -86,34 +83,25 @@ pub fn patch_revision_document(request: PatchRevisionDocument) -> Result<Revisio
     let mut patch = request.patch;
     inherit_structure(&mut patch.structure, component_rule(&parent.recipe))?;
     let raster = apply_pixel_patch(&parent.raster, &patch)?;
-    let preview_scale = request
-        .preview_scale
-        .unwrap_or(store.manifest()?.preview_scale);
     let recipe = Recipe {
         schema: RECIPE_SCHEMA.to_owned(),
         input_sha256: sha256_hex(&stable_json(&parent.raster)?),
         palette_sha256: sha256_hex(&stable_json(&raster.palette)?),
-        operations: vec![
-            Operation::PatchPixels {
-                patch: patch.clone(),
-            },
-            Operation::RenderIndexed { preview_scale },
-        ],
+        operations: vec![Operation::PatchPixels {
+            patch: patch.clone(),
+        }],
     };
     let brief = request.brief.unwrap_or(parent.brief);
     let input_hashes = BTreeMap::from([
         ("palette".to_owned(), recipe.palette_sha256.clone()),
         ("parent_pixels".to_owned(), recipe.input_sha256.clone()),
     ]);
-    let kind = store.asset(&request.asset)?.kind;
     commit_raster(
         &store,
         CommitRaster {
             asset: request.asset,
-            kind,
             raster,
             recipe,
-            preview_scale,
             brief,
             actor: request.actor,
             input_hashes,
@@ -143,7 +131,6 @@ pub fn fill_revision_document(request: FillRevisionDocument) -> Result<RevisionR
         parent: request.parent,
         patch,
         brief: None,
-        preview_scale: None,
         actor: request.actor,
     })
 }

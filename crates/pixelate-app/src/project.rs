@@ -1,16 +1,14 @@
 use std::path::PathBuf;
 
-use pixelate_core::Palette;
-use pixelate_project::{AssetKind, AssetManifest, ConversionRecipeDocument, ProjectStore};
+use pixelate_project::{AssetManifest, ProjectStore};
 use serde::Deserialize;
 
-use crate::{AppError, revision_commit::read};
+use crate::AppError;
 
 #[derive(Debug, Deserialize)]
 pub struct InitializeAsset {
     pub start: PathBuf,
     pub asset: String,
-    pub kind: AssetKind,
     #[serde(default)]
     pub brief: String,
 }
@@ -35,19 +33,6 @@ pub struct RenameAsset {
     pub display_name: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct StoreProjectPalette {
-    pub start: PathBuf,
-    pub id: String,
-    pub file: PathBuf,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct StoreProjectRecipe {
-    pub start: PathBuf,
-    pub file: PathBuf,
-}
-
 /// Creates a stable project asset before any revision exists.
 ///
 /// # Errors
@@ -57,11 +42,10 @@ pub fn initialize_asset(request: InitializeAsset) -> Result<AssetManifest, AppEr
     let InitializeAsset {
         start,
         asset,
-        kind,
         brief,
     } = request;
     let store = ProjectStore::discover(&start)?;
-    Ok(store.create_asset(&asset, kind, &brief)?)
+    Ok(store.create_asset(&asset, &brief)?)
 }
 
 /// Permanently removes one project asset through the project store.
@@ -103,41 +87,4 @@ pub fn rename_asset(request: RenameAsset) -> Result<AssetManifest, AppError> {
     } = request;
     let store = ProjectStore::discover(&start)?;
     Ok(store.set_asset_display_name(&asset, &display_name)?)
-}
-
-/// Imports a validated palette into project-owned resources.
-///
-/// # Errors
-///
-/// Returns an [`AppError`] when the file, JSON, palette, or storage is invalid.
-pub fn store_project_palette(request: StoreProjectPalette) -> Result<Palette, AppError> {
-    let store = ProjectStore::discover(&request.start)?;
-    let palette: Palette = serde_json::from_slice(&read(&request.file)?).map_err(|source| {
-        AppError::ProjectResourceJson {
-            path: request.file,
-            source,
-        }
-    })?;
-    store.store_palette(&request.id, &palette)?;
-    Ok(palette)
-}
-
-/// Imports a complete validated conversion recipe into project-owned resources.
-///
-/// # Errors
-///
-/// Returns an [`AppError`] when the file, JSON, recipe, or storage is invalid.
-pub fn store_project_recipe(
-    request: StoreProjectRecipe,
-) -> Result<ConversionRecipeDocument, AppError> {
-    let store = ProjectStore::discover(&request.start)?;
-    let recipe: ConversionRecipeDocument =
-        serde_json::from_slice(&read(&request.file)?).map_err(|source| {
-            AppError::ProjectResourceJson {
-                path: request.file,
-                source,
-            }
-        })?;
-    store.store_conversion_recipe(&recipe)?;
-    Ok(recipe)
 }

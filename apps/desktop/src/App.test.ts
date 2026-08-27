@@ -46,8 +46,6 @@ const commit = {
   revision: "r000001",
   revision_path: "/game/.pixelate/assets/field-medic/revisions/r000001",
   native_sha256: "1".repeat(64),
-  preview_sha256: "2".repeat(64),
-  validation: "valid_visual_review_required",
 };
 
 beforeEach(() => {
@@ -106,8 +104,6 @@ describe("deterministic workstation", () => {
     expect(api.previewSelectedReference).toHaveBeenCalledWith(
       "/game",
       "field-medic",
-      "sprite-32",
-      undefined,
       16,
       [],
       pixelizeSettings,
@@ -124,8 +120,6 @@ describe("deterministic workstation", () => {
     expect(api.previewSelectedReference).toHaveBeenLastCalledWith(
       "/game",
       "field-medic",
-      "sprite-32",
-      undefined,
       8,
       [],
       pixelizeSettings,
@@ -146,8 +140,6 @@ describe("deterministic workstation", () => {
     expect(api.previewSelectedReference).toHaveBeenLastCalledWith(
       "/game",
       "field-medic",
-      "sprite-32",
-      undefined,
       8,
       [],
       vividSettings,
@@ -163,8 +155,6 @@ describe("deterministic workstation", () => {
     expect(api.previewSelectedReference).toHaveBeenLastCalledWith(
       "/game",
       "field-medic",
-      "sprite-32",
-      undefined,
       7,
       [],
       vividSettings,
@@ -205,8 +195,6 @@ describe("deterministic workstation", () => {
     expect(api.previewSelectedReference).toHaveBeenLastCalledWith(
       "/game",
       "field-medic",
-      "sprite-32",
-      undefined,
       16,
       [],
       {
@@ -226,8 +214,6 @@ describe("deterministic workstation", () => {
     expect(api.previewSelectedReference).toHaveBeenLastCalledWith(
       "/game",
       "field-medic",
-      "sprite-32",
-      undefined,
       16,
       [],
       {
@@ -269,8 +255,6 @@ describe("deterministic workstation", () => {
     expect(api.convertSelectedReference).toHaveBeenCalledWith(
       "/game",
       "field-medic",
-      "sprite-32",
-      undefined,
       16,
       [],
       pixelizeSettings,
@@ -415,7 +399,6 @@ describe("deterministic workstation", () => {
         ...structuredClone(project.assets[0].asset),
         id: "wasteland-bush",
         display_name: "Wasteland Bush",
-        state: "revisioned",
         head: "r000001",
       },
       revisions: [],
@@ -439,7 +422,6 @@ describe("deterministic workstation", () => {
     await openWorkstation();
     const external = structuredClone(project);
     external.assets[0].asset.selected_reference!.sha256 = "9".repeat(64);
-    external.assets[0].asset.state = "revisioned";
     external.assets[0].asset.head = "r000002";
     vi.mocked(api.browseProject).mockResolvedValueOnce(external);
     vi.mocked(api.loadRevision).mockResolvedValueOnce({
@@ -476,7 +458,6 @@ describe("deterministic workstation", () => {
       expect(api.initializeAsset).toHaveBeenCalledWith(
         "/game",
         "new-hero",
-        "sprite",
         "New Hero",
       ),
     );
@@ -513,7 +494,6 @@ describe("deterministic workstation", () => {
   it("returns to the conversion phase last used for each asset", async () => {
     const withHeads = structuredClone(project);
     withHeads.assets[0].asset.head = "r000001";
-    withHeads.assets[0].asset.state = "revisioned";
     withHeads.assets.push({
       asset: {
         ...structuredClone(withHeads.assets[0].asset),

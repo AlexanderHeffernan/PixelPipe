@@ -59,14 +59,6 @@ pub struct ConversionSettings {
     pub components: ComponentExpectation,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SheetSettings {
-    pub columns: u16,
-    pub rows: u16,
-    pub frame: ConversionSettings,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversionResult {
     pub raster: IndexedRaster,

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ComponentExpectation, CoreError, IndexedRaster, Palette, ensure_schema,
-    validate_component_expectation, validate_sheet_component_expectation,
+    validate_component_expectation,
 };
 
 pub const PATCH_SCHEMA: &str = "pixelate.patch/v1";
@@ -21,14 +21,7 @@ pub struct PixelPatch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ComponentRule {
-    Raster {
-        expectation: ComponentExpectation,
-    },
-    SheetFrames {
-        columns: u16,
-        rows: u16,
-        expectation: ComponentExpectation,
-    },
+    Raster { expectation: ComponentExpectation },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,13 +197,6 @@ fn validate_structure(raster: &IndexedRaster, rule: ComponentRule) -> Result<(),
         ComponentRule::Raster { expectation } => {
             validate_component_expectation(raster, expectation)?;
         }
-        ComponentRule::SheetFrames {
-            columns,
-            rows,
-            expectation,
-        } => {
-            validate_sheet_component_expectation(raster, columns, rows, expectation)?;
-        }
     }
     Ok(())
 }
@@ -305,35 +291,6 @@ mod tests {
         assert_eq!(result.pixels, vec![2, 0, 0, 1]);
         assert_eq!(result.palette.name, "new");
         assert_eq!(original.palette.name, "old");
-    }
-
-    #[test]
-    fn sheet_component_rules_validate_each_frame_independently() {
-        let mut sheet = raster();
-        sheet.width = 4;
-        sheet.height = 2;
-        sheet.pixels = vec![1, 0, 1, 0, 1, 0, 1, 0];
-        let patch = PixelPatchSet {
-            schema: PATCH_SCHEMA.to_owned(),
-            edits: Vec::new(),
-            structure: Some(ComponentRule::SheetFrames {
-                columns: 2,
-                rows: 1,
-                expectation: ComponentExpectation { min: 1, max: 1 },
-            }),
-        };
-        apply_pixel_patch(&sheet, &patch).expect("each frame has one component");
-
-        let raster_rule = PixelPatchSet {
-            structure: Some(ComponentRule::Raster {
-                expectation: ComponentExpectation { min: 1, max: 1 },
-            }),
-            ..patch
-        };
-        assert!(matches!(
-            apply_pixel_patch(&sheet, &raster_rule),
-            Err(CoreError::ComponentCount { actual: 2, .. })
-        ));
     }
 
     #[test]

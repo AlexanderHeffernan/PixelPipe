@@ -16,17 +16,14 @@ pub use color_treatment::{ColorAdjustments, ColorTreatment};
 pub use composition::{CanvasSettings, compose_canvas};
 pub use conversion::{
     BackdropPolicy, ComponentExpectation, ConversionResult, ConversionSettings, Registration,
-    RgbaImage, SheetSettings, convert_reference, convert_sheet, decode_rgba_png,
-    detect_border_color, validate_component_expectation, validate_sheet_component_expectation,
+    RgbaImage, convert_reference, decode_rgba_png, detect_border_color,
+    validate_component_expectation,
 };
 pub use editing::{
     ComponentRule, PALETTE_REMAP_SCHEMA, PATCH_SCHEMA, PaletteRemap, PixelPatch, PixelPatchSet,
     apply_palette_remap, apply_pixel_patch, flood_fill_patch,
 };
-pub use inspection::{
-    PaletteDifference, PaletteUsage, PixelDifference, RasterBounds, RasterComparison, RasterDiff,
-    RasterInspection, compare_rasters, inspect_raster,
-};
+pub use inspection::{PaletteUsage, RasterBounds, RasterInspection, inspect_raster};
 pub use palette_derivation::derive_source_palette;
 
 pub const PALETTE_SCHEMA: &str = "pixelate.palette/v1";
@@ -69,9 +66,7 @@ pub struct Recipe {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
-    RenderIndexed { preview_scale: u16 },
     ConvertReference { settings: ConversionSettings },
-    ConvertSheet { settings: SheetSettings },
     PatchPixels { patch: PixelPatchSet },
     RemapPalette { remap: PaletteRemap },
     ComposeCanvas { settings: CanvasSettings },
@@ -83,7 +78,6 @@ pub struct ValidationReport {
     pub schema: String,
     pub valid: bool,
     pub checks: Vec<ValidationCheck>,
-    pub visual_review: VisualReview,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,13 +86,6 @@ pub struct ValidationCheck {
     pub name: String,
     pub passed: bool,
     pub detail: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum VisualReview {
-    Required,
-    Passed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,8 +132,6 @@ pub enum CoreError {
     InvalidSubjectScale,
     #[error("derived colour count must be between 2 and 64")]
     InvalidDerivedColorCount,
-    #[error("sheet grid must divide the source image exactly")]
-    InvalidSheetGrid,
     #[error("connected component count {actual} is outside expected range {min}..={max}")]
     ComponentCount { min: u16, max: u16, actual: u16 },
     #[error("pixel patch coordinate ({x}, {y}) is outside raster bounds")]
@@ -258,7 +243,6 @@ impl IndexedRaster {
                     detail: format!("index {}", self.palette.transparent_index),
                 },
             ],
-            visual_review: VisualReview::Required,
         })
     }
 }

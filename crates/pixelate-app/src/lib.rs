@@ -10,7 +10,6 @@ mod pixelization;
 mod project;
 mod reference;
 mod revision_commit;
-mod revision_creation;
 mod revision_preview;
 
 pub use composition::{
@@ -28,25 +27,19 @@ pub use inspection::*;
 pub use onboarding::{OpenProject, open_project};
 pub use palette_editing::*;
 pub use pixel_editing::*;
-pub use pixelization::{ConvertSelectedReference, convert_selected_reference};
+pub use pixelization::{
+    ConvertSelectedReference, PixelizationDefaults, convert_selected_reference,
+    pixelization_defaults,
+};
 pub use project::*;
 pub use reference::{
     ImportReference, UpdateAssetSource, UpdateAssetSourceResult, import_reference,
     update_asset_source,
 };
 pub use revision_commit::RevisionResult;
-pub use revision_creation::{
-    ConversionMode, ConvertRevision, CreateRevision, convert_revision, create_revision,
-};
 pub use revision_preview::{PreviewRevision, RevisionPreview, preview_revision};
 
 pub use pixelate_core::{Palette, RasterInspection};
-pub use pixelate_project::{
-    AssetManifest, ConversionRecipeDocument, ReferenceSelection, ReviewActorKind, ReviewDecision,
-    ReviewRecord,
-};
+pub use pixelate_project::{AssetManifest, ReferenceSelection};
 
 pub(crate) use revision_commit::{CommitRaster, commit_raster, resolve_revision};
-
-#[cfg(test)]
-mod tests;

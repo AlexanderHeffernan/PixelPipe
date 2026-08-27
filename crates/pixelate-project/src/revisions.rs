@@ -6,9 +6,9 @@ use pixelate_core::{
 };
 
 use crate::{
-    ASSET_BRIEF_SCHEMA, ASSET_SCHEMA, AssetBrief, AssetKind, AssetManifest, AssetState,
-    PROVENANCE_SCHEMA, ProjectError, ProjectStore, Provenance, REVISION_PAYLOADS, REVISION_SCHEMA,
-    RevisionFiles, RevisionManifest, RevisionSnapshot, StoredRevision,
+    ASSET_BRIEF_SCHEMA, ASSET_SCHEMA, AssetBrief, AssetManifest, PROVENANCE_SCHEMA, ProjectError,
+    ProjectStore, Provenance, REVISION_PAYLOADS, REVISION_SCHEMA, RevisionFiles, RevisionManifest,
+    RevisionSnapshot, StoredRevision,
     assets::validate_asset_id,
     persistence::{atomic_write, ensure_schema, io_at, now_unix_ms, read_json, write_file},
 };
@@ -21,7 +21,6 @@ struct PreparedRevision {
     provenance: Vec<u8>,
     manifest: Vec<u8>,
     native_png: Vec<u8>,
-    preview_png: Vec<u8>,
 }
 
 impl ProjectStore {
@@ -71,7 +70,6 @@ impl ProjectStore {
         let mut asset = self.asset(asset_id)?;
         ASSET_SCHEMA.clone_into(&mut asset.schema);
         asset.head = Some(revision.to_owned());
-        asset.state = AssetState::Revisioned;
         atomic_write(
             &self.asset_path(asset_id).join("asset.toml"),
             toml::to_string_pretty(&asset)?.as_bytes(),
@@ -139,8 +137,6 @@ impl ProjectStore {
         .map_err(|_| ProjectError::InvalidBriefUtf8)?;
         let native_png = fs::read(path.join("native.png"))
             .map_err(|source| io_at(&path.join("native.png"), source))?;
-        let preview_png = fs::read(path.join("preview.png"))
-            .map_err(|source| io_at(&path.join("preview.png"), source))?;
         Ok(RevisionSnapshot {
             path,
             manifest,
@@ -150,7 +146,6 @@ impl ProjectStore {
             provenance,
             brief,
             native_png,
-            preview_png,
         })
     }
 
@@ -164,10 +159,9 @@ impl ProjectStore {
     pub fn create_revision(
         &self,
         asset_id: &str,
-        kind: AssetKind,
         files: RevisionFiles,
     ) -> Result<StoredRevision, ProjectError> {
-        self.create_revision_selected(asset_id, kind, None, files)
+        self.create_revision_selected(asset_id, None, files)
     }
 
     /// Atomically creates a revision from an explicit immutable parent.
@@ -179,17 +173,15 @@ impl ProjectStore {
     pub fn create_revision_from(
         &self,
         asset_id: &str,
-        kind: AssetKind,
         parent_revision: &str,
         files: RevisionFiles,
     ) -> Result<StoredRevision, ProjectError> {
-        self.create_revision_selected(asset_id, kind, Some(parent_revision), files)
+        self.create_revision_selected(asset_id, Some(parent_revision), files)
     }
 
     fn create_revision_selected(
         &self,
         asset_id: &str,
-        kind: AssetKind,
         parent_revision: Option<&str>,
         files: RevisionFiles,
     ) -> Result<StoredRevision, ProjectError> {
@@ -201,34 +193,7 @@ impl ProjectStore {
 
         let asset_path = self.asset_path(asset_id);
         let manifest_path = asset_path.join("asset.toml");
-        let mut asset = if manifest_path.exists() {
-            self.asset(asset_id)?
-        } else {
-            fs::create_dir_all(asset_path.join("revisions"))
-                .map_err(|source| io_at(&asset_path, source))?;
-            AssetManifest {
-                schema: ASSET_SCHEMA.to_owned(),
-                id: asset_id.to_owned(),
-                display_name: None,
-                kind,
-                state: AssetState::Draft,
-                brief: AssetBrief {
-                    schema: ASSET_BRIEF_SCHEMA.to_owned(),
-                    text: files.brief.clone(),
-                },
-                selected_reference: None,
-                head: None,
-                approved: None,
-                style: None,
-            }
-        };
-        if asset.kind != kind {
-            return Err(ProjectError::AssetKindMismatch {
-                asset: asset_id.to_owned(),
-                existing: asset.kind,
-                requested: kind,
-            });
-        }
+        let mut asset = self.asset(asset_id)?;
 
         let parent = match parent_revision {
             Some(parent) => {
@@ -271,7 +236,6 @@ impl ProjectStore {
             };
         }
         asset.head = Some(revision.clone());
-        asset.state = AssetState::Revisioned;
         if style.is_some() {
             asset.style = style;
         }
@@ -313,7 +277,6 @@ fn prepare_revision(
         ("brief.md".to_owned(), sha256_hex(&brief)),
         ("native.png".to_owned(), sha256_hex(&files.native_png)),
         ("pixels.json".to_owned(), sha256_hex(&raster)),
-        ("preview.png".to_owned(), sha256_hex(&files.preview_png)),
         ("provenance.json".to_owned(), sha256_hex(&provenance)),
         ("recipe.json".to_owned(), sha256_hex(&recipe)),
         ("validation.json".to_owned(), sha256_hex(&validation)),
@@ -340,7 +303,6 @@ fn prepare_revision(
         provenance,
         manifest,
         native_png: files.native_png,
-        preview_png: files.preview_png,
     })
 }
 
@@ -351,8 +313,7 @@ fn write_prepared_revision(path: &Path, files: &PreparedRevision) -> Result<(), 
     write_file(&path.join("validation.json"), &files.validation)?;
     write_file(&path.join("provenance.json"), &files.provenance)?;
     write_file(&path.join("revision.json"), &files.manifest)?;
-    write_file(&path.join("native.png"), &files.native_png)?;
-    write_file(&path.join("preview.png"), &files.preview_png)
+    write_file(&path.join("native.png"), &files.native_png)
 }
 
 fn next_revision(asset_path: &Path) -> Result<String, ProjectError> {

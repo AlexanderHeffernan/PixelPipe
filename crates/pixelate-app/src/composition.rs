@@ -64,29 +64,22 @@ pub fn commit_composition(request: CommitComposition) -> Result<RevisionResult, 
     let store = ProjectStore::discover(&request.start)?;
     let parent = store.revision(&request.asset, &request.parent)?;
     let raster = compose_canvas(&parent.raster, request.settings)?;
-    let preview_scale = store.manifest()?.preview_scale;
     let input_hash = sha256_hex(&stable_json(&parent.raster)?);
     let palette_hash = sha256_hex(&stable_json(&raster.palette)?);
     let recipe = Recipe {
         schema: RECIPE_SCHEMA.to_owned(),
         input_sha256: input_hash.clone(),
         palette_sha256: palette_hash.clone(),
-        operations: vec![
-            Operation::ComposeCanvas {
-                settings: request.settings,
-            },
-            Operation::RenderIndexed { preview_scale },
-        ],
+        operations: vec![Operation::ComposeCanvas {
+            settings: request.settings,
+        }],
     };
-    let kind = store.asset(&request.asset)?.kind;
     commit_raster(
         &store,
         CommitRaster {
             asset: request.asset,
-            kind,
             raster,
             recipe,
-            preview_scale,
             brief: parent.brief,
             actor: request.actor,
             input_hashes: BTreeMap::from([
