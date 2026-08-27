@@ -10,7 +10,7 @@ publish = false
 crate-type = ["cdylib", "rlib", "staticlib"]
 
 [[bin]]
-name = "Pixelate"
+name = "pixelate-desktop"
 path = "src/main.rs"
 
 [build-dependencies]
