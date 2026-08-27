@@ -176,7 +176,6 @@ export interface RevisionViewMetadata {
     transparent_index: number;
     colors: Rgba[];
   };
-  palette_name: string;
   transparent_index: number;
   validation: {
     schema: string;

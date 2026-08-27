@@ -101,7 +101,6 @@ export const revisionView: RevisionViewResponse = {
         [38, 44, 62, 255],
       ],
     },
-    palette_name: "starter",
     transparent_index: 0,
     validation: {
       schema: "pixelpipe.validation/v1",
