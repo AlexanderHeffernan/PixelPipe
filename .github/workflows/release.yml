@@ -51,7 +51,7 @@ jobs:
       - run: node scripts/set-release-version.mjs "${{ needs.version.outputs.version }}"
       - run: npm ci
         working-directory: apps/desktop
-      - name: Validate native macOS icon
+      - name: Compile native macOS icon
         run: |
           work="$(mktemp -d)"
           cp -R apps/desktop/src-tauri/icons/Pixelate.icon "$work/Icon.icon"
@@ -71,6 +71,8 @@ jobs:
             --minimum-deployment-target 26.0 \
             --platform macosx
           test -f "$work/out/Assets.car"
+          cp "$work/out/Assets.car" apps/desktop/src-tauri/icons/Assets.car
+          node -e "const fs=require('fs');const path='apps/desktop/src-tauri/tauri.conf.json';const config=JSON.parse(fs.readFileSync(path));config.bundle.icon=config.bundle.icon.map(icon=>icon==='icons/Pixelate.icon'?'icons/Assets.car':icon);fs.writeFileSync(path,JSON.stringify(config,null,2)+'\n')"
       - name: Build signed CLI
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
