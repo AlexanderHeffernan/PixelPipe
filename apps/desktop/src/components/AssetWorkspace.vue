@@ -40,8 +40,17 @@ const workspace = useWorkspace();
     </div>
 
     <div v-else class="canvas-empty">
-      <h1>Create your first asset</h1>
-      <p>
+      <h1>
+        {{
+          workspace.project.value?.assets.length
+            ? "Select an asset"
+            : "Create your first asset"
+        }}
+      </h1>
+      <p v-if="workspace.project.value?.assets.length">
+        Choose managed pixel art or a project image from the asset browser.
+      </p>
+      <p v-else>
         Start from a reference image or prepare an asset for your coding agent.
       </p>
       <button

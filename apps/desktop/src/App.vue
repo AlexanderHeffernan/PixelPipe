@@ -43,6 +43,7 @@ onBeforeUnmount(() => {
         <TerminalDrawer />
       </div>
       <ConversionInspector
+        v-if="workspace.inspectorApplicable.value"
         :class="{ 'is-collapsed': !workspace.rightSidebarOpen.value }"
         :inert="!workspace.rightSidebarOpen.value || undefined"
         :aria-hidden="!workspace.rightSidebarOpen.value || undefined"

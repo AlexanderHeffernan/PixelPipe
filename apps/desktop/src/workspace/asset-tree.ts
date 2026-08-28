@@ -34,6 +34,10 @@ export function useAssetTree(
     );
     const catalogedAssets = new Set<string>();
     const needle = query.value.trim().toLowerCase();
+    for (const path of project.value?.folders || []) {
+      if (needle && !path.toLowerCase().includes(needle)) continue;
+      addFolder(root, path);
+    }
     for (const catalog of project.value?.catalog || []) {
       const managed = catalog.asset_id
         ? assets.get(catalog.asset_id)
@@ -50,16 +54,7 @@ export function useAssetTree(
         continue;
       const parts = catalog.path.split("/");
       parts.pop();
-      let folder = root;
-      for (const part of parts) {
-        const path = folder.path ? `${folder.path}/${part}` : part;
-        let child = folder.folders.find((entry) => entry.name === part);
-        if (!child) {
-          child = { kind: "folder", path, name: part, folders: [], files: [] };
-          folder.folders.push(child);
-        }
-        folder = child;
-      }
+      const folder = addFolder(root, parts.join("/"));
       folder.files.push({
         kind: "file",
         path: catalog.path,
@@ -93,6 +88,26 @@ export function useAssetTree(
     folders: computed(() => tree.value.folders),
     rootFiles: computed(() => tree.value.files),
   };
+}
+
+function addFolder(root: AssetTreeFolder, path: string) {
+  let folder = root;
+  for (const part of path.split("/").filter(Boolean)) {
+    const childPath = folder.path ? `${folder.path}/${part}` : part;
+    let child = folder.folders.find((entry) => entry.name === part);
+    if (!child) {
+      child = {
+        kind: "folder",
+        path: childPath,
+        name: part,
+        folders: [],
+        files: [],
+      };
+      folder.folders.push(child);
+    }
+    folder = child;
+  }
+  return folder;
 }
 
 const displayName = (id: string) =>

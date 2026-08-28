@@ -63,6 +63,10 @@ export function createCatalogActions(context: CatalogContext) {
       act("Folder moved", (root) => api.moveFolder(root, source, destination)),
     deleteFolder: (path: string) =>
       act("Empty folder deleted", (root) => api.deleteFolder(root, path)),
+    deleteProjectImage: (path: string) =>
+      act("Project image deleted", (root) =>
+        api.deleteProjectImage(root, path),
+      ),
     moveAsset: (id: string, destination: string) =>
       act("Asset moved", (root) => api.moveAsset(root, id, destination)),
   };

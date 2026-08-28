@@ -51,6 +51,9 @@ export function createWorkspace() {
       preview.value?.native_png_base64 ?? view.value?.native_png_base64;
     return bytes ? api.pngDataUrl(bytes) : "";
   });
+  const inspectorApplicable = computed(() =>
+    Boolean(view.value || preview.value),
+  );
   const canvasLoading = createCanvasLoading(canvasImage);
   const canConvert = computed(() =>
     Boolean(selectedAsset.value?.asset.selected_reference),
@@ -88,6 +91,10 @@ export function createWorkspace() {
 
   async function selectProjectImage(path: string) {
     if (!project.value) return;
+    if (projectImagePath.value === path) {
+      clearProjectImage();
+      return;
+    }
     assetId.value = "";
     view.value = undefined;
     preview.value = undefined;
@@ -102,6 +109,13 @@ export function createWorkspace() {
   function clearProjectImage() {
     projectImagePath.value = "";
     projectImagePreview.value = "";
+  }
+
+  function clearAsset() {
+    assetId.value = "";
+    view.value = undefined;
+    preview.value = undefined;
+    rightSidebarOpen.value = false;
   }
 
   async function loadAsset(id: string) {
@@ -275,6 +289,7 @@ export function createWorkspace() {
     notice,
     selectedAsset,
     inspection,
+    inspectorApplicable,
     canvasImage,
     canConvert,
     chooseProject: session.chooseProject,
@@ -283,6 +298,7 @@ export function createWorkspace() {
     selectAsset,
     selectProjectImage,
     clearProjectImage,
+    clearAsset,
     updateSettings: conversion.updateSettings,
     setColorCount: conversion.setColorCount,
     setBackgroundAutomatic: conversion.setBackgroundAutomatic,

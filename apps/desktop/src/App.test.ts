@@ -78,6 +78,7 @@ beforeEach(() => {
   vi.spyOn(api, "createFolder").mockResolvedValue();
   vi.spyOn(api, "moveFolder").mockResolvedValue([]);
   vi.spyOn(api, "deleteFolder").mockResolvedValue();
+  vi.spyOn(api, "deleteProjectImage").mockResolvedValue();
   vi.spyOn(api, "moveAsset").mockResolvedValue({} as never);
   vi.spyOn(api, "relinkAsset").mockResolvedValue({} as never);
   vi.spyOn(api, "updateLinkedSource").mockResolvedValue({} as never);
@@ -466,7 +467,7 @@ describe("deterministic workstation", () => {
         }),
     );
     await openWorkstation();
-    await fireEvent.click(screen.getByRole("button", { name: "New Asset" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Add Asset" }));
     void fireEvent.click(
       screen.getByRole("menuitem", { name: "Reference image…" }),
     );
@@ -495,7 +496,7 @@ describe("deterministic workstation", () => {
       screen.getByRole("button", { name: /Field Medic/i }),
     );
     await fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
-    const name = screen.getByRole("textbox", { name: "Display name" });
+    const name = screen.getByRole("textbox", { name: "Rename asset" });
     await fireEvent.update(name, "Lead Healer");
     await fireEvent.submit(name.closest("form")!);
     await waitFor(() =>
@@ -630,18 +631,12 @@ describe("deterministic workstation", () => {
     expect(
       screen.getByRole("button", { name: "Hide from Assets" }),
     ).toBeVisible();
-    expect(document.querySelector(".conversion-inspector")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
+    expect(document.querySelector(".conversion-inspector")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /inspector/i }),
+    ).not.toBeInTheDocument();
     await fireEvent.click(
       screen.getByRole("button", { name: "Use as Reference" }),
-    );
-    expect(
-      screen.getByRole("textbox", { name: "Pixel art output path" }),
-    ).toHaveValue("sprites/props/crate-pixel.png");
-    await fireEvent.submit(
-      screen.getByRole("textbox", { name: "Stable asset ID" }).closest("form")!,
     );
     await waitFor(() =>
       expect(api.adoptProjectImage).toHaveBeenCalledWith(
@@ -676,7 +671,7 @@ describe("deterministic workstation", () => {
 
     expect(screen.queryByText("Drafts")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Draft/i })).toBeVisible();
-    expect(screen.getByLabelText("Linked file missing")).toBeVisible();
+    expect(screen.getByText("Missing")).toBeVisible();
     await fireEvent.contextMenu(screen.getByRole("button", { name: /medic/i }));
     expect(screen.getByRole("menuitem", { name: "Relink…" })).toBeVisible();
     expect(
@@ -720,15 +715,106 @@ describe("deterministic workstation", () => {
         false,
       ),
     );
+    await waitFor(() =>
+      expect(screen.queryByText("Hidden images (1)")).not.toBeInTheDocument(),
+    );
 
-    await fireEvent.click(screen.getByRole("button", { name: "New Folder" }));
-    const path = screen.getByRole("textbox", {
-      name: "Project-relative folder",
-    });
+    const refreshed = structuredClone(catalogProject);
+    refreshed.folders = ["sprites/units"];
+    vi.mocked(api.browseProject).mockResolvedValueOnce(refreshed);
+    await fireEvent.click(screen.getByRole("button", { name: "Add Folder" }));
+    const path = screen.getByRole("textbox", { name: "New folder name" });
+    expect(path).toHaveFocus();
     await fireEvent.update(path, "sprites/units");
     await fireEvent.submit(path.closest("form")!);
     await waitFor(() =>
       expect(api.createFolder).toHaveBeenCalledWith("/game", "sprites/units"),
+    );
+    expect(
+      screen.getByRole("button", { name: "Collapse sprites" }),
+    ).toBeVisible();
+  });
+
+  it("unselects an open asset and keeps popup menus open until an outside click", async () => {
+    await openWorkstation();
+    const asset = screen.getByRole("button", { name: /Field Medic/i });
+    await fireEvent.contextMenu(asset);
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await fireEvent.mouseLeave(screen.getByRole("menu"));
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
+
+    await fireEvent.click(asset);
+    expect(screen.queryByRole("button", { name: /inspector/i })).toBeNull();
+    expect(screen.getByText("Select an asset")).toBeVisible();
+  });
+
+  it("disables exact pixel-art import for images over 256 pixels", async () => {
+    const catalogProject = structuredClone(project);
+    catalogProject.catalog = [{ path: "large.png", status: "current" }];
+    vi.mocked(api.openProject).mockResolvedValueOnce(catalogProject);
+    await openWorkstation();
+    await fireEvent.click(screen.getByRole("button", { name: /large/i }));
+    const image = await screen.findByRole("img", { name: "large.png preview" });
+    Object.defineProperties(image, {
+      naturalWidth: { value: 512 },
+      naturalHeight: { value: 256 },
+    });
+    await fireEvent.load(image);
+    expect(
+      screen.getByRole("button", { name: "Import as Pixel Art" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/512 × 256 is too large/)).toBeVisible();
+  });
+
+  it("moves managed assets by drag and confirms project-file deletion", async () => {
+    const catalogProject = structuredClone(project);
+    catalogProject.assets[0].asset.project_path = "hero.png";
+    catalogProject.catalog = [
+      {
+        path: "hero.png",
+        asset_id: "field-medic",
+        status: "current",
+      },
+      { path: "sprites/guide.png", status: "current" },
+    ];
+    vi.mocked(api.openProject).mockResolvedValueOnce(catalogProject);
+    vi.mocked(api.browseProject).mockResolvedValueOnce(catalogProject);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    await openWorkstation();
+
+    const transferData = new Map<string, string>();
+    const dataTransfer = {
+      types: [] as string[],
+      effectAllowed: "none",
+      setData(type: string, value: string) {
+        transferData.set(type, value);
+        this.types = [...transferData.keys()];
+      },
+      getData: (type: string) => transferData.get(type) || "",
+    };
+    const assetButton = screen.getByTitle("hero.png");
+    const asset = assetButton.closest('[role="treeitem"]')!;
+    const folder = screen
+      .getByRole("button", { name: "Collapse sprites" })
+      .closest('[role="treeitem"]')!;
+    await fireEvent.dragStart(asset, { dataTransfer });
+    await fireEvent.drop(folder, { dataTransfer });
+    await waitFor(() =>
+      expect(api.moveAsset).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "sprites/hero.png",
+      ),
+    );
+
+    await fireEvent.contextMenu(screen.getByTitle("hero.png"));
+    await fireEvent.click(
+      screen.getByRole("menuitem", { name: "Delete file…" }),
+    );
+    await waitFor(() =>
+      expect(api.deleteProjectImage).toHaveBeenCalledWith("/game", "hero.png"),
     );
   });
 });

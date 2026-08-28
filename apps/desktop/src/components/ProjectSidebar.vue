@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import { PhFolderPlus, PhPlus } from "@phosphor-icons/vue";
-import { ref } from "vue";
+import { PhFolder, PhFolderPlus, PhPlus } from "@phosphor-icons/vue";
+import { nextTick, ref } from "vue";
+import {
+  acceptsAssetDrop,
+  basename,
+  droppedItem,
+} from "../workspace/asset-drag";
 import { useAssetTree } from "../workspace/asset-tree";
 import { useWorkspace } from "../workspace/context";
 import { useSidebarResize } from "../workspace/sidebar-resize";
+import AppButton from "./AppButton.vue";
 import AssetBrowserFolder from "./AssetBrowserFolder.vue";
 import AssetBrowserFile from "./AssetBrowserFile.vue";
+import PopupMenu from "./PopupMenu.vue";
 
 const workspace = useWorkspace();
 const search = ref("");
 const addMenu = ref(false);
-const folderForm = ref(false);
+const addingFolder = ref(false);
 const folderPath = ref("");
+const folderInput = ref<HTMLInputElement>();
 const { folders, rootFiles } = useAssetTree(workspace.project, search);
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
@@ -24,19 +32,51 @@ const { width, isResizing, startResize, resizeWithKeyboard } = useSidebarResize(
   },
 );
 
-function createFolder() {
-  if (!folderPath.value.trim()) return;
-  void workspace.catalog.createFolder(folderPath.value.trim());
-  folderForm.value = false;
+async function createFolder() {
+  if (!folderPath.value.trim()) {
+    addingFolder.value = false;
+    return;
+  }
+  await workspace.catalog.createFolder(folderPath.value.trim());
+  addingFolder.value = false;
   folderPath.value = "";
 }
+
+function beginFolder() {
+  addMenu.value = false;
+  addingFolder.value = true;
+  folderPath.value = "";
+  void nextTick(() => folderInput.value?.focus());
+}
+
 function importReference() {
   addMenu.value = false;
   void workspace.importAssets();
 }
+
 function importPixelArt() {
   addMenu.value = false;
   void workspace.importPixelArt();
+}
+
+function dropAtRoot(event: DragEvent) {
+  if (!acceptsAssetDrop(event)) return;
+  event.preventDefault();
+  const item = droppedItem(event);
+  if (item.asset) {
+    const file =
+      workspace.project.value?.assets.find(
+        ({ asset }) => asset.id === item.asset,
+      )?.asset.project_path ||
+      workspace.project.value?.catalog.find(
+        ({ asset_id }) => asset_id === item.asset,
+      )?.path ||
+      `${item.asset}.png`;
+    if (file && file.includes("/"))
+      void workspace.catalog.moveAsset(item.asset, basename(file));
+  } else if (item.folder && item.folder.includes("/")) {
+    void workspace.catalog.moveFolder(item.folder, basename(item.folder));
+  }
 }
 </script>
 
@@ -50,49 +90,36 @@ function importPixelArt() {
       <header class="asset-browser-header">
         <h2>Assets</h2>
         <div class="asset-browser-actions">
-          <button
-            aria-label="New Asset"
-            title="New Asset"
-            @click="
-              addMenu = !addMenu;
-              folderForm = false;
-            "
+          <AppButton
+            size="small"
+            aria-label="Add Asset"
+            title="Add Asset"
+            @pointerdown.stop
+            @click="addMenu = !addMenu"
           >
-            <PhPlus /> Asset
-          </button>
-          <button
-            aria-label="New Folder"
-            title="New Folder"
-            @click="
-              folderForm = !folderForm;
-              addMenu = false;
-            "
+            <PhPlus /> Add Asset
+          </AppButton>
+          <AppButton
+            size="small"
+            aria-label="Add Folder"
+            title="Add Folder"
+            @click="beginFolder"
           >
-            <PhFolderPlus /> Folder
-          </button>
+            <PhFolderPlus /> Add Folder
+          </AppButton>
         </div>
-        <div v-if="addMenu" class="asset-add-menu" role="menu">
+        <PopupMenu
+          v-if="addMenu"
+          class="asset-add-menu"
+          @close="addMenu = false"
+        >
           <button role="menuitem" @click="importReference">
             Reference image…
           </button>
           <button role="menuitem" @click="importPixelArt">
             Pixel art in project…
           </button>
-        </div>
-        <form
-          v-if="folderForm"
-          class="asset-inline-form"
-          @submit.prevent="createFolder"
-        >
-          <label
-            >Project-relative folder
-            <input v-model="folderPath" autofocus required
-          /></label>
-          <div>
-            <button type="button" @click="folderForm = false">Cancel</button
-            ><button type="submit">Create</button>
-          </div>
-        </form>
+        </PopupMenu>
         <input
           v-model="search"
           type="search"
@@ -101,7 +128,28 @@ function importPixelArt() {
         />
       </header>
       <nav class="asset-tree" aria-label="Project assets">
-        <div role="tree" aria-label="Project image folders">
+        <div
+          role="tree"
+          aria-label="Project image folders"
+          @dragover.prevent
+          @drop="dropAtRoot"
+        >
+          <form
+            v-if="addingFolder"
+            class="browser-new-folder"
+            role="treeitem"
+            @submit.prevent="createFolder"
+          >
+            <PhFolder aria-hidden="true" />
+            <input
+              ref="folderInput"
+              v-model="folderPath"
+              aria-label="New folder name"
+              placeholder="Folder name"
+              @keydown.escape.prevent="addingFolder = false"
+              @blur="folderPath.trim() ? undefined : (addingFolder = false)"
+            />
+          </form>
           <AssetBrowserFolder
             v-for="folder in folders"
             :key="folder.path"
@@ -114,7 +162,10 @@ function importPixelArt() {
             :level="0"
           />
         </div>
-        <p v-if="!folders.length && !rootFiles.length" class="sidebar-empty">
+        <p
+          v-if="!addingFolder && !folders.length && !rootFiles.length"
+          class="sidebar-empty"
+        >
           No supported raster assets
         </p>
         <details
@@ -132,12 +183,13 @@ function importPixelArt() {
             :key="path"
           >
             <span :title="path">{{ path }}</span>
-            <button
+            <AppButton
+              size="small"
               :aria-label="`Restore ${path}`"
               @click="workspace.catalog.setIgnored(path, false)"
             >
               Restore
-            </button>
+            </AppButton>
           </div>
         </details>
       </nav>

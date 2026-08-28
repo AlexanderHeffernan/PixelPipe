@@ -1,29 +1,47 @@
 <script setup lang="ts">
 import { PhCaretRight, PhFolder } from "@phosphor-icons/vue";
-import { ref } from "vue";
+import { nextTick, ref } from "vue";
 import type { AssetTreeFolder } from "../workspace/asset-tree";
+import {
+  acceptsAssetDrop,
+  basename,
+  beginFolderDrag,
+  droppedItem,
+} from "../workspace/asset-drag";
 import { useWorkspace } from "../workspace/context";
 import AssetBrowserFile from "./AssetBrowserFile.vue";
+import PopupMenu from "./PopupMenu.vue";
 
 const props = defineProps<{ folder: AssetTreeFolder; level?: number }>();
 const workspace = useWorkspace();
 const open = ref(true);
 const menuOpen = ref(false);
-const moving = ref(false);
-const destination = ref("");
-function showMenu() {
-  menuOpen.value = true;
-  moving.value = false;
+const renaming = ref(false);
+const value = ref("");
+const renameInput = ref<HTMLInputElement>();
+
+function beginRename() {
+  menuOpen.value = false;
+  renaming.value = true;
+  value.value = props.folder.name;
+  void nextTick(() => renameInput.value?.select());
 }
-async function move() {
-  if (!destination.value.trim() || destination.value === props.folder.path)
+
+async function rename() {
+  if (!value.value.trim()) {
+    renaming.value = false;
     return;
+  }
+  const parent = props.folder.path.includes("/")
+    ? props.folder.path.slice(0, props.folder.path.lastIndexOf("/") + 1)
+    : "";
   await workspace.catalog.moveFolder(
     props.folder.path,
-    destination.value.trim(),
+    `${parent}${value.value.trim()}`,
   );
-  menuOpen.value = false;
+  renaming.value = false;
 }
+
 function remove() {
   if (
     window.confirm(
@@ -33,6 +51,32 @@ function remove() {
     void workspace.catalog.deleteFolder(props.folder.path);
   menuOpen.value = false;
 }
+
+function drop(event: DragEvent) {
+  if (!acceptsAssetDrop(event)) return;
+  event.preventDefault();
+  const item = droppedItem(event);
+  if (item.asset) {
+    const file =
+      workspace.project.value?.assets.find(
+        ({ asset }) => asset.id === item.asset,
+      )?.asset.project_path ||
+      workspace.project.value?.catalog.find(
+        ({ asset_id }) => asset_id === item.asset,
+      )?.path ||
+      `${item.asset}.png`;
+    if (file)
+      void workspace.catalog.moveAsset(
+        item.asset,
+        `${props.folder.path}/${basename(file)}`,
+      );
+  } else if (item.folder && item.folder !== props.folder.path) {
+    void workspace.catalog.moveFolder(
+      item.folder,
+      `${props.folder.path}/${basename(item.folder)}`,
+    );
+  }
+}
 </script>
 
 <template>
@@ -40,14 +84,32 @@ function remove() {
     class="browser-folder"
     role="treeitem"
     :aria-expanded="open"
-    @contextmenu.prevent="showMenu"
-    @keydown.shift.f10.prevent="showMenu"
+    draggable="true"
+    @dragstart.stop="beginFolderDrag($event, folder.path)"
+    @dragover.prevent=""
+    @drop.stop="drop"
+    @contextmenu.prevent="menuOpen = true"
+    @keydown.shift.f10.prevent="menuOpen = true"
   >
     <div
       class="browser-folder__heading"
       :style="{ '--tree-level': level || 0 }"
     >
+      <form
+        v-if="renaming"
+        class="browser-inline-rename"
+        @submit.prevent="rename"
+      >
+        <input
+          ref="renameInput"
+          v-model="value"
+          aria-label="Rename folder"
+          @keydown.escape.prevent="renaming = false"
+          @blur="rename"
+        />
+      </form>
       <button
+        v-else
         class="folder-toggle"
         :aria-label="`${open ? 'Collapse' : 'Expand'} ${folder.name}`"
         @click="open = !open"
@@ -56,34 +118,16 @@ function remove() {
         <PhFolder aria-hidden="true" />
         <span>{{ folder.name }}</span>
       </button>
-      <div
+      <PopupMenu
         v-if="menuOpen"
         class="asset-context-menu"
-        role="menu"
-        @mouseleave="menuOpen = false"
+        @close="menuOpen = false"
       >
-        <template v-if="!moving">
-          <button
-            role="menuitem"
-            @click="
-              moving = true;
-              destination = folder.path;
-            "
-          >
-            Move or rename…
-          </button>
-          <button role="menuitem" class="danger" @click="remove">
-            Delete empty folder…
-          </button>
-        </template>
-        <form v-else @submit.prevent="move">
-          <label>Project path<input v-model="destination" autofocus /></label>
-          <div>
-            <button type="button" @click="moving = false">Back</button
-            ><button type="submit">Save</button>
-          </div>
-        </form>
-      </div>
+        <button role="menuitem" @click="beginRename">Rename</button>
+        <button role="menuitem" class="danger" @click="remove">
+          Delete empty folder…
+        </button>
+      </PopupMenu>
     </div>
     <div v-show="open" role="group">
       <AssetBrowserFolder

@@ -42,7 +42,7 @@ defineEmits<{ openSettings: [] }>();
   </div>
   <div class="window-controls window-controls--trailing">
     <button
-      v-if="workspace.project.value"
+      v-if="workspace.project.value && workspace.inspectorApplicable.value"
       class="icon-button"
       :aria-label="
         workspace.rightSidebarOpen.value ? 'Hide inspector' : 'Show inspector'

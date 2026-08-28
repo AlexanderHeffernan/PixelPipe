@@ -2,26 +2,22 @@
 import { computed, ref, watch } from "vue";
 import { suggestedAssetId } from "../workspace/catalog-actions";
 import { useWorkspace } from "../workspace/context";
+import AppButton from "./AppButton.vue";
 
 const workspace = useWorkspace();
-const choice = ref<"reference" | "pixel" | "">("");
-const name = ref("");
-const id = ref("");
-const destination = ref("");
 const path = computed(() => workspace.projectImagePath.value);
+const dimensions = ref<{ width: number; height: number }>();
+const tooLargeForPixelArt = computed(
+  () =>
+    !dimensions.value ||
+    dimensions.value.width > 256 ||
+    dimensions.value.height > 256,
+);
 
 watch(
   path,
-  (value) => {
-    const filename = value.split("/").at(-1) || value;
-    const stem = filename.replace(/\.[^.]+$/, "");
-    name.value = stem.replaceAll(/[-_]+/g, " ");
-    id.value = suggestedAssetId(value);
-    const folder = value.includes("/")
-      ? `${value.slice(0, value.lastIndexOf("/") + 1)}`
-      : "";
-    destination.value = `${folder}${stem}-pixel.png`;
-    choice.value = "";
+  () => {
+    dimensions.value = undefined;
   },
   { immediate: true },
 );
@@ -32,23 +28,45 @@ async function hide() {
   workspace.clearProjectImage();
 }
 
-async function submit() {
-  if (!id.value.trim() || !name.value.trim()) return;
-  if (choice.value === "reference") {
-    if (!destination.value.trim()) return;
-    await workspace.catalog.adoptReference(
-      path.value,
-      id.value.trim(),
-      name.value.trim(),
-      destination.value.trim(),
-    );
-  } else {
-    await workspace.catalog.adoptPixelArt(
-      path.value,
-      id.value.trim(),
-      name.value.trim(),
-    );
-  }
+function identity() {
+  const filename = path.value.split("/").at(-1) || path.value;
+  const stem = filename.replace(/\.[^.]+$/, "");
+  const folder = path.value.includes("/")
+    ? path.value.slice(0, path.value.lastIndexOf("/") + 1)
+    : "";
+  const base = suggestedAssetId(path.value);
+  const existing = new Set(
+    workspace.project.value?.assets.map(({ asset }) => asset.id) || [],
+  );
+  let id = base;
+  let suffix = 2;
+  while (existing.has(id)) id = `${base}-${suffix++}`;
+  return {
+    id,
+    name: stem.replaceAll(/[-_]+/g, " "),
+    destination: `${folder}${stem}-pixel.png`,
+  };
+}
+
+async function adoptReference() {
+  const selected = identity();
+  await workspace.catalog.adoptReference(
+    path.value,
+    selected.id,
+    selected.name,
+    selected.destination,
+  );
+}
+
+async function adoptPixelArt() {
+  if (tooLargeForPixelArt.value) return;
+  const selected = identity();
+  await workspace.catalog.adoptPixelArt(path.value, selected.id, selected.name);
+}
+
+function readDimensions(event: Event) {
+  const image = event.currentTarget as HTMLImageElement;
+  dimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
 }
 </script>
 
@@ -58,44 +76,44 @@ async function submit() {
       <img
         :src="workspace.projectImagePreview.value"
         :alt="`${path} preview`"
+        @load="readDimensions"
       />
     </div>
     <div class="project-image-stage__details">
       <h1 id="project-image-title">{{ path.split("/").at(-1) }}</h1>
       <p>{{ path }}</p>
       <div class="project-image-stage__actions">
-        <button class="secondary" @click="hide">Hide from Assets</button>
-        <button class="primary" @click="choice = 'reference'">
+        <AppButton
+          variant="quiet"
+          :disabled="workspace.busy.value"
+          @click="hide"
+        >
+          Hide from Assets
+        </AppButton>
+        <AppButton
+          variant="secondary"
+          :disabled="workspace.busy.value"
+          @click="adoptReference"
+        >
           Use as Reference
-        </button>
-        <button class="primary" @click="choice = 'pixel'">
+        </AppButton>
+        <AppButton
+          variant="primary"
+          :disabled="tooLargeForPixelArt || workspace.busy.value"
+          :title="
+            tooLargeForPixelArt
+              ? 'Exact pixel art import supports images up to 256 × 256 pixels'
+              : undefined
+          "
+          @click="adoptPixelArt"
+        >
           Import as Pixel Art
-        </button>
+        </AppButton>
       </div>
-      <form v-if="choice" class="project-image-import" @submit.prevent="submit">
-        <h2>
-          {{
-            choice === "reference" ? "Reference details" : "Pixel art details"
-          }}
-        </h2>
-        <label>Display name <input v-model="name" required /></label>
-        <label
-          >Stable asset ID
-          <input v-model="id" required pattern="[a-z0-9][a-z0-9-]*"
-        /></label>
-        <label v-if="choice === 'reference'">
-          Pixel art output path
-          <input v-model="destination" required />
-        </label>
-        <div>
-          <button type="button" @click="choice = ''">Cancel</button>
-          <button class="primary" type="submit">
-            {{
-              choice === "reference" ? "Import Reference" : "Import Pixel Art"
-            }}
-          </button>
-        </div>
-      </form>
+      <p v-if="tooLargeForPixelArt && dimensions" class="pixel-art-limit">
+        {{ dimensions.width }} × {{ dimensions.height }} is too large for exact
+        pixel-art editing. The limit is 256 × 256.
+      </p>
     </div>
   </section>
 </template>
