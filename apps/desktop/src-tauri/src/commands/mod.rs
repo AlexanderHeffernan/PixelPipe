@@ -3,6 +3,9 @@ pub(crate) mod project;
 pub(crate) mod revisions;
 pub(crate) mod terminal;
 
+#[cfg(test)]
+mod terminal_tests;
+
 pub(super) type CommandResult<T> = Result<T, String>;
 
 pub(super) fn command_error(error: &pixelate_app::AppError) -> String {

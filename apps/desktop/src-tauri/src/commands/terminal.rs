@@ -58,27 +58,12 @@ pub(crate) fn start_terminal(
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_owned());
     let mut command = CommandBuilder::new(&shell);
     if env::consts::OS == "macos" {
-        match Path::new(&shell).file_name().and_then(|name| name.to_str()) {
-            Some("zsh") => {
-                command.arg("-f");
-                command.arg("-c");
-                command.arg(
-                    "cd -- \"$PIXELATE_PROJECT_ROOT\" && export PS1='Pixelate:%~ %# ' && exec \"$SHELL\" -f -i",
-                );
-            }
-            Some("bash") => {
-                command.arg("--norc");
-                command.arg("-c");
-                command.arg(
-                    "cd -- \"$PIXELATE_PROJECT_ROOT\" && export PS1='Pixelate:\\w \\$ ' && exec \"$SHELL\" --norc -i",
-                );
-            }
-            _ => {}
+        for argument in macos_shell_arguments(Path::new(&shell)) {
+            command.arg(argument);
         }
     }
     command.cwd(&cwd);
     command.env("TERM", "xterm-256color");
-    command.env("PIXELATE_PROJECT_ROOT", cwd);
     if let Some(path) = terminal_path() {
         command.env("PATH", path);
     }
@@ -119,6 +104,14 @@ pub(crate) fn start_terminal(
         },
     );
     Ok(())
+}
+
+pub(super) fn macos_shell_arguments(shell: &Path) -> &'static [&'static str] {
+    match shell.file_name().and_then(|name| name.to_str()) {
+        Some("zsh") => &["-l", "-i"],
+        Some("bash") => &["--login", "-i"],
+        _ => &[],
+    }
 }
 
 fn terminal_path() -> Option<String> {
