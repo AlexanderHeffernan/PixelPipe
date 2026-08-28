@@ -66,8 +66,8 @@ function validateAssets(release, tag) {
   }
   const version = tag?.replace(/^v/, "");
   for (const asset of [
-    `Pixelate_${version}_arm64.AppImage`,
-    `Pixelate_${version}_arm64.AppImage.sig`,
+    `Pixelate_${version}_aarch64.AppImage`,
+    `Pixelate_${version}_aarch64.AppImage.sig`,
     `Pixelate_${version}_arm64.deb`,
     `Pixelate_${version}_arm64.deb.sig`,
     `Pixelate_${version}_amd64.AppImage`,
