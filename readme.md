@@ -42,8 +42,9 @@ assets appear at the project root as unexported assets; new assets default to
 
 Pixelate can explicitly create, rename/move, and delete empty real folders, and
 move linked images without overwriting collisions. It never recursively deletes
-project files or creates `.gitkeep`; empty folders are not retained by Git.
-Removing a linked asset from Pixelate leaves its project image intact.
+folders or creates `.gitkeep`; empty folders are not retained by Git. A separate,
+confirmed action can delete one supported project image while retaining Pixelate
+history. Removing a linked asset from Pixelate still leaves its image intact.
 
 The macOS app and Linux AppImage check for signed updates when they open and
 every six hours. An available update is always shown before anything is
