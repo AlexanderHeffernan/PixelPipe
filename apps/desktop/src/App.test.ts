@@ -5,10 +5,13 @@ import {
   screen,
   waitFor,
 } from "@testing-library/vue";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.vue";
 import * as api from "./api";
 import { preview, project, revisionView, settings } from "./test-fixtures";
+
+const timelineCss = readFileSync("src/styles/timeline.css", "utf8");
 
 const dialogs = vi.hoisted(() => ({
   project: "/game",
@@ -47,6 +50,10 @@ const commit = {
   revision_path: "/game/.pixelate/assets/field-medic/revisions/r000001",
   native_sha256: "1".repeat(64),
 };
+const localStorageDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "localStorage",
+);
 
 beforeEach(() => {
   tauriWindow.isFullscreen.mockClear();
@@ -63,6 +70,7 @@ beforeEach(() => {
   vi.spyOn(api, "previewSelectedReference").mockResolvedValue(preview);
   vi.spyOn(api, "loadRevision").mockResolvedValue(revisionView);
   vi.spyOn(api, "convertSelectedReference").mockResolvedValue(commit);
+  vi.spyOn(api, "mutateFrames").mockResolvedValue(commit);
   vi.spyOn(api, "previewComposition").mockResolvedValue(preview);
   vi.spyOn(api, "commitComposition").mockResolvedValue(commit);
   vi.spyOn(api, "initializeAsset").mockResolvedValue(project.assets[0].asset);
@@ -75,6 +83,8 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  if (localStorageDescriptor)
+    Object.defineProperty(window, "localStorage", localStorageDescriptor);
 });
 
 async function openWorkstation() {
@@ -112,6 +122,181 @@ describe("deterministic workstation", () => {
       pixelizeSettings,
       true,
     );
+  });
+
+  it("keeps a one-frame asset timeline minimal and discoverable", async () => {
+    await openWorkstation();
+    await enterCanvas();
+    expect(screen.getByText("1 frame")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Frame" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Play animation" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Animation")).not.toBeInTheDocument();
+  });
+
+  it("selects, expands, edits, and keyboard-reorders stable animation frames", async () => {
+    const animated = structuredClone(revisionView);
+    animated.metadata.frames = [
+      { id: "idle-a", duration_ms: 80 },
+      { id: "idle-b", duration_ms: 120 },
+      { id: "idle-c", duration_ms: 160 },
+    ];
+    vi.mocked(api.loadRevision).mockImplementation(
+      async (_root, _asset, revision, frame) => ({
+        ...structuredClone(animated),
+        metadata: {
+          ...structuredClone(animated.metadata),
+          revision: revision ?? "r000001",
+          selected_frame_id: frame ?? "idle-a",
+        },
+        native_png_base64: frame ?? "idle-a",
+      }),
+    );
+    await openWorkstation();
+    await enterCanvas();
+
+    const second = screen.getByRole("button", {
+      name: "Frame 2, 120 milliseconds",
+    });
+    await fireEvent.click(second);
+    await waitFor(() =>
+      expect(api.loadRevision).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "r000001",
+        "idle-b",
+      ),
+    );
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Expand timeline" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Collapse timeline" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("Shift + ←/→ reorders the focused frame"),
+    ).toBeVisible();
+
+    const duration = screen.getByLabelText(
+      "Selected frame duration in milliseconds",
+    );
+    await fireEvent.update(duration, "140");
+    await fireEvent.change(duration);
+    await waitFor(() =>
+      expect(api.mutateFrames).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "r000001",
+        { type: "set_duration", frame_id: "idle-b", duration_ms: 140 },
+        "user",
+      ),
+    );
+
+    await fireEvent.keyDown(second, { key: "ArrowRight", shiftKey: true });
+    await waitFor(() =>
+      expect(api.mutateFrames).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "r000001",
+        { type: "reorder", frame_id: "idle-b", position: 2 },
+        "user",
+      ),
+    );
+  });
+
+  it("persists timeline density outside project data", async () => {
+    const getItem = vi.fn(() => "expanded");
+    const setItem = vi.fn();
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: { getItem, setItem },
+    });
+    const animated = structuredClone(revisionView);
+    animated.metadata.frames.push({ id: "idle-b", duration_ms: 120 });
+    vi.mocked(api.loadRevision).mockResolvedValue(animated);
+
+    await openWorkstation();
+    await enterCanvas();
+    expect(getItem).toHaveBeenCalledWith("pixelate.timeline-density");
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Collapse timeline" }),
+    );
+    await waitFor(() =>
+      expect(setItem).toHaveBeenCalledWith(
+        "pixelate.timeline-density",
+        "compact",
+      ),
+    );
+  });
+
+  it("keeps long sequences in one accessible horizontal strip", async () => {
+    const animated = structuredClone(revisionView);
+    animated.metadata.frames = Array.from({ length: 20 }, (_, index) => ({
+      id: `frame-${index + 1}`,
+      duration_ms: 80 + index,
+    }));
+    vi.mocked(api.loadRevision).mockResolvedValue(animated);
+
+    await openWorkstation();
+    await enterCanvas();
+    const strip = screen.getByRole("list", { name: "Ordered frames" });
+    expect(strip).toHaveClass("frame-strip");
+    expect(screen.getAllByRole("listitem")).toHaveLength(21);
+    expect(
+      screen.getByRole("region", { name: "Frame timeline" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "More frame actions" }),
+    ).toBeInTheDocument();
+    expect(timelineCss).toContain("overflow-x: auto");
+    expect(timelineCss).toContain("@media (max-width: 760px)");
+    expect(timelineCss).toContain("prefers-reduced-motion: reduce");
+  });
+
+  it("plays stored frame durations, stops at loop-off end, and pauses before editing", async () => {
+    vi.useFakeTimers();
+    const animated = structuredClone(revisionView);
+    animated.metadata.frames = [
+      { id: "a", duration_ms: 10 },
+      { id: "b", duration_ms: 10 },
+    ];
+    vi.mocked(api.loadRevision).mockImplementation(
+      async (_root, _asset, revision, frame) => ({
+        ...structuredClone(animated),
+        metadata: {
+          ...structuredClone(animated.metadata),
+          revision: revision ?? "r000001",
+          selected_frame_id: frame ?? "a",
+        },
+      }),
+    );
+    await openWorkstation();
+    await enterCanvas();
+    await fireEvent.click(screen.getByRole("button", { name: "Loop" }));
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Play animation" }),
+    );
+    await vi.advanceTimersByTimeAsync(25);
+    expect(
+      screen.getByRole("button", { name: "Play animation" }),
+    ).toBeVisible();
+
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Play animation" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Pause animation" }),
+    ).toBeVisible();
+    await fireEvent.pointerDown(screen.getByLabelText("Sprite canvas"), {
+      button: 0,
+      clientX: 1,
+      clientY: 1,
+      pointerId: 1,
+    });
+    expect(
+      screen.getByRole("button", { name: "Play animation" }),
+    ).toBeVisible();
   });
 
   it("derives a selectable number of colours from the source", async () => {

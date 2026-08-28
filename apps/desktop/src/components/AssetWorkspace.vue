@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PhImageSquare } from "@phosphor-icons/vue";
 import SpriteCanvas from "./SpriteCanvas.vue";
+import FrameTimeline from "./FrameTimeline.vue";
 import { useWorkspace } from "../workspace/context";
 
 const workspace = useWorkspace();
@@ -50,6 +51,8 @@ const workspace = useWorkspace();
         Import Asset…
       </button>
     </div>
+
+    <FrameTimeline />
 
     <span
       v-if="workspace.importing.value"

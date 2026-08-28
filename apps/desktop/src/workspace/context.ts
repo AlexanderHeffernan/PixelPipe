@@ -2,6 +2,7 @@ import { computed, inject, provide, ref } from "vue";
 import * as api from "../api";
 import type { ConversionPreviewResponse, RevisionViewResponse } from "../types";
 import { createAssetActions } from "./asset-actions";
+import { createAnimation } from "./animation";
 import { createConversionPreview } from "./conversion-preview";
 import { createCompositionPreview } from "./composition-preview";
 import { createAssetImport } from "./asset-import";
@@ -160,6 +161,15 @@ export function createWorkspace() {
     run,
     notice: showNotice,
   });
+  const animation = createAnimation({
+    project,
+    assetId,
+    view,
+    refresh,
+    run,
+    notice: showNotice,
+    onMutation: editor.clearRedo,
+  });
   const assetActions = createAssetActions({
     project,
     assetId,
@@ -171,6 +181,7 @@ export function createWorkspace() {
     conversion,
     composition,
     editor,
+    animation,
     canvasLoading,
     run,
     refresh,
@@ -261,6 +272,7 @@ export function createWorkspace() {
     reconvert: assetActions.reconvert,
     exportCurrent: assetActions.exportCurrent,
     editor,
+    animation,
     composition,
     importAssets,
     importReference: assetActions.replaceSource,

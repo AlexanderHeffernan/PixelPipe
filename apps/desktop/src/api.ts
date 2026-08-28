@@ -173,9 +173,19 @@ export const resizeTerminal = (session: string, cols: number, rows: number) =>
 export const closeTerminal = (session: string) =>
   invoke<void>("close_terminal", { session });
 
-export const loadRevision = (start: string, asset: string, revision?: string) =>
+export const loadRevision = (
+  start: string,
+  asset: string,
+  revision?: string,
+  frameId?: string,
+) =>
   invoke<RevisionViewResponse>("load_revision", {
-    request: { start, asset, revision: revision ?? null },
+    request: {
+      start,
+      asset,
+      revision: revision ?? null,
+      frame_id: frameId ?? null,
+    },
   });
 
 export const patchRevision = (
@@ -183,6 +193,7 @@ export const patchRevision = (
   asset: string,
   parent: string,
   edits: PixelEdit[],
+  frameId: string,
   actor: string,
 ) =>
   invoke<RevisionResult>("patch_revision", {
@@ -191,6 +202,7 @@ export const patchRevision = (
       asset,
       parent,
       patch: { schema: "pixelate.patch/v1", edits },
+      frame_id: frameId,
       brief: null,
       actor,
     },
@@ -203,10 +215,11 @@ export const fillRevision = (
   x: number,
   y: number,
   index: number,
+  frameId: string,
   actor: string,
 ) =>
   invoke<RevisionResult>("fill_revision", {
-    request: { start, asset, parent, x, y, index, actor },
+    request: { start, asset, parent, x, y, index, frame_id: frameId, actor },
   });
 
 export const setAssetHead = (start: string, asset: string, revision: string) =>
@@ -239,4 +252,22 @@ export const remapRevision = (
       brief: null,
       actor,
     },
+  });
+
+export type FrameMutationAction =
+  | { type: "add_blank"; position?: number; duration_ms?: number }
+  | { type: "duplicate"; frame_id: string; position?: number }
+  | { type: "delete"; frame_id: string }
+  | { type: "reorder"; frame_id: string; position: number }
+  | { type: "set_duration"; frame_id: string; duration_ms: number };
+
+export const mutateFrames = (
+  start: string,
+  asset: string,
+  parent: string,
+  action: FrameMutationAction,
+  actor: string,
+) =>
+  invoke<RevisionResult>("mutate_frames", {
+    request: { start, asset, parent, action, actor },
   });

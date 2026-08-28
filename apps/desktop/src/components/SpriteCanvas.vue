@@ -95,6 +95,7 @@ async function pointerDown(event: PointerEvent) {
   }
   (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
   const point = coordinate(event);
+  workspace.animation.pause();
   if (!(await workspace.prepareEditing())) return;
   workspace.editor.point(point.x, point.y);
 }
@@ -159,6 +160,7 @@ function keyDown(event: KeyboardEvent) {
     const { x, y } = workspace.editor.cursor.value;
     void workspace.prepareEditing().then((ready) => {
       if (!ready) return;
+      workspace.animation.pause();
       workspace.editor.point(x, y);
       void workspace.editor.finishStroke();
     });

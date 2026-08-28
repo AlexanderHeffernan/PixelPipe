@@ -57,6 +57,7 @@ describe("pixel editor", () => {
         { x: 2, y: 3, index: 1 },
         { x: 3, y: 3, index: 1 },
       ],
+      "frame-0001",
       "user",
     );
   });

@@ -76,6 +76,8 @@ export const revisionView: RevisionViewResponse = {
       valid: true,
       checks: [],
     },
+    frames: [{ id: "frame-0001", duration_ms: 100 }],
+    selected_frame_id: "frame-0001",
   },
   native_png_base64: "native",
 };

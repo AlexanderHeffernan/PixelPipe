@@ -4,7 +4,7 @@
   flex: 1 1 auto;
   min-width: 320px;
   min-height: 0;
-  grid-template-rows: 1fr;
+  grid-template-rows: minmax(0, 1fr) auto;
   background:
     radial-gradient(circle at 78% 8%, rgba(113, 40, 72, 0.17), transparent 34%),
     radial-gradient(circle at 12% 92%, rgba(91, 38, 80, 0.12), transparent 36%),

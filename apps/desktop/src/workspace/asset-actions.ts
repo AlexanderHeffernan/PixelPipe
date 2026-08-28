@@ -10,6 +10,7 @@ import type { createCanvasLoading } from "./canvas-loading";
 import type { createCompositionPreview } from "./composition-preview";
 import type { createConversionPreview } from "./conversion-preview";
 import type { createPixelEditor, PixelTool } from "./pixel-editor";
+import type { createAnimation } from "./animation";
 
 interface AssetActionContext {
   project: Ref<ProjectBrowser | undefined>;
@@ -22,6 +23,7 @@ interface AssetActionContext {
   conversion: ReturnType<typeof createConversionPreview>;
   composition: ReturnType<typeof createCompositionPreview>;
   editor: ReturnType<typeof createPixelEditor>;
+  animation: ReturnType<typeof createAnimation>;
   canvasLoading: ReturnType<typeof createCanvasLoading>;
   run: (action: () => Promise<void>) => Promise<void>;
   refresh: () => Promise<void>;
@@ -50,6 +52,7 @@ export function createAssetActions(context: AssetActionContext) {
   }
 
   async function beginTool(tool: PixelTool) {
+    context.animation.pause();
     if (context.mode.value === "convert") await context.commitConversion();
     if (context.mode.value === "edit") {
       if (!(await context.composition.commitIfDirty())) return;

@@ -133,6 +133,13 @@ export interface RevisionViewMetadata {
     valid: boolean;
     checks: ValidationCheck[];
   };
+  frames: FrameMetadata[];
+  selected_frame_id: string;
+}
+
+export interface FrameMetadata {
+  id: string;
+  duration_ms: number;
 }
 
 export interface RevisionViewResponse {

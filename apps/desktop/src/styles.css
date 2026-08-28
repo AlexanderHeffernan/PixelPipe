@@ -1,6 +1,7 @@
 @import "./styles/base.css";
 @import "./styles/sidebar.css";
 @import "./styles/workspace.css";
+@import "./styles/timeline.css";
 @import "./styles/inspector.css";
 @import "@xterm/xterm/css/xterm.css";
 @import "./styles/terminal.css";
