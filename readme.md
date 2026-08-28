@@ -30,13 +30,16 @@ Choose a game folder. Pixelate creates a `.pixelate` project and supplies focuse
 pixelization defaults directly. Other game files remain untouched until an
 explicit export.
 
-The macOS app checks for signed updates when it opens and every six hours. An
-available update is always shown before anything is downloaded or installed.
-Open Settings to see the installed version, check manually, install and restart,
-or disable automatic checks. Pixelate also offers to install its bundled
-`pixelate` command in `/usr/local/bin` on first launch. The Command line section
-in Settings reports its status and can install, repair, or remove the managed
-link without overwriting an unrelated command.
+The macOS app and Linux AppImage check for signed updates when they open and
+every six hours. An available update is always shown before anything is
+downloaded or installed. Open Settings to see the installed version, check
+manually, install and restart, or disable automatic checks.
+
+Pixelate also offers to install its bundled `pixelate` command on first launch:
+`/usr/local/bin/pixelate` on macOS and `~/.local/bin/pixelate` for a Linux
+AppImage. The Linux `.deb` installs `/usr/bin/pixelate` directly. The Command
+line section in Settings reports the command's status and can install, repair,
+or remove a managed command without overwriting an unrelated file.
 
 `apps/desktop` is intentional: it groups the Vue interface and its thin Tauri
 adapter as one application, separate from the reusable Rust crates. Start it
@@ -123,10 +126,11 @@ cd apps/desktop && npm run format:check && npm test && npm run build
 ## Releases
 
 Every push to `main` creates the next patch release for Apple silicon and Intel
-macOS. The workflow builds the desktop app, bundles the matching CLI, publishes
-signed standalone CLI binaries, validates the complete updater manifest, and
-only then exposes the GitHub Release as latest. A rerun for an already tagged
-commit reuses its version.
+macOS plus x86-64 Linux. The workflow builds signed macOS bundles, a Linux
+AppImage and `.deb`, bundles each matching CLI, publishes signed standalone CLI
+binaries, validates the complete updater manifest, and only then exposes the
+GitHub Release as latest. A rerun for an already tagged commit reuses its
+version.
 
 The repository must define these GitHub Actions secrets:
 

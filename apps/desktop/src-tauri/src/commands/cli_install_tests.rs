@@ -1,9 +1,18 @@
-use std::{fs, os::unix::fs::symlink};
+use std::{
+    fs,
+    os::unix::fs::{PermissionsExt, symlink},
+};
 
 use tempfile::tempdir;
 
 use super::cli_install::{
-    CliInstallState, inspect_installation, is_pixelate_link, quote, remove_link, replace_link,
+    CliInstallState,
+    macos::{inspect_installation, is_pixelate_link, quote, remove_link, replace_link},
+};
+
+#[cfg(target_os = "linux")]
+use super::cli_install::linux::{
+    inspect_installation as inspect_linux_installation, install_copy, remove_copy,
 };
 
 #[test]
@@ -85,4 +94,62 @@ fn quotes_apostrophes_for_privileged_shell_commands() {
         quote(std::path::Path::new("/Applications/Alex's App")),
         "'/Applications/Alex'\"'\"'s App'"
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn installs_repairs_and_removes_the_managed_linux_command() {
+    let fixture = tempdir().expect("temporary directory");
+    let source = fixture.path().join("app/pixelate");
+    fs::create_dir_all(source.parent().expect("app directory")).expect("app directory");
+    fs::write(&source, "version one").expect("CLI");
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).expect("executable CLI");
+    let command = fixture.path().join("home/.local/bin/pixelate");
+    let marker = fixture
+        .path()
+        .join("home/.local/share/pixelate/cli-install.sha256");
+
+    install_copy(&source, &command, &marker).expect("install CLI copy");
+    let installed = inspect_linux_installation(&source, &command, &marker);
+    assert_eq!(installed.state, CliInstallState::Installed);
+    assert!(installed.managed);
+    assert_ne!(
+        fs::metadata(&command)
+            .expect("command metadata")
+            .permissions()
+            .mode()
+            & 0o111,
+        0
+    );
+
+    fs::write(&source, "version two").expect("updated CLI");
+    assert_eq!(
+        inspect_linux_installation(&source, &command, &marker).state,
+        CliInstallState::NeedsRepair
+    );
+    install_copy(&source, &command, &marker).expect("repair CLI copy");
+    assert_eq!(fs::read(&command).expect("installed CLI"), b"version two");
+
+    remove_copy(&command, &marker).expect("remove CLI copy");
+    assert!(!command.exists());
+    assert!(!marker.exists());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn never_overwrites_an_unmanaged_linux_command() {
+    let fixture = tempdir().expect("temporary directory");
+    let source = fixture.path().join("app/pixelate");
+    fs::create_dir_all(source.parent().expect("app directory")).expect("app directory");
+    fs::write(&source, "pixelate").expect("CLI");
+    let command = fixture.path().join("home/.local/bin/pixelate");
+    fs::create_dir_all(command.parent().expect("bin directory")).expect("bin directory");
+    fs::write(&command, "other command").expect("other command");
+    let marker = fixture
+        .path()
+        .join("home/.local/share/pixelate/cli-install.sha256");
+
+    let status = inspect_linux_installation(&source, &command, &marker);
+    assert_eq!(status.state, CliInstallState::Conflict);
+    assert!(!status.managed);
 }

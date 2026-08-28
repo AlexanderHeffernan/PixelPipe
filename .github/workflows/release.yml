@@ -26,14 +26,26 @@ jobs:
 
   publish:
     needs: version
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bundle_args: ""
+            apple_signing_identity: "-"
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bundle_args: ""
+            apple_signing_identity: "-"
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundle_args: --bundles appimage,deb
+            apple_signing_identity: ""
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,6 +55,16 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libayatana-appindicator3-dev \
+            libfuse2 \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf
       - name: Install Rust release target
         run: rustup target add "${{ matrix.target }}"
       - uses: swatinem/rust-cache@v2
@@ -52,6 +74,7 @@ jobs:
       - run: npm ci
         working-directory: apps/desktop
       - name: Compile native macOS icon
+        if: runner.os == 'macOS'
         run: |
           work="$(mktemp -d)"
           cp -R apps/desktop/src-tauri/icons/Pixelate.icon "$work/Icon.icon"
@@ -90,18 +113,18 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: "-"
+          APPLE_SIGNING_IDENTITY: ${{ matrix.apple_signing_identity }}
         with:
           projectPath: apps/desktop
           tagName: v${{ needs.version.outputs.version }}
           releaseName: Pixelate v${{ needs.version.outputs.version }}
-          releaseBody: Signed macOS app and CLI update for Pixelate.
+          releaseBody: Signed macOS and Linux desktop and CLI update for Pixelate.
           generateReleaseNotes: true
           releaseDraft: true
           prerelease: false
           uploadUpdaterJson: true
           uploadUpdaterSignatures: true
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} ${{ matrix.bundle_args }}
       - name: Upload signed CLI
         env:
           GH_TOKEN: ${{ github.token }}
@@ -156,7 +179,7 @@ jobs:
           gh api -H 'Accept: application/octet-stream' \
             "repos/${GITHUB_REPOSITORY}/releases/assets/${manifest_id}" > "$manifest"
           node scripts/release-workflow.mjs validate-manifest "$manifest" "$RELEASE_TAG"
-          node scripts/release-workflow.mjs validate-assets "$release"
+          node scripts/release-workflow.mjs validate-assets "$release" "$RELEASE_TAG"
           gh api --method PATCH --field draft=false --raw-field make_latest=true \
             "repos/${GITHUB_REPOSITORY}/releases/${id}" > "$release"
           node scripts/release-workflow.mjs verify-published "$release" "$RELEASE_TAG"

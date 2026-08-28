@@ -55,17 +55,13 @@ pub(crate) fn start_terminal(
             pixel_height: 0,
         })
         .map_err(|error| error.to_string())?;
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_owned());
+    let shell =
+        std::env::var("SHELL").unwrap_or_else(|_| fallback_shell(env::consts::OS).to_owned());
     let mut command = CommandBuilder::new(&shell);
-    let path_setup = if env::consts::OS == "macos" {
-        let (arguments, path_setup) = macos_shell_configuration(Path::new(&shell));
-        for argument in arguments {
-            command.arg(argument);
-        }
-        path_setup
-    } else {
-        None
-    };
+    let (arguments, path_setup) = shell_configuration(Path::new(&shell), env::consts::OS);
+    for argument in arguments {
+        command.arg(argument);
+    }
     command.cwd(&cwd);
     command.env("TERM", "xterm-256color");
     let cli_path = bundled_cli_path();
@@ -123,16 +119,25 @@ pub(crate) fn start_terminal(
     Ok(())
 }
 
-pub(super) fn macos_shell_configuration(
+pub(super) fn shell_configuration(
     shell: &Path,
+    os: &str,
 ) -> (&'static [&'static str], Option<&'static str>) {
-    const RESTORE_CLI_PATH: &str =
+    const RESTORE_POSIX_CLI_PATH: &str =
         "export PATH=\"$PIXELATE_CLI_DIR:$PATH\"; printf '\\033[1A\\033[2K\\r'\n";
-    match shell.file_name().and_then(|name| name.to_str()) {
-        Some("zsh") => (&["-l", "-i"], Some(RESTORE_CLI_PATH)),
-        Some("bash") => (&["--login", "-i"], Some(RESTORE_CLI_PATH)),
+    const RESTORE_FISH_CLI_PATH: &str =
+        "set -gx PATH \"$PIXELATE_CLI_DIR\" $PATH; printf '\\033[1A\\033[2K\\r'\n";
+    match (os, shell.file_name().and_then(|name| name.to_str())) {
+        ("macos", Some("zsh")) => (&["-l", "-i"], Some(RESTORE_POSIX_CLI_PATH)),
+        ("macos", Some("bash")) => (&["--login", "-i"], Some(RESTORE_POSIX_CLI_PATH)),
+        ("linux", Some("bash" | "zsh" | "sh")) => (&[], Some(RESTORE_POSIX_CLI_PATH)),
+        ("linux", Some("fish")) => (&[], Some(RESTORE_FISH_CLI_PATH)),
         _ => (&[], None),
     }
+}
+
+pub(super) fn fallback_shell(os: &str) -> &'static str {
+    if os == "macos" { "/bin/zsh" } else { "/bin/sh" }
 }
 
 fn terminal_path(cli_directory: Option<&Path>) -> Option<String> {

@@ -54,13 +54,22 @@ beforeEach(() => {
       return {
         state: "not_installed",
         command: "/usr/local/bin/pixelate",
+        managed: true,
       };
     }
     if (command === "install_cli") {
-      return { state: "installed", command: "/usr/local/bin/pixelate" };
+      return {
+        state: "installed",
+        command: "/usr/local/bin/pixelate",
+        managed: true,
+      };
     }
     if (command === "uninstall_cli") {
-      return { state: "not_installed", command: "/usr/local/bin/pixelate" };
+      return {
+        state: "not_installed",
+        command: "/usr/local/bin/pixelate",
+        managed: true,
+      };
     }
     throw new Error(`Unexpected command: ${command}`);
   });
@@ -98,6 +107,15 @@ describe("desktop updates", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
+  it("checks for signed updates on Linux", async () => {
+    vi.stubGlobal("navigator", { userAgent: "Linux x86_64" });
+
+    await useUpdates().checkForUpdates();
+
+    expect(tauri.check).toHaveBeenCalledWith({ timeout: 15_000 });
+    expect(useUpdates().status.value).toBe("available");
+  });
+
   it("shows version and update controls and installs only on request", async () => {
     const updates = useUpdates();
     await updates.checkForUpdates();
@@ -119,10 +137,18 @@ describe("desktop updates", () => {
   it("shows and removes an installed command from settings", async () => {
     tauri.invoke.mockImplementation(async (command: string) => {
       if (command === "cli_installation_status") {
-        return { state: "installed", command: "/usr/local/bin/pixelate" };
+        return {
+          state: "installed",
+          command: "/usr/local/bin/pixelate",
+          managed: true,
+        };
       }
       if (command === "uninstall_cli") {
-        return { state: "not_installed", command: "/usr/local/bin/pixelate" };
+        return {
+          state: "not_installed",
+          command: "/usr/local/bin/pixelate",
+          managed: true,
+        };
       }
       throw new Error(`Unexpected command: ${command}`);
     });
@@ -136,5 +162,24 @@ describe("desktop updates", () => {
       expect(tauri.invoke).toHaveBeenCalledWith("uninstall_cli"),
     );
     expect(await screen.findByText("Command not installed")).toBeVisible();
+  });
+
+  it("does not offer to remove a package-managed command", async () => {
+    tauri.invoke.mockImplementation(async (command: string) => {
+      if (command === "cli_installation_status") {
+        return {
+          state: "installed",
+          command: "/usr/bin/pixelate",
+          managed: false,
+        };
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    render(SettingsModal);
+
+    expect(await screen.findByText("Command installed")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Remove command" }),
+    ).not.toBeInTheDocument();
   });
 });

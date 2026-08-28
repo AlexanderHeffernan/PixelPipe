@@ -5,12 +5,15 @@ const updaterPlatforms = [
   "darwin-aarch64-app",
   "darwin-x86_64",
   "darwin-x86_64-app",
+  "linux-x86_64",
 ];
 const cliAssets = [
   "pixelate-aarch64-apple-darwin",
   "pixelate-aarch64-apple-darwin.sig",
   "pixelate-x86_64-apple-darwin",
   "pixelate-x86_64-apple-darwin.sig",
+  "pixelate-x86_64-unknown-linux-gnu",
+  "pixelate-x86_64-unknown-linux-gnu.sig",
 ];
 
 function releaseByTag(releases, tag) {
@@ -49,13 +52,22 @@ function validateManifest(manifest, tag) {
   }
 }
 
-function validateAssets(release) {
+function validateAssets(release, tag) {
   const uploaded = new Set(
     (release.assets ?? [])
       .filter((asset) => asset.state === "uploaded")
       .map((asset) => asset.name),
   );
   for (const asset of cliAssets) {
+    if (!uploaded.has(asset)) throw new Error(`Release is missing ${asset}.`);
+  }
+  const version = tag?.replace(/^v/, "");
+  for (const asset of [
+    `Pixelate_${version}_amd64.AppImage`,
+    `Pixelate_${version}_amd64.AppImage.sig`,
+    `Pixelate_${version}_amd64.deb`,
+    `Pixelate_${version}_amd64.deb.sig`,
+  ]) {
     if (!uploaded.has(asset)) throw new Error(`Release is missing ${asset}.`);
   }
 }
@@ -66,7 +78,7 @@ const json = () => JSON.parse(fs.readFileSync(file, "utf8"));
 if (command === "release-id") console.log(releaseByTag(json(), tag).id);
 else if (command === "manifest-id") console.log(manifestAsset(json(), tag).id);
 else if (command === "validate-manifest") validateManifest(json(), tag);
-else if (command === "validate-assets") validateAssets(json());
+else if (command === "validate-assets") validateAssets(json(), tag);
 else if (command === "verify-published") {
   const release = json();
   if (release.tag_name !== tag || release.draft !== false) {

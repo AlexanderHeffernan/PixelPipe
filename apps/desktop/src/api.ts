@@ -147,6 +147,7 @@ export type CliInstallState =
 export interface CliInstallStatus {
   state: CliInstallState;
   command: string;
+  managed: boolean;
 }
 
 export const cliInstallationStatus = () =>

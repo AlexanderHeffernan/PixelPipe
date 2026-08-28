@@ -1,29 +1,24 @@
 <script setup lang="ts">
+import logoUrl from "../../src-tauri/icons/icon-source.png";
 import { useWorkspace } from "../workspace/context";
+
 const workspace = useWorkspace();
 </script>
 
 <template>
   <section class="welcome-view">
-    <div class="welcome-icon" aria-hidden="true">
-      <span></span><span></span><span></span><span></span>
+    <div class="welcome-content">
+      <img class="welcome-logo" :src="logoUrl" alt="" />
+      <h1>Pixelate</h1>
+      <p>From reference to game-ready pixel art.</p>
+      <button
+        class="primary welcome-open-button"
+        :disabled="workspace.busy.value"
+        @click="workspace.chooseProject"
+      >
+        {{ workspace.busy.value ? "Opening…" : "Open Project…" }}
+      </button>
+      <small>Choose a new or existing game folder to begin.</small>
     </div>
-    <p class="eyebrow">Deterministic pixel artwork</p>
-    <h1>Convert, refine, and ship<br />game-ready sprites.</h1>
-    <p class="welcome-copy">
-      Open a new or existing game folder. Pixelate keeps assets and revisions
-      together with your project.
-    </p>
-    <button
-      class="primary large"
-      :disabled="workspace.busy.value"
-      @click="workspace.chooseProject"
-    >
-      {{ workspace.busy.value ? "Opening…" : "Open Project Folder…" }}
-    </button>
-    <small
-      >Your existing files stay where they are. Pixelate works from a hidden
-      <code>.pixelate</code> folder.</small
-    >
   </section>
 </template>

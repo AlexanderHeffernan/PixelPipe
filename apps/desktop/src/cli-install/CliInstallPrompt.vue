@@ -19,7 +19,7 @@ onMounted(() => void cli.loadStatus());
       <p>
         Install the <code>pixelate</code> command in
         <code>{{ cli.status.value?.command }}</code
-        >. macOS may ask for authorization.
+        >. Your system may ask for authorization.
       </p>
       <p v-if="cli.error.value" class="settings-error" role="alert">
         {{ cli.error.value }}

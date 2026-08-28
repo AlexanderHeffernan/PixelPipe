@@ -54,7 +54,7 @@ onMounted(() => {
             <input
               type="checkbox"
               :checked="updates.automaticChecksEnabled.value"
-              :disabled="!updates.isMacOS"
+              :disabled="!updates.isSupportedOS"
               @change="
                 updates.setAutomaticChecksEnabled(
                   ($event.target as HTMLInputElement).checked,
@@ -63,7 +63,11 @@ onMounted(() => {
             />
           </label>
 
-          <div v-if="updates.isMacOS" class="update-status" aria-live="polite">
+          <div
+            v-if="updates.isSupportedOS"
+            class="update-status"
+            aria-live="polite"
+          >
             <strong v-if="updates.status.value === 'available'">
               Pixelate {{ updates.availableUpdate.value?.version }} is available
             </strong>
@@ -87,14 +91,14 @@ onMounted(() => {
             </p>
           </div>
           <p v-else class="update-status">
-            Automatic updates are currently available in the macOS release.
+            Automatic updates are available in the macOS and Linux releases.
           </p>
 
           <div class="modal-actions">
             <button
               class="quiet settings-button"
               :disabled="
-                !updates.isMacOS ||
+                !updates.isSupportedOS ||
                 updates.status.value === 'checking' ||
                 updates.status.value === 'installing'
               "
@@ -129,7 +133,7 @@ onMounted(() => {
               Another command already exists
             </strong>
             <strong v-else-if="cli.status.value?.state === 'unavailable'">
-              Available in the macOS app
+              Command installation unavailable
             </strong>
             <strong v-else>Command not installed</strong>
             <small>{{
@@ -144,7 +148,10 @@ onMounted(() => {
           </div>
           <div class="modal-actions">
             <button
-              v-if="cli.status.value?.state === 'installed'"
+              v-if="
+                cli.status.value?.state === 'installed' &&
+                cli.status.value.managed
+              "
               class="quiet settings-button"
               :disabled="cli.busy.value"
               @click="cli.uninstall"

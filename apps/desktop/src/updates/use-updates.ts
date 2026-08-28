@@ -28,8 +28,11 @@ const automaticChecksEnabled = ref(readAutomaticChecksPreference());
 let checkTimer: number | undefined;
 let checkPromise: Promise<void> | null = null;
 
-function isMacOS() {
-  return navigator.userAgent.includes("Mac OS X");
+function isSupportedOS() {
+  return (
+    navigator.userAgent.includes("Mac OS X") ||
+    navigator.userAgent.includes("Linux")
+  );
 }
 
 function readAutomaticChecksPreference() {
@@ -55,7 +58,8 @@ export function useUpdates() {
   }
 
   async function checkForUpdates(silent = false) {
-    if (!isMacOS() || checkPromise || status.value === "installing") return;
+    if (!isSupportedOS() || checkPromise || status.value === "installing")
+      return;
     status.value = "checking";
     error.value = null;
     checkPromise = check({ timeout: 15_000 })
@@ -110,7 +114,11 @@ export function useUpdates() {
 
   function startAutomaticChecks() {
     void loadVersion();
-    if (checkTimer !== undefined || !automaticChecksEnabled.value || !isMacOS())
+    if (
+      checkTimer !== undefined ||
+      !automaticChecksEnabled.value ||
+      !isSupportedOS()
+    )
       return;
     void checkForUpdates(true);
     checkTimer = window.setInterval(
@@ -142,7 +150,7 @@ export function useUpdates() {
     currentVersion,
     downloadProgress,
     error,
-    isMacOS: isMacOS(),
+    isSupportedOS: isSupportedOS(),
     lastCheckedAt,
     status,
     checkForUpdates,

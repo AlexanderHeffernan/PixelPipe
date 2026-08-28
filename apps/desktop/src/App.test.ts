@@ -56,6 +56,7 @@ beforeEach(() => {
   vi.spyOn(api, "cliInstallationStatus").mockResolvedValue({
     state: "installed",
     command: "/usr/local/bin/pixelate",
+    managed: true,
   });
   vi.spyOn(api, "openProject").mockResolvedValue(structuredClone(project));
   vi.spyOn(api, "browseProject").mockResolvedValue(structuredClone(project));
@@ -78,9 +79,7 @@ afterEach(() => {
 
 async function openWorkstation() {
   render(App);
-  await fireEvent.click(
-    screen.getByRole("button", { name: "Open Project Folder…" }),
-  );
+  await fireEvent.click(screen.getByRole("button", { name: "Open Project…" }));
   await screen.findByRole("navigation", { name: "Project assets" });
   await screen.findByRole("img", { name: "field-medic pixel art" });
 }

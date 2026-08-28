@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [vue()],
   clearScreen: false,
   server: {
+    allowedHosts: [".onamp.dev"],
     port: 1420,
     strictPort: true,
   },
