@@ -2,7 +2,7 @@
 import { PhImageSquare } from "@phosphor-icons/vue";
 import { nextTick, ref } from "vue";
 import type { AssetTreeFile } from "../workspace/asset-tree";
-import { beginAssetDrag } from "../workspace/asset-drag";
+import { beginFileDrag } from "../workspace/asset-drag";
 import { useWorkspace } from "../workspace/context";
 import PopupMenu from "./PopupMenu.vue";
 
@@ -70,10 +70,10 @@ async function deleteFile() {
     role="treeitem"
     :aria-current="selected() ? 'page' : undefined"
     :style="{ '--tree-level': level }"
-    :draggable="Boolean(file.managed)"
-    @dragstart="file.managed && beginAssetDrag($event, file.managed.asset.id)"
-    @contextmenu.prevent="openMenu"
-    @keydown.shift.f10.prevent="openMenu"
+    draggable="true"
+    @dragstart.stop="beginFileDrag($event, file.path, file.managed?.asset.id)"
+    @contextmenu.stop.prevent="openMenu"
+    @keydown.shift.f10.stop.prevent="openMenu"
   >
     <form
       v-if="renaming"
@@ -104,19 +104,22 @@ async function deleteFile() {
       </span>
       <span class="browser-file__label">
         <span class="asset-name">{{ file.name }}</span>
-        <span class="asset-path">{{ file.path }}</span>
+        <span
+          v-if="!file.managed || file.catalog.status !== 'unexported'"
+          class="asset-path"
+        >
+          {{ file.path }}
+        </span>
       </span>
       <span
-        v-if="file.managed && file.catalog.status !== 'current'"
+        v-if="
+          file.managed &&
+          (file.catalog.status === 'missing' ||
+            file.catalog.status === 'modified')
+        "
         class="asset-status-label"
       >
-        {{
-          file.catalog.status === "missing"
-            ? "Missing"
-            : file.catalog.status === "modified"
-              ? "Changed"
-              : "Not exported"
-        }}
+        {{ file.catalog.status === "missing" ? "Missing" : "Changed" }}
       </span>
     </button>
     <PopupMenu

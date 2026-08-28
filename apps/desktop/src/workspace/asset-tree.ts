@@ -13,6 +13,7 @@ export interface AssetTreeFolder {
   kind: "folder";
   path: string;
   name: string;
+  hasManagedAssets: boolean;
   folders: AssetTreeFolder[];
   files: AssetTreeFile[];
 }
@@ -26,6 +27,7 @@ export function useAssetTree(
       kind: "folder",
       path: "",
       name: "",
+      hasManagedAssets: false,
       folders: [],
       files: [],
     };
@@ -85,8 +87,18 @@ export function useAssetTree(
     return root;
   });
   return {
-    folders: computed(() => tree.value.folders),
-    rootFiles: computed(() => tree.value.files),
+    managedFolders: computed(() =>
+      tree.value.folders.filter((folder) => folder.hasManagedAssets),
+    ),
+    unmanagedFolders: computed(() =>
+      tree.value.folders.filter((folder) => !folder.hasManagedAssets),
+    ),
+    managedRootFiles: computed(() =>
+      tree.value.files.filter((file) => file.managed),
+    ),
+    projectRootFiles: computed(() =>
+      tree.value.files.filter((file) => !file.managed),
+    ),
   };
 }
 
@@ -100,6 +112,7 @@ function addFolder(root: AssetTreeFolder, path: string) {
         kind: "folder",
         path: childPath,
         name: part,
+        hasManagedAssets: false,
         folders: [],
         files: [],
       };
@@ -114,10 +127,17 @@ const displayName = (id: string) =>
   id.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 function sortFolder(folder: AssetTreeFolder) {
-  folder.folders.sort((a, b) => a.name.localeCompare(b.name));
+  folder.folders.forEach(sortFolder);
+  folder.hasManagedAssets =
+    folder.files.some((file) => Boolean(file.managed)) ||
+    folder.folders.some((child) => child.hasManagedAssets);
+  folder.folders.sort((a, b) => {
+    if (a.hasManagedAssets !== b.hasManagedAssets)
+      return a.hasManagedAssets ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
   folder.files.sort((a, b) => {
     if (Boolean(a.managed) !== Boolean(b.managed)) return a.managed ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
-  folder.folders.forEach(sortFolder);
 }

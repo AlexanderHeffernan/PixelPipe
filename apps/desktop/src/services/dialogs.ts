@@ -29,11 +29,11 @@ export async function chooseReferenceImage(): Promise<string | undefined> {
 }
 
 export async function chooseExportFile(
-  asset: string,
+  defaultPath: string,
 ): Promise<string | undefined> {
   const selected = await save({
     title: "Export sprite at native resolution",
-    defaultPath: `${asset}.png`,
+    defaultPath,
     filters: [
       { name: "PNG image", extensions: ["png"] },
       { name: "Lossless WebP image", extensions: ["webp"] },

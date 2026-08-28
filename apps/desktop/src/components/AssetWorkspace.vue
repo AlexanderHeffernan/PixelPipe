@@ -3,6 +3,7 @@ import { PhImageSquare } from "@phosphor-icons/vue";
 import SpriteCanvas from "./SpriteCanvas.vue";
 import ProjectImagePreview from "./ProjectImagePreview.vue";
 import { useWorkspace } from "../workspace/context";
+import AppButton from "./AppButton.vue";
 
 const workspace = useWorkspace();
 </script>
@@ -53,13 +54,21 @@ const workspace = useWorkspace();
       <p v-else>
         Start from a reference image or prepare an asset for your coding agent.
       </p>
-      <button
-        class="primary"
-        :disabled="workspace.importing.value"
-        @click="workspace.importAssets"
-      >
-        Import Asset…
-      </button>
+      <div class="canvas-empty__actions">
+        <AppButton
+          variant="primary"
+          :disabled="workspace.importing.value"
+          @click="workspace.importAssets"
+        >
+          Convert a Reference Image…
+        </AppButton>
+        <AppButton
+          :disabled="workspace.importing.value"
+          @click="workspace.importPixelArt"
+        >
+          Import Finished Pixel Art…
+        </AppButton>
+      </div>
     </div>
 
     <span

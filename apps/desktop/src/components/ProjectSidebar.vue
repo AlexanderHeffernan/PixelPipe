@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhFolder, PhFolderPlus, PhPlus } from "@phosphor-icons/vue";
+import { PhFolder, PhFolderPlus, PhImageSquare } from "@phosphor-icons/vue";
 import { nextTick, ref } from "vue";
 import {
   acceptsAssetDrop,
@@ -20,7 +20,8 @@ const addMenu = ref(false);
 const addingFolder = ref(false);
 const folderPath = ref("");
 const folderInput = ref<HTMLInputElement>();
-const { folders, rootFiles } = useAssetTree(workspace.project, search);
+const { managedFolders, unmanagedFolders, managedRootFiles, projectRootFiles } =
+  useAssetTree(workspace.project, search);
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
 const { width, isResizing, startResize, resizeWithKeyboard } = useSidebarResize(
@@ -64,16 +65,10 @@ function dropAtRoot(event: DragEvent) {
   event.preventDefault();
   const item = droppedItem(event);
   if (item.asset) {
-    const file =
-      workspace.project.value?.assets.find(
-        ({ asset }) => asset.id === item.asset,
-      )?.asset.project_path ||
-      workspace.project.value?.catalog.find(
-        ({ asset_id }) => asset_id === item.asset,
-      )?.path ||
-      `${item.asset}.png`;
-    if (file && file.includes("/"))
-      void workspace.catalog.moveAsset(item.asset, basename(file));
+    if (item.image.includes("/"))
+      void workspace.catalog.moveAsset(item.asset, basename(item.image));
+  } else if (item.image && item.image.includes("/")) {
+    void workspace.catalog.moveProjectImage(item.image, basename(item.image));
   } else if (item.folder && item.folder.includes("/")) {
     void workspace.catalog.moveFolder(item.folder, basename(item.folder));
   }
@@ -97,7 +92,7 @@ function dropAtRoot(event: DragEvent) {
             @pointerdown.stop
             @click="addMenu = !addMenu"
           >
-            <PhPlus /> Add Asset
+            <PhImageSquare /> Add Asset
           </AppButton>
           <AppButton
             size="small"
@@ -114,10 +109,12 @@ function dropAtRoot(event: DragEvent) {
           @close="addMenu = false"
         >
           <button role="menuitem" @click="importReference">
-            Reference image…
+            <strong>Convert a reference image…</strong>
+            <span>Pixelize a smooth image into a new asset</span>
           </button>
           <button role="menuitem" @click="importPixelArt">
-            Pixel art in project…
+            <strong>Import finished pixel art…</strong>
+            <span>Keep exact pixels and start in the editor</span>
           </button>
         </PopupMenu>
         <input
@@ -151,19 +148,38 @@ function dropAtRoot(event: DragEvent) {
             />
           </form>
           <AssetBrowserFolder
-            v-for="folder in folders"
+            v-for="folder in managedFolders"
             :key="folder.path"
             :folder="folder"
+            :force-open="Boolean(search)"
           />
           <AssetBrowserFile
-            v-for="file in rootFiles"
+            v-for="file in managedRootFiles"
+            :key="file.path"
+            :file="file"
+            :level="0"
+          />
+          <AssetBrowserFolder
+            v-for="folder in unmanagedFolders"
+            :key="folder.path"
+            :folder="folder"
+            :force-open="Boolean(search)"
+          />
+          <AssetBrowserFile
+            v-for="file in projectRootFiles"
             :key="file.path"
             :file="file"
             :level="0"
           />
         </div>
         <p
-          v-if="!addingFolder && !folders.length && !rootFiles.length"
+          v-if="
+            !addingFolder &&
+            !managedFolders.length &&
+            !unmanagedFolders.length &&
+            !managedRootFiles.length &&
+            !projectRootFiles.length
+          "
           class="sidebar-empty"
         >
           No supported raster assets

@@ -67,6 +67,10 @@ export function createCatalogActions(context: CatalogContext) {
       act("Project image deleted", (root) =>
         api.deleteProjectImage(root, path),
       ),
+    moveProjectImage: (source: string, destination: string) =>
+      act("Project image moved", (root) =>
+        api.moveProjectImage(root, source, destination),
+      ),
     moveAsset: (id: string, destination: string) =>
       act("Asset moved", (root) => api.moveAsset(root, id, destination)),
   };

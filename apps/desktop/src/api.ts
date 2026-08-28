@@ -110,6 +110,15 @@ export const deleteFolder = (start: string, path: string) =>
 export const deleteProjectImage = (start: string, path: string) =>
   invoke<void>("delete_project_image", { request: { start, path } });
 
+export const moveProjectImage = (
+  start: string,
+  source: string,
+  destination: string,
+) =>
+  invoke<void>("move_project_image", {
+    request: { start, source, destination },
+  });
+
 export const moveAsset = (start: string, asset: string, destination: string) =>
   invoke<AssetManifest>("move_asset", {
     request: { start, asset, destination },

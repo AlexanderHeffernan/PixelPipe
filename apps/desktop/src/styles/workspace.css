@@ -371,6 +371,11 @@
   font-size: 11px;
   line-height: 1.55;
 }
+.canvas-empty__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
 @keyframes spin {
   to {
     transform: rotate(360deg);
