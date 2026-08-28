@@ -5,11 +5,14 @@ const updaterPlatforms = [
   "darwin-aarch64-app",
   "darwin-x86_64",
   "darwin-x86_64-app",
+  "linux-aarch64",
   "linux-x86_64",
 ];
 const cliAssets = [
   "pixelate-aarch64-apple-darwin",
   "pixelate-aarch64-apple-darwin.sig",
+  "pixelate-aarch64-unknown-linux-gnu",
+  "pixelate-aarch64-unknown-linux-gnu.sig",
   "pixelate-x86_64-apple-darwin",
   "pixelate-x86_64-apple-darwin.sig",
   "pixelate-x86_64-unknown-linux-gnu",
@@ -63,6 +66,10 @@ function validateAssets(release, tag) {
   }
   const version = tag?.replace(/^v/, "");
   for (const asset of [
+    `Pixelate_${version}_arm64.AppImage`,
+    `Pixelate_${version}_arm64.AppImage.sig`,
+    `Pixelate_${version}_arm64.deb`,
+    `Pixelate_${version}_arm64.deb.sig`,
     `Pixelate_${version}_amd64.AppImage`,
     `Pixelate_${version}_amd64.AppImage.sig`,
     `Pixelate_${version}_amd64.deb`,

@@ -126,11 +126,11 @@ cd apps/desktop && npm run format:check && npm test && npm run build
 ## Releases
 
 Every push to `main` creates the next patch release for Apple silicon and Intel
-macOS plus x86-64 Linux. The workflow builds signed macOS bundles, a Linux
-AppImage and `.deb`, bundles each matching CLI, publishes signed standalone CLI
-binaries, validates the complete updater manifest, and only then exposes the
-GitHub Release as latest. A rerun for an already tagged commit reuses its
-version.
+macOS plus x86-64 and ARM64 Linux. The workflow builds signed macOS bundles and
+Linux AppImages and `.deb` packages, bundles each matching CLI, publishes signed
+standalone CLI binaries, validates the complete updater manifest, and only then
+exposes the GitHub Release as latest. A rerun for an already tagged commit
+reuses its version.
 
 The repository must define these GitHub Actions secrets:
 
