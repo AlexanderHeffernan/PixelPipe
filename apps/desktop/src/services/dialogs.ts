@@ -28,6 +28,20 @@ export async function chooseReferenceImage(): Promise<string | undefined> {
   return (await chooseReferenceImages())[0];
 }
 
+export async function chooseFrameImage(): Promise<string | undefined> {
+  const selected = await open({
+    multiple: false,
+    title: "Add a reference image or pixel art frame",
+    filters: [
+      {
+        name: "Reference or pixel art image",
+        extensions: ["png", "jpg", "jpeg", "webp"],
+      },
+    ],
+  });
+  return typeof selected === "string" ? selected : undefined;
+}
+
 export async function chooseExportFile(
   asset: string,
 ): Promise<string | undefined> {

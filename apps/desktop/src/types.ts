@@ -139,6 +139,7 @@ export interface RevisionViewMetadata {
 
 export interface FrameMetadata {
   id: string;
+  name?: string;
   duration_ms: number;
 }
 

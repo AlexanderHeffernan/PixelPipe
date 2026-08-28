@@ -9,8 +9,15 @@ import {
 import { nextTick, ref } from "vue";
 import { useWorkspace } from "../workspace/context";
 import { useSidebarResize } from "../workspace/sidebar-resize";
+import { useSidebarAnimationPreview } from "../workspace/sidebar-animation-preview";
 
 const workspace = useWorkspace();
+const animationPreview = useSidebarAnimationPreview({
+  project: workspace.project,
+  selectedAssetId: workspace.assetId,
+  selectedFrames: workspace.animation.frames,
+  selectedThumbnails: workspace.animation.thumbnails,
+});
 const editing = ref("");
 const editName = ref("");
 const renameInput = ref<HTMLInputElement | HTMLInputElement[]>();
@@ -70,6 +77,8 @@ function toggleRename(id: string, name: string) {
           "
           class="asset-row"
           :class="{ 'is-renaming': editing === entry.asset.id }"
+          @pointerenter="animationPreview.start(entry)"
+          @pointerleave="animationPreview.startSelected"
         >
           <button
             class="asset-select"
@@ -77,8 +86,14 @@ function toggleRename(id: string, name: string) {
           >
             <span class="asset-thumbnail checker">
               <img
-                v-if="workspace.thumbnails.value[entry.asset.id]"
-                :src="workspace.thumbnails.value[entry.asset.id]"
+                v-if="
+                  animationPreview.images.value[entry.asset.id] ||
+                  workspace.thumbnails.value[entry.asset.id]
+                "
+                :src="
+                  animationPreview.images.value[entry.asset.id] ||
+                  workspace.thumbnails.value[entry.asset.id]
+                "
                 alt=""
               />
               <PhImageSquare v-else aria-hidden="true" />

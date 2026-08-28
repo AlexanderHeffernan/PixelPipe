@@ -1,5 +1,6 @@
 import { computed, onScopeDispose, ref, watch, type Ref } from "vue";
 import * as api from "../api";
+import { chooseFrameImage } from "../services/dialogs";
 import type { ProjectBrowser, RevisionViewResponse } from "../types";
 
 interface AnimationContext {
@@ -15,6 +16,7 @@ interface AnimationContext {
 export function createAnimation(context: AnimationContext) {
   const playing = ref(false);
   const loop = ref(true);
+  const timelineOpen = ref(false);
   const thumbnails = ref<Record<string, string>>({});
   let timer: ReturnType<typeof setTimeout> | undefined;
   let playbackGeneration = 0;
@@ -146,6 +148,17 @@ export function createAnimation(context: AnimationContext) {
     });
   }
 
+  async function addFrameFromImage() {
+    const file = await chooseFrameImage();
+    if (!file) return;
+    timelineOpen.value = true;
+    await mutate({
+      type: "import_frame",
+      file,
+      position: selectedIndex.value + 1,
+    });
+  }
+
   async function loadThumbnails() {
     const root = context.project.value?.project_root;
     const revision = context.view.value?.metadata.revision;
@@ -174,6 +187,7 @@ export function createAnimation(context: AnimationContext) {
   return {
     playing,
     loop,
+    timelineOpen,
     frames,
     selectedFrameId,
     selectedIndex,
@@ -184,5 +198,6 @@ export function createAnimation(context: AnimationContext) {
     previous,
     next,
     mutate,
+    addFrameFromImage,
   };
 }

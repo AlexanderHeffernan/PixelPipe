@@ -252,8 +252,8 @@ function keyDown(event: KeyboardEvent) {
         <span class="toolbar-divider"></span>
         <button
           aria-label="Add frame to create animation"
-          title="Add frame to create animation"
-          @click="workspace.animation.mutate({ type: 'add_blank' })"
+          title="Add a reference image or pixel art frame"
+          @click="workspace.animation.addFrameFromImage"
         >
           <PhFilmStrip weight="regular" />
           <span>Add frame</span>

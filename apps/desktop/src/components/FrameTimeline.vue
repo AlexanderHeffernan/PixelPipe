@@ -13,16 +13,32 @@ import {
 } from "@phosphor-icons/vue";
 import { useWorkspace } from "../workspace/context";
 import { useTimelineDrawer } from "../workspace/timeline-drawer";
+import { useTimelineFrames } from "../workspace/timeline-frames";
 
 const workspace = useWorkspace();
 const animation = workspace.animation;
+const open = animation.timelineOpen;
 const strip = ref<HTMLElement>();
 const overflowOpen = ref(false);
 const {
-  open,
+  contextFrameId,
+  editingFrameId,
+  editName,
+  draggedFrameId,
+  setDuration,
+  reorder,
+  openFrameMenu,
+  beginRename,
+  finishRename,
+  deleteFrame,
+  dragStart,
+  dropFrame,
+} = useTimelineFrames(animation, strip);
+const {
   resizing,
   height,
   maximumHeight,
+  minimal,
   expanded,
   minimumHeight,
   startResize,
@@ -42,9 +58,21 @@ watch(
 
 async function keepSelectedVisible() {
   await nextTick();
-  strip.value
-    ?.querySelector<HTMLElement>("[aria-current='true']")
-    ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  const selected = strip.value?.querySelector<HTMLElement>(
+    "[aria-current='true']",
+  );
+  if (!selected || !strip.value) return;
+  const stripBounds = strip.value.getBoundingClientRect();
+  const selectedBounds = selected.getBoundingClientRect();
+  if (
+    selectedBounds.left < stripBounds.left ||
+    selectedBounds.right > stripBounds.right
+  )
+    selected.scrollIntoView?.({
+      block: "nearest",
+      inline: "nearest",
+      behavior: "smooth",
+    });
 }
 
 function closeTimeline() {
@@ -53,42 +81,8 @@ function closeTimeline() {
   animation.pause();
 }
 
-function setDuration(event: Event) {
-  const value = Math.max(
-    1,
-    Number((event.target as HTMLInputElement).value) || 1,
-  );
-  void animation.mutate({
-    type: "set_duration",
-    frame_id: animation.selectedFrameId.value,
-    duration_ms: value,
-  });
-}
-
-function reorder(frameId: string, offset: number) {
-  const index = animation.frames.value.findIndex(
-    (frame) => frame.id === frameId,
-  );
-  const position = Math.max(
-    0,
-    Math.min(animation.frames.value.length - 1, index + offset),
-  );
-  if (position !== index)
-    void animation.mutate(
-      { type: "reorder", frame_id: frameId, position },
-      frameId,
-    );
-}
-
-function frameKeydown(event: KeyboardEvent, frameId: string) {
-  if (!event.shiftKey || !["ArrowLeft", "ArrowRight"].includes(event.key))
-    return;
-  event.preventDefault();
-  reorder(frameId, event.key === "ArrowLeft" ? -1 : 1);
-}
-
 function addFrame() {
-  void animation.mutate({ type: "add_blank" });
+  void animation.addFrameFromImage();
 }
 
 function duplicate() {
@@ -118,10 +112,15 @@ function remove() {
     :class="{
       open,
       resizing,
+      'is-minimal': minimal,
       'is-compact': !expanded,
       'is-expanded': expanded,
     }"
-    :style="open ? { height: `${height}px` } : undefined"
+    :style="
+      open
+        ? { height: `${height}px`, '--timeline-height': `${height}px` }
+        : undefined
+    "
     aria-label="Frame timeline"
   >
     <div v-if="!open" class="timeline-closed">
@@ -199,7 +198,7 @@ function remove() {
         </label>
 
         <div class="timeline-actions">
-          <button aria-label="Add blank frame" @click="addFrame">
+          <button aria-label="Add frame from image" @click="addFrame">
             <PhPlus />
           </button>
           <button aria-label="Duplicate selected frame" @click="duplicate">
@@ -217,6 +216,18 @@ function remove() {
               •••
             </button>
             <div v-if="overflowOpen" role="menu">
+              <button
+                role="menuitem"
+                @click="reorder(animation.selectedFrameId.value, -1)"
+              >
+                <PhCaretLeft /> Move earlier
+              </button>
+              <button
+                role="menuitem"
+                @click="reorder(animation.selectedFrameId.value, 1)"
+              >
+                <PhCaretRight /> Move later
+              </button>
               <button role="menuitem" @click="duplicate">
                 <PhCopy /> Duplicate
               </button>
@@ -229,35 +240,66 @@ function remove() {
       </div>
 
       <ol ref="strip" class="frame-strip" aria-label="Ordered frames">
-        <li v-for="(frame, index) in animation.frames.value" :key="frame.id">
-          <button
-            class="frame-card"
-            :class="{
-              'is-playhead':
-                animation.playing.value &&
-                frame.id === animation.selectedFrameId.value,
-            }"
-            :aria-label="`Frame ${index + 1}, ${frame.duration_ms} milliseconds`"
-            :aria-current="
-              frame.id === animation.selectedFrameId.value ? 'true' : undefined
-            "
-            @click="animation.select(frame.id)"
-            @keydown="frameKeydown($event, frame.id)"
-          >
-            <img :src="animation.thumbnails.value[frame.id]" alt="" />
-            <span>Frame {{ index + 1 }}</span>
+        <li
+          v-for="(frame, index) in animation.frames.value"
+          :key="frame.id"
+          :class="{ 'is-dragging': draggedFrameId === frame.id }"
+          draggable="true"
+          @dragstart="dragStart($event, frame.id)"
+          @dragend="draggedFrameId = ''"
+          @dragover.prevent
+          @drop="dropFrame($event, index)"
+          @contextmenu="openFrameMenu($event, frame.id)"
+        >
+          <div class="frame-card">
+            <button
+              class="frame-select"
+              :class="{
+                'is-playhead':
+                  animation.playing.value &&
+                  frame.id === animation.selectedFrameId.value,
+              }"
+              :aria-label="`${frame.name ?? `Frame ${index + 1}`}, ${frame.duration_ms} milliseconds`"
+              :aria-current="
+                frame.id === animation.selectedFrameId.value
+                  ? 'true'
+                  : undefined
+              "
+              @click="animation.select(frame.id)"
+            >
+              <img
+                :src="animation.thumbnails.value[frame.id]"
+                alt=""
+                draggable="false"
+              />
+            </button>
+            <input
+              v-if="editingFrameId === frame.id"
+              v-model="editName"
+              :data-frame-name="frame.id"
+              aria-label="Frame name"
+              @click.stop
+              @keydown.enter.prevent="finishRename(frame.id)"
+              @keydown.esc.prevent="editingFrameId = ''"
+              @blur="finishRename(frame.id)"
+            />
+            <span v-else>{{ frame.name ?? `Frame ${index + 1}` }}</span>
             <small>{{ frame.duration_ms }} ms</small>
-          </button>
-        </li>
-        <li>
-          <button class="add-frame-card" @click="addFrame">
-            <PhPlus /><span>Add Frame</span>
-          </button>
+          </div>
+          <div
+            v-if="contextFrameId === frame.id"
+            class="frame-context"
+            role="menu"
+          >
+            <button role="menuitem" @click="beginRename(frame.id)">
+              Rename
+            </button>
+            <button role="menuitem" @click="deleteFrame(frame.id)">
+              Delete
+            </button>
+          </div>
         </li>
       </ol>
-      <p class="timeline-keyboard-hint">
-        Shift + ←/→ reorders the focused frame
-      </p>
     </template>
   </section>
 </template>

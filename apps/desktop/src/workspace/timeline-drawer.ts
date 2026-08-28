@@ -25,7 +25,6 @@ function saveHeight(value: number) {
 }
 
 export function useTimelineDrawer() {
-  const open = ref(false);
   const resizing = ref(false);
   const height = ref(savedHeight());
   const windowHeight = ref(window.innerHeight);
@@ -33,6 +32,7 @@ export function useTimelineDrawer() {
   const maximumHeight = computed(() =>
     Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, windowHeight.value - 300)),
   );
+  const minimal = computed(() => height.value <= 145);
   const expanded = computed(() => height.value >= 235);
 
   function clampHeight(value: number) {
@@ -87,10 +87,10 @@ export function useTimelineDrawer() {
   });
 
   return {
-    open,
     resizing,
     height,
     maximumHeight,
+    minimal,
     expanded,
     minimumHeight: MIN_HEIGHT,
     startResize,

@@ -259,7 +259,14 @@ export type FrameMutationAction =
   | { type: "duplicate"; frame_id: string; position?: number }
   | { type: "delete"; frame_id: string }
   | { type: "reorder"; frame_id: string; position: number }
-  | { type: "set_duration"; frame_id: string; duration_ms: number };
+  | { type: "set_duration"; frame_id: string; duration_ms: number }
+  | { type: "rename"; frame_id: string; name: string }
+  | {
+      type: "import_frame";
+      file: string;
+      position?: number;
+      duration_ms?: number;
+    };
 
 export const mutateFrames = (
   start: string,

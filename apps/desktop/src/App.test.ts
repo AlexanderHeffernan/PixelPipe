@@ -24,6 +24,7 @@ const tauriWindow = vi.hoisted(() => ({
 vi.mock("./services/dialogs", () => ({
   chooseProjectFolder: vi.fn(async () => dialogs.project),
   chooseReferenceImage: vi.fn(async () => "/tmp/source.png"),
+  chooseFrameImage: vi.fn(async () => "/tmp/next-pose.png"),
   chooseReferenceImages: vi.fn(async () => dialogs.references),
   chooseExportFile: vi.fn(async () => "/exports/custom-medic.webp"),
   confirmDeleteAsset: vi.fn(async () => true),
@@ -125,6 +126,16 @@ describe("deterministic workstation", () => {
   });
 
   it("keeps the timeline absent until a one-frame asset becomes an animation", async () => {
+    let imported = false;
+    const animated = structuredClone(revisionView);
+    animated.metadata.frames.push({ id: "frame-0002", duration_ms: 100 });
+    vi.mocked(api.mutateFrames).mockImplementation(async () => {
+      imported = true;
+      return commit;
+    });
+    vi.mocked(api.loadRevision).mockImplementation(async () =>
+      structuredClone(imported ? animated : revisionView),
+    );
     await openWorkstation();
     await enterCanvas();
     expect(
@@ -139,16 +150,22 @@ describe("deterministic workstation", () => {
       "/game",
       "field-medic",
       "r000001",
-      { type: "add_blank" },
+      {
+        type: "import_frame",
+        file: "/tmp/next-pose.png",
+        position: 1,
+      },
       "user",
     );
     expect(
-      screen.queryByRole("button", { name: "Play animation" }),
+      await screen.findByRole("button", { name: "Play animation" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Open frame timeline" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Animation")).not.toBeInTheDocument();
   });
 
-  it("opens, edits, resizes, and keyboard-reorders stable animation frames", async () => {
+  it("opens, edits, renames, and drag-reorders stable animation frames", async () => {
     const animated = structuredClone(revisionView);
     animated.metadata.frames = [
       { id: "idle-a", duration_ms: 80 },
@@ -193,8 +210,8 @@ describe("deterministic workstation", () => {
     for (let step = 0; step < 8; step += 1)
       await fireEvent.keyDown(resize, { key: "ArrowUp" });
     expect(
-      screen.getByText("Shift + ←/→ reorders the focused frame"),
-    ).toBeVisible();
+      screen.queryByText("Shift + ←/→ reorders the focused frame"),
+    ).not.toBeInTheDocument();
 
     const duration = screen.getByLabelText(
       "Selected frame duration in milliseconds",
@@ -211,7 +228,32 @@ describe("deterministic workstation", () => {
       ),
     );
 
-    await fireEvent.keyDown(second, { key: "ArrowRight", shiftKey: true });
+    const secondItem = second.closest("li")!;
+    await fireEvent.contextMenu(secondItem);
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const name = screen.getByRole("textbox", { name: "Frame name" });
+    await fireEvent.update(name, "Passing pose");
+    await fireEvent.keyDown(name, { key: "Enter" });
+    await waitFor(() =>
+      expect(api.mutateFrames).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "r000001",
+        { type: "rename", frame_id: "idle-b", name: "Passing pose" },
+        "user",
+      ),
+    );
+
+    const transfer = {
+      effectAllowed: "none",
+      setData: vi.fn(),
+      getData: vi.fn(() => "idle-b"),
+    };
+    await fireEvent.dragStart(secondItem, { dataTransfer: transfer });
+    const third = screen
+      .getByRole("button", { name: "Frame 3, 160 milliseconds" })
+      .closest("li")!;
+    await fireEvent.drop(third, { dataTransfer: transfer });
     await waitFor(() =>
       expect(api.mutateFrames).toHaveBeenCalledWith(
         "/game",
@@ -274,7 +316,7 @@ describe("deterministic workstation", () => {
     );
     const strip = screen.getByRole("list", { name: "Ordered frames" });
     expect(strip).toHaveClass("frame-strip");
-    expect(screen.getAllByRole("listitem")).toHaveLength(21);
+    expect(screen.getAllByRole("listitem")).toHaveLength(20);
     expect(
       screen.getByRole("region", { name: "Frame timeline" }),
     ).toBeVisible();
@@ -284,6 +326,34 @@ describe("deterministic workstation", () => {
     expect(timelineCss).toContain("overflow-x: auto");
     expect(timelineCss).toContain("@media (max-width: 760px)");
     expect(timelineCss).toContain("prefers-reduced-motion: reduce");
+  });
+
+  it("plays the selected animation in its asset thumbnail", async () => {
+    vi.useFakeTimers();
+    const animated = structuredClone(revisionView);
+    animated.metadata.frames = [
+      { id: "a", duration_ms: 10 },
+      { id: "b", duration_ms: 10 },
+    ];
+    vi.mocked(api.loadRevision).mockImplementation(
+      async (_root, _asset, revision, frame) => ({
+        ...structuredClone(animated),
+        metadata: {
+          ...structuredClone(animated.metadata),
+          revision: revision ?? "r000001",
+          selected_frame_id: frame ?? "a",
+        },
+        native_png_base64: frame ?? "a",
+      }),
+    );
+    await openWorkstation();
+    await enterCanvas();
+    const thumbnail = document.querySelector<HTMLImageElement>(
+      ".asset-thumbnail img",
+    )!;
+    await waitFor(() => expect(thumbnail.src).toContain("base64,a"));
+    await vi.advanceTimersByTimeAsync(11);
+    await waitFor(() => expect(thumbnail.src).toContain("base64,b"));
   });
 
   it("plays stored frame durations, stops at loop-off end, and pauses before editing", async () => {
