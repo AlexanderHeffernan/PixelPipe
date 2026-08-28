@@ -68,6 +68,7 @@ fn folder_to_export_uses_builtin_pixelization_defaults() {
     assert!(exported.metadata.is_file());
     assert_eq!(&fs::read(&exported.png).unwrap()[..8], b"\x89PNG\r\n\x1a\n");
 
+    unlink_asset(game.path(), "field-medic");
     let named_png = export_asset_file(ExportAssetFile {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
@@ -80,6 +81,7 @@ fn folder_to_export_uses_builtin_pixelization_defaults() {
         fs::read(named_png.file).unwrap(),
         fs::read(exported.png).unwrap()
     );
+    assert_project_path(game.path(), "field-medic", "Medic Final.png");
 
     let named_webp = export_asset_file(ExportAssetFile {
         start: game.path().to_path_buf(),
@@ -113,6 +115,18 @@ fn folder_to_export_uses_builtin_pixelization_defaults() {
         manifest.project_file_sha256.as_deref(),
         Some(pixelate_core::sha256_hex(&fs::read(linked).unwrap()).as_str())
     );
+}
+
+fn unlink_asset(root: &Path, asset: &str) {
+    ProjectStore::discover(root)
+        .unwrap()
+        .unlink_asset_project_path(asset)
+        .unwrap();
+}
+
+fn assert_project_path(root: &Path, asset: &str, expected: &str) {
+    let manifest = ProjectStore::discover(root).unwrap().asset(asset).unwrap();
+    assert_eq!(manifest.project_path.as_deref(), Some(expected));
 }
 
 fn write_reference(path: &Path) {

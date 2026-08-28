@@ -3,13 +3,13 @@ use std::fs;
 use pixelate_app::{
     AdoptPixelArt, AdoptProjectImage, BrowseProject, CreateFolder, DeleteAsset, DeleteFolder,
     DeleteProjectImage, ExportAsset, ExportAssetFile, ImportReference, InitializeAsset,
-    InspectRevision, MoveAsset, MoveFolder, OpenProject, PreviewRevision, RelinkAsset, RenameAsset,
-    SetProjectImageIgnored, UpdateAssetBrief, UpdateAssetSource, UpdateLinkedSource,
-    adopt_pixel_art, adopt_project_image, browse_project, create_folder, delete_asset,
-    delete_folder, delete_project_image, export_asset, export_asset_file, import_reference,
-    initialize_asset, inspect_revision, move_asset, move_folder, open_project, preview_revision,
-    relink_asset, rename_asset, set_project_image_ignored, update_asset_brief, update_asset_source,
-    update_linked_source,
+    InspectRevision, MoveAsset, MoveFolder, MoveProjectImage, OpenProject, PreviewRevision,
+    RelinkAsset, RenameAsset, SetProjectImageIgnored, UpdateAssetBrief, UpdateAssetSource,
+    UpdateLinkedSource, adopt_pixel_art, adopt_project_image, browse_project, create_folder,
+    delete_asset, delete_folder, delete_project_image, export_asset, export_asset_file,
+    import_reference, initialize_asset, inspect_revision, move_asset, move_folder,
+    move_project_image, open_project, preview_revision, relink_asset, rename_asset,
+    set_project_image_ignored, update_asset_brief, update_asset_source, update_linked_source,
 };
 use pixelate_project::ProjectStore;
 use serde_json::json;
@@ -106,6 +106,18 @@ fn run_project(command: ProjectCommand) -> Result<serde_json::Value, Box<dyn std
                 path: path.clone(),
             })?;
             Ok(json!({ "ok": true, "path": path, "deleted": true }))
+        }
+        ProjectCommand::MoveImage {
+            root,
+            source,
+            destination,
+        } => {
+            move_project_image(MoveProjectImage {
+                start: root,
+                source: source.clone(),
+                destination: destination.clone(),
+            })?;
+            Ok(json!({ "ok": true, "source": source, "destination": destination }))
         }
         ProjectCommand::HideImage { root, path } => {
             set_project_image_ignored(SetProjectImageIgnored {

@@ -94,6 +94,13 @@ pub struct DeleteProjectImage {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct MoveProjectImage {
+    pub start: PathBuf,
+    pub source: String,
+    pub destination: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct MoveAsset {
     pub start: PathBuf,
     pub asset: String,
@@ -338,6 +345,20 @@ pub fn delete_folder(request: DeleteFolder) -> Result<(), AppError> {
 pub fn delete_project_image(request: DeleteProjectImage) -> Result<(), AppError> {
     let DeleteProjectImage { start, path } = request;
     Ok(ProjectStore::discover(&start)?.delete_project_image(&path)?)
+}
+/// Moves an unmanaged project image without changing or creating Pixelate history.
+///
+/// # Errors
+///
+/// Returns an error when the source is managed, or either path is unsafe, missing, or occupied.
+pub fn move_project_image(request: MoveProjectImage) -> Result<(), AppError> {
+    let MoveProjectImage {
+        start,
+        source,
+        destination,
+    } = request;
+    let store = ProjectStore::discover(&start)?;
+    Ok(store.move_project_image(&source, &destination)?)
 }
 /// Moves a linked asset's project image without changing its stable identity.
 ///

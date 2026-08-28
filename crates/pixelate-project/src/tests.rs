@@ -205,6 +205,33 @@ fn links_and_moves_assets_without_changing_identity_or_history_path() {
 }
 
 #[test]
+fn moves_unmanaged_project_images_safely_and_refuses_collisions() {
+    let temp = tempdir().expect("tempdir");
+    let store = ProjectStore::init(temp.path(), "Fixture Game").expect("init");
+    fs::create_dir_all(temp.path().join("art/units")).expect("folders");
+    fs::write(temp.path().join("concept.png"), b"concept").expect("image");
+
+    store
+        .move_project_image("concept.png", "art/units/concept.png")
+        .expect("move image");
+    assert!(!temp.path().join("concept.png").exists());
+    assert_eq!(
+        fs::read(temp.path().join("art/units/concept.png")).expect("moved image"),
+        b"concept"
+    );
+
+    fs::write(temp.path().join("other.png"), b"other").expect("other");
+    assert!(matches!(
+        store.move_project_image("other.png", "art/units/concept.png"),
+        Err(ProjectError::ProjectPathExists(_))
+    ));
+    assert!(matches!(
+        store.move_project_image("other.png", "../outside.png"),
+        Err(ProjectError::InvalidProjectPath(_))
+    ));
+}
+
+#[test]
 fn folder_moves_update_all_linked_manifests_and_refuse_collisions() {
     let temp = tempdir().expect("tempdir");
     let store = ProjectStore::init(temp.path(), "Fixture Game").expect("init");

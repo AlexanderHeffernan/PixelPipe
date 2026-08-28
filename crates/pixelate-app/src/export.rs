@@ -153,23 +153,35 @@ fn refresh_link_hash(
     destination: &PathBuf,
 ) -> Result<(), AppError> {
     let manifest = store.asset(asset)?;
-    let Some(path) = manifest.project_path else {
-        return Ok(());
-    };
-    let linked = store.root().join(&path);
-    if !linked.is_file() {
-        return Ok(());
-    }
-    let linked = std::fs::canonicalize(&linked).map_err(|source| AppError::Read {
-        path: linked,
-        source,
-    })?;
     let destination = std::fs::canonicalize(destination).map_err(|source| AppError::Read {
         path: destination.clone(),
         source,
     })?;
-    if linked == destination {
-        store.link_asset_project_path(asset, &path)?;
+    let root = std::fs::canonicalize(store.root()).map_err(|source| AppError::Read {
+        path: store.root().to_path_buf(),
+        source,
+    })?;
+    if let Some(path) = manifest.project_path {
+        let linked = store.root().join(&path);
+        if linked.is_file()
+            && std::fs::canonicalize(&linked).map_err(|source| AppError::Read {
+                path: linked,
+                source,
+            })? == destination
+        {
+            store.link_asset_project_path(asset, &path)?;
+        }
+    } else if let Ok(relative) = destination.strip_prefix(&root)
+        && let Some(path) = relative.to_str()
+    {
+        match store.link_asset_project_path(asset, path) {
+            Ok(_)
+            | Err(
+                pixelate_project::ProjectError::InvalidProjectPath(_)
+                | pixelate_project::ProjectError::ReservedProjectPath(_),
+            ) => {}
+            Err(error) => return Err(error.into()),
+        }
     }
     Ok(())
 }

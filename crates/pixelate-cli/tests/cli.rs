@@ -120,6 +120,7 @@ fn guide_documents_every_agent_workflow_family() {
         "rename_or_move_real_folder",
         "delete_empty_real_folder",
         "delete_project_image",
+        "move_unmanaged_project_image",
         "move_linked_asset",
         "update_brief",
         "rename",
@@ -173,11 +174,21 @@ fn catalog_and_real_folder_routes_share_the_application_workflow() {
     assert!(discovered["catalog"][0].get("asset_id").is_none());
     run(&[
         "project",
+        "move-image",
+        "--root",
+        root,
+        "--source",
+        "art/hero.png",
+        "--destination",
+        "art/concept.png",
+    ]);
+    run(&[
+        "project",
         "hide-image",
         "--root",
         root,
         "--path",
-        "art/hero.png",
+        "art/concept.png",
     ]);
     assert!(
         run(&["project", "catalog", "--root", root])["catalog"]
@@ -191,7 +202,7 @@ fn catalog_and_real_folder_routes_share_the_application_workflow() {
         "--root",
         root,
         "--path",
-        "art/hero.png",
+        "art/concept.png",
     ]);
 
     run(&[
@@ -200,7 +211,7 @@ fn catalog_and_real_folder_routes_share_the_application_workflow() {
         "--root",
         root,
         "--path",
-        "art/hero.png",
+        "art/concept.png",
         "--asset",
         "hero",
         "--brief",

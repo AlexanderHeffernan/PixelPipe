@@ -88,6 +88,15 @@ pub(crate) enum ProjectCommand {
         #[arg(long)]
         path: String,
     },
+    /// Move one unmanaged project image without adopting it into Pixelate.
+    MoveImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        destination: String,
+    },
     HideImage {
         #[arg(long, default_value = ".")]
         root: PathBuf,

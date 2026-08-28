@@ -2,9 +2,9 @@ use std::{fs, path::Path};
 
 use pixelate_app::{
     AdoptPixelArt, AdoptProjectImage, BrowseProject, DeleteProjectImage, MoveAsset,
-    ProjectFileStatus, SetProjectImageIgnored, UpdateLinkedSource, adopt_pixel_art,
-    adopt_project_image, browse_project, delete_project_image, move_asset,
-    set_project_image_ignored, update_linked_source,
+    MoveProjectImage, ProjectFileStatus, SetProjectImageIgnored, UpdateLinkedSource,
+    adopt_pixel_art, adopt_project_image, browse_project, delete_project_image, move_asset,
+    move_project_image, set_project_image_ignored, update_linked_source,
 };
 use pixelate_project::ProjectStore;
 
@@ -154,6 +154,39 @@ fn moving_a_legacy_pathless_asset_plans_its_real_folder_location() {
     .expect("move");
     assert_eq!(moved.project_path.as_deref(), Some("sprites/hero.png"));
     assert!(!game.path().join("sprites/hero.png").exists());
+}
+
+#[test]
+fn moving_an_unmanaged_image_refuses_managed_sources() {
+    let game = tempfile::tempdir().expect("game");
+    ProjectStore::init(game.path(), "Fixture").expect("project");
+    fs::create_dir(game.path().join("sprites")).expect("folder");
+    write_png(&game.path().join("concept.png"), [40, 80, 120, 255]);
+
+    move_project_image(MoveProjectImage {
+        start: game.path().to_path_buf(),
+        source: "concept.png".to_owned(),
+        destination: "sprites/concept.png".to_owned(),
+    })
+    .expect("move unmanaged");
+    assert!(game.path().join("sprites/concept.png").is_file());
+
+    adopt_pixel_art(AdoptPixelArt {
+        start: game.path().to_path_buf(),
+        path: "sprites/concept.png".to_owned(),
+        asset: "concept".to_owned(),
+        brief: "Concept".to_owned(),
+        actor: "test".to_owned(),
+    })
+    .expect("adopt");
+    assert!(
+        move_project_image(MoveProjectImage {
+            start: game.path().to_path_buf(),
+            source: "sprites/concept.png".to_owned(),
+            destination: "concept.png".to_owned(),
+        })
+        .is_err()
+    );
 }
 
 fn write_png(path: &Path, color: [u8; 4]) {

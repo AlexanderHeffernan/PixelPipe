@@ -229,6 +229,53 @@ impl ProjectStore {
         fs::remove_file(&target).map_err(|source| io_at(&target, source))
     }
 
+    /// Moves one supported project image without assigning it a Pixelate identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for unsafe, missing, escaped, occupied, or unsupported paths.
+    pub fn move_project_image(&self, source: &str, destination: &str) -> Result<(), ProjectError> {
+        let source_relative = self.validate_project_file(source)?;
+        let destination_relative = validate_relative(destination)?;
+        if !is_supported_image(&destination_relative) {
+            return Err(ProjectError::InvalidProjectPath(destination.to_owned()));
+        }
+        let source_full = self.root.join(&source_relative);
+        let destination_full = self.root.join(&destination_relative);
+        self.ensure_new_target(&destination_full, destination)?;
+        let _lock = self.lock()?;
+        if let Some(asset) = self
+            .assets()?
+            .into_iter()
+            .find(|asset| asset.project_path.as_deref() == Some(source))
+        {
+            return Err(ProjectError::AssetNotReady {
+                asset: asset.id,
+                operation: "project image move",
+                reason: "use the managed asset move route",
+            });
+        }
+        let original = self.manifest()?;
+        let mut updated = original.clone();
+        for path in &mut updated.ignored_project_images {
+            if path == source {
+                *path = path_string(&destination_relative);
+            }
+        }
+        fs::rename(&source_full, &destination_full)
+            .map_err(|source_error| io_at(&destination_full, source_error))?;
+        if updated != original
+            && let Err(error) = atomic_write(
+                &self.root.join(".pixelate/project.toml"),
+                toml::to_string_pretty(&updated)?.as_bytes(),
+            )
+        {
+            let _ = fs::rename(&destination_full, &source_full);
+            return Err(error);
+        }
+        Ok(())
+    }
+
     /// Moves a linked project image and updates its authoritative manifest link.
     ///
     /// # Errors

@@ -2,9 +2,10 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use pixelate_app::{
     AdoptPixelArt, AdoptProjectImage, BrowseProject, CommitComposition, ConvertSelectedReference,
     CreateFolder, DeleteAsset, DeleteFolder, DeleteProjectImage, ExportAsset, ExportAssetFile,
-    ImportReference, InitializeAsset, LoadProjectImage, MoveAsset, MoveFolder, OpenProject,
-    PreviewComposition, PreviewSelectedReference, ProjectBrowser, RasterInspection, RelinkAsset,
-    RenameAsset, RevisionResult, SetProjectImageIgnored, UpdateAssetBrief, UpdateLinkedSource,
+    ImportReference, InitializeAsset, LoadProjectImage, MoveAsset, MoveFolder, MoveProjectImage,
+    OpenProject, PreviewComposition, PreviewSelectedReference, ProjectBrowser, RasterInspection,
+    RelinkAsset, RenameAsset, RevisionResult, SetProjectImageIgnored, UpdateAssetBrief,
+    UpdateLinkedSource,
 };
 use serde::Serialize;
 
@@ -93,6 +94,11 @@ pub(crate) fn delete_folder(request: DeleteFolder) -> CommandResult<()> {
 #[tauri::command]
 pub(crate) fn delete_project_image(request: DeleteProjectImage) -> CommandResult<()> {
     pixelate_app::delete_project_image(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+pub(crate) fn move_project_image(request: MoveProjectImage) -> CommandResult<()> {
+    pixelate_app::move_project_image(request).map_err(|error| command_error(&error))
 }
 
 #[tauri::command]
