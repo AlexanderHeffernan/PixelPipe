@@ -34,11 +34,13 @@ The Assets browser discovers supported PNG, JPEG, and WebP artwork in the game
 project's real folder structure while honoring ignore rules and excluding
 internal, dependency, and build folders. Existing images open in a large preview
 where you can hide them, use them as references, or import them exactly as pixel
-art without rewriting the project file. Reference sources leave the browser once
-adopted and can be restored from Hidden images. Managed assets keep stable IDs
-and immutable history when images or containing folders move. Legacy pathless
-assets appear at the project root as unexported assets; new assets default to
-`<asset-id>.png` unless an explicit project-relative output path is supplied.
+art without rewriting the project file. Exact import is offered only for images
+up to 256×256 that pass Pixelate's deterministic 256-colour palette preflight;
+other images remain available for reference conversion. Reference sources leave
+the browser once adopted and can be restored from Hidden images. Managed assets
+keep stable IDs and immutable history when images or containing folders move.
+Legacy pathless assets appear at the project root as unexported assets; new assets
+default to `<asset-id>.png` unless an explicit project-relative output path is supplied.
 Folders start collapsed; folders containing managed assets and managed files are
 ordered ahead of folders that contain only unmanaged images. Export defaults to
 the asset's linked project path, including the project root for legacy assets.
@@ -87,8 +89,10 @@ refine pixels or colours, export, and visually verify its work without reading
 internal `.pixelate` files.
 
 Use `pixelate project catalog --root .` to inspect discovered and managed project
-images, including missing or externally modified links. Folder operations and
-visibility, and adoption are available through
+images, including missing or externally modified links. Inspect one selected
+image lazily with `pixelate project inspect-image --root . --path <path>` to get
+its dimensions and exact-import eligibility. Folder operations, visibility, and
+adoption are available through
 `project hide-image|show-image|move-image|create-folder|move-folder|delete-folder`
 and `asset adopt|adopt-pixel-art|relink|move|update-linked-source`; all refuse
 unsafe paths and silent overwrites.

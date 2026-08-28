@@ -70,7 +70,9 @@ JPEG, and WebP files have no Pixelate identity until explicit adoption imports a
 verified internal source copy. Reference sources can be hidden through a reversible
 project-level discovery preference; this is not a virtual asset hierarchy. Exact
 pixel-art adoption commits a lossless indexed revision and begins at editing.
-Discovery honors project ignore rules, excludes
+Selected discovered images are decoded lazily; exact adoption is offered only
+when the core engine accepts an image up to 256×256 within its 256-colour palette
+limit. Discovery honors project ignore rules, excludes
 internal/dependency/output folders, and does not follow symlink escapes.
 
 Real folder creation, rename/move, managed and unmanaged image moves, and
@@ -89,7 +91,7 @@ Every desktop capability must use the same application use case as a CLI route.
 | Capability | CLI |
 | --- | --- |
 | Project discovery | `init`, `project show` |
-| Project image catalog, visibility, move, deletion, and real folders | `project catalog`, `hide-image`, `show-image`, `move-image`, `delete-image`, `create-folder`, `move-folder`, `delete-folder` |
+| Project image catalog, selected-image inspection, visibility, move, deletion, and real folders | `project catalog`, `inspect-image`, `hide-image`, `show-image`, `move-image`, `delete-image`, `create-folder`, `move-folder`, `delete-folder` |
 | Asset lifecycle and brief | `asset list`, `init`, `inspect`, `set-brief`, `rename`, `delete` |
 | Reference/exact-pixel adoption, relink, move, external update | `asset adopt`, `adopt-pixel-art`, `relink`, `move`, `update-linked-source` |
 | Source import/replacement | `reference import`, `asset update-source` |
