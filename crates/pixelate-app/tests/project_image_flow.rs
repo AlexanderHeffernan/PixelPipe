@@ -11,8 +11,8 @@ fn selected_image_inspection_uses_exact_import_rules_and_safe_discovery() {
         &game.path().join("sprite.png"),
         16,
         16,
-        &(0..256)
-            .flat_map(|index| [index.min(254) as u8, 0, 0, 255])
+        &(0_u8..=255)
+            .flat_map(|index| [index.min(254), 0, 0, 255])
             .collect::<Vec<_>>(),
     );
 
@@ -44,10 +44,11 @@ fn exact_import_is_quietly_unavailable_for_large_or_over_palette_images() {
         1,
         &[20, 40, 60, 255].repeat(257),
     );
-    let many_colors = (0..512)
+    let many_colors = (0_u16..512)
         .flat_map(|index| {
             let index = index.min(256);
-            [(index & 0xff) as u8, ((index >> 8) & 0xff) as u8, 0, 255]
+            let [low, high] = index.to_le_bytes();
+            [low, high, 0, 255]
         })
         .collect::<Vec<_>>();
     write_png(&game.path().join("many-colors.png"), 256, 2, &many_colors);
