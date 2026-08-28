@@ -53,6 +53,10 @@ beforeEach(() => {
   tauriWindow.onResized.mockClear();
   vi.spyOn(api, "recentProject").mockResolvedValue(null);
   vi.spyOn(api, "rememberProject").mockResolvedValue();
+  vi.spyOn(api, "cliInstallationStatus").mockResolvedValue({
+    state: "installed",
+    command: "/usr/local/bin/pixelate",
+  });
   vi.spyOn(api, "openProject").mockResolvedValue(structuredClone(project));
   vi.spyOn(api, "browseProject").mockResolvedValue(structuredClone(project));
   vi.spyOn(api, "previewSelectedReference").mockResolvedValue(preview);

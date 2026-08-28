@@ -1,0 +1,88 @@
+use std::{fs, os::unix::fs::symlink};
+
+use tempfile::tempdir;
+
+use super::cli_install::{
+    CliInstallState, inspect_installation, is_pixelate_link, quote, remove_link, replace_link,
+};
+
+#[test]
+fn installs_repairs_and_removes_the_managed_link() {
+    let fixture = tempdir().expect("temporary directory");
+    let source = fixture.path().join("Pixelate.app/Contents/MacOS/pixelate");
+    fs::create_dir_all(source.parent().expect("app directory")).expect("app directory");
+    fs::write(&source, "cli").expect("CLI");
+    let command = fixture.path().join("bin/pixelate");
+
+    replace_link(&source, &command, None).expect("install CLI link");
+    assert_eq!(fs::read_link(&command).expect("installed target"), source);
+
+    let old = source.with_file_name("old-pixelate");
+    fs::remove_file(&command).expect("remove installed link");
+    symlink(&old, &command).expect("stale link");
+    replace_link(&source, &command, Some(&old)).expect("repair CLI link");
+    assert_eq!(fs::read_link(&command).expect("repaired target"), source);
+
+    remove_link(&command, &source).expect("remove CLI link");
+    assert!(!command.exists());
+}
+
+#[test]
+fn distinguishes_installed_repairable_and_conflicting_commands() {
+    let fixture = tempdir().expect("temporary directory");
+    let app = fixture.path().join("Pixelate.app/Contents/MacOS");
+    fs::create_dir_all(&app).expect("app directory");
+    let source = app.join("pixelate");
+    fs::write(&source, "cli").expect("CLI");
+    let command = fixture.path().join("bin/pixelate");
+    fs::create_dir_all(command.parent().expect("bin directory")).expect("bin directory");
+
+    assert_eq!(
+        inspect_installation(Some(&source), &command).state,
+        CliInstallState::NotInstalled
+    );
+    symlink(&source, &command).expect("installed link");
+    assert_eq!(
+        inspect_installation(Some(&source), &command).state,
+        CliInstallState::Installed
+    );
+
+    fs::remove_file(&command).expect("remove link");
+    symlink(
+        "/Users/alex/Applications/Pixelate.app/Contents/MacOS/pixelate",
+        &command,
+    )
+    .expect("old link");
+    assert_eq!(
+        inspect_installation(Some(&source), &command).state,
+        CliInstallState::NeedsRepair
+    );
+
+    fs::remove_file(&command).expect("remove link");
+    fs::write(&command, "other command").expect("conflicting command");
+    assert_eq!(
+        inspect_installation(Some(&source), &command).state,
+        CliInstallState::Conflict
+    );
+}
+
+#[test]
+fn only_recognizes_cli_links_inside_app_bundles() {
+    assert!(is_pixelate_link(std::path::Path::new(
+        "/Applications/Pixelate.app/Contents/MacOS/pixelate"
+    )));
+    assert!(!is_pixelate_link(std::path::Path::new(
+        "/opt/homebrew/bin/pixelate"
+    )));
+    assert!(!is_pixelate_link(std::path::Path::new(
+        "/Applications/Other.app/Contents/MacOS/pixelate"
+    )));
+}
+
+#[test]
+fn quotes_apostrophes_for_privileged_shell_commands() {
+    assert_eq!(
+        quote(std::path::Path::new("/Applications/Alex's App")),
+        "'/Applications/Alex'\"'\"'s App'"
+    );
+}

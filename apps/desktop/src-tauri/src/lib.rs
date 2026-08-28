@@ -1,6 +1,7 @@
 mod commands;
 
 use commands::{
+    cli_install::{cli_installation_status, install_cli, uninstall_cli},
     preferences::{recent_project, remember_project},
     project::{
         browse_project, commit_composition, convert_selected_reference, delete_asset, export_asset,
@@ -42,6 +43,9 @@ pub fn run() {
             fill_revision,
             set_asset_head,
             remap_revision,
+            cli_installation_status,
+            install_cli,
+            uninstall_cli,
             recent_project,
             remember_project,
             start_terminal,

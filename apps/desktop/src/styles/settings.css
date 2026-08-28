@@ -18,6 +18,10 @@
   background: var(--material-strong);
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
 }
+.settings-content {
+  max-height: min(680px, calc(100vh - 150px));
+  overflow-y: auto;
+}
 .settings-modal > header {
   display: flex;
   align-items: center;
@@ -34,6 +38,14 @@
   display: grid;
   gap: 19px;
   padding: 24px;
+}
+.settings-section + .settings-section {
+  border-top: 1px solid var(--line);
+}
+.settings-section code,
+.update-prompt code {
+  color: rgba(255, 249, 246, 0.92);
+  font-family: "SFMono-Regular", Menlo, monospace;
 }
 .settings-section h2 {
   margin: 0 0 4px;

@@ -1,8 +1,11 @@
+pub(crate) mod cli_install;
 pub(crate) mod preferences;
 pub(crate) mod project;
 pub(crate) mod revisions;
 pub(crate) mod terminal;
 
+#[cfg(all(test, unix))]
+mod cli_install_tests;
 #[cfg(test)]
 mod terminal_tests;
 

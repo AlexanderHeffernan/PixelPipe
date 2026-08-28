@@ -33,7 +33,10 @@ explicit export.
 The macOS app checks for signed updates when it opens and every six hours. An
 available update is always shown before anything is downloaded or installed.
 Open Settings to see the installed version, check manually, install and restart,
-or disable automatic checks.
+or disable automatic checks. Pixelate also offers to install its bundled
+`pixelate` command in `/usr/local/bin` on first launch. The Command line section
+in Settings reports its status and can install, repair, or remove the managed
+link without overwriting an unrelated command.
 
 `apps/desktop` is intentional: it groups the Vue interface and its thin Tauri
 adapter as one application, separate from the reusable Rust crates. Start it

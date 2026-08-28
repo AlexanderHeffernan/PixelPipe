@@ -29,3 +29,6 @@ tauri-plugin-updater.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

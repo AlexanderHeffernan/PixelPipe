@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import CliInstallPrompt from "./cli-install/CliInstallPrompt.vue";
 import AssetWorkspace from "./components/AssetWorkspace.vue";
 import ConversionInspector from "./components/ConversionInspector.vue";
 import ProjectSidebar from "./components/ProjectSidebar.vue";
@@ -60,6 +61,7 @@ onBeforeUnmount(() => {
       {{ workspace.error.value || workspace.notice.value }}
     </div>
     <SettingsModal v-if="settingsOpen" @close="settingsOpen = false" />
+    <CliInstallPrompt />
     <UpdatePrompt />
   </main>
 </template>

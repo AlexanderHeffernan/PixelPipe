@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     env,
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
     sync::Mutex,
 };
 
@@ -11,7 +11,7 @@ use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system}
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-use super::CommandResult;
+use super::{CommandResult, cli_install::bundled_cli_path};
 
 pub(crate) struct TerminalSessions(Mutex<HashMap<String, TerminalSession>>);
 
@@ -57,14 +57,23 @@ pub(crate) fn start_terminal(
         .map_err(|error| error.to_string())?;
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_owned());
     let mut command = CommandBuilder::new(&shell);
-    if env::consts::OS == "macos" {
-        for argument in macos_shell_arguments(Path::new(&shell)) {
+    let path_setup = if env::consts::OS == "macos" {
+        let (arguments, path_setup) = macos_shell_configuration(Path::new(&shell));
+        for argument in arguments {
             command.arg(argument);
         }
-    }
+        path_setup
+    } else {
+        None
+    };
     command.cwd(&cwd);
     command.env("TERM", "xterm-256color");
-    if let Some(path) = terminal_path() {
+    let cli_path = bundled_cli_path();
+    let cli_directory = cli_path.as_deref().and_then(Path::parent);
+    if let Some(directory) = cli_directory {
+        command.env("PIXELATE_CLI_DIR", directory);
+    }
+    if let Some(path) = terminal_path(cli_directory) {
         command.env("PATH", path);
     }
     let child = pair
@@ -75,10 +84,18 @@ pub(crate) fn start_terminal(
         .master
         .try_clone_reader()
         .map_err(|error| error.to_string())?;
-    let writer = pair
+    let mut writer = pair
         .master
         .take_writer()
         .map_err(|error| error.to_string())?;
+    if cli_directory.is_some()
+        && let Some(setup) = path_setup
+    {
+        writer
+            .write_all(setup.as_bytes())
+            .and_then(|()| writer.flush())
+            .map_err(|error| error.to_string())?;
+    }
     let event_session = session.clone();
     std::thread::spawn(move || {
         let mut buffer = [0_u8; 8192];
@@ -106,27 +123,23 @@ pub(crate) fn start_terminal(
     Ok(())
 }
 
-pub(super) fn macos_shell_arguments(shell: &Path) -> &'static [&'static str] {
+pub(super) fn macos_shell_configuration(
+    shell: &Path,
+) -> (&'static [&'static str], Option<&'static str>) {
+    const RESTORE_CLI_PATH: &str =
+        "export PATH=\"$PIXELATE_CLI_DIR:$PATH\"; printf '\\033[1A\\033[2K\\r'\n";
     match shell.file_name().and_then(|name| name.to_str()) {
-        Some("zsh") => &["-l", "-i"],
-        Some("bash") => &["--login", "-i"],
-        _ => &[],
+        Some("zsh") => (&["-l", "-i"], Some(RESTORE_CLI_PATH)),
+        Some("bash") => (&["--login", "-i"], Some(RESTORE_CLI_PATH)),
+        _ => (&[], None),
     }
 }
 
-fn terminal_path() -> Option<String> {
-    let mut paths = Vec::new();
-    if let Some(directory) = env::current_exe()
-        .ok()
-        .and_then(|executable| executable.parent().map(PathBuf::from))
-        .filter(|directory| {
-            directory
-                .join(format!("pixelate{}", env::consts::EXE_SUFFIX))
-                .is_file()
-        })
-    {
-        paths.push(directory);
-    }
+fn terminal_path(cli_directory: Option<&Path>) -> Option<String> {
+    let mut paths = cli_directory
+        .into_iter()
+        .map(Path::to_path_buf)
+        .collect::<Vec<_>>();
     if let Some(path) = env::var_os("PATH") {
         paths.extend(env::split_paths(&path));
     }

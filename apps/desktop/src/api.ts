@@ -137,6 +137,25 @@ export const recentProject = () => invoke<string | null>("recent_project");
 export const rememberProject = (path: string) =>
   invoke<void>("remember_project", { path });
 
+export type CliInstallState =
+  | "installed"
+  | "not_installed"
+  | "needs_repair"
+  | "conflict"
+  | "unavailable";
+
+export interface CliInstallStatus {
+  state: CliInstallState;
+  command: string;
+}
+
+export const cliInstallationStatus = () =>
+  invoke<CliInstallStatus>("cli_installation_status");
+
+export const installCli = () => invoke<CliInstallStatus>("install_cli");
+
+export const uninstallCli = () => invoke<CliInstallStatus>("uninstall_cli");
+
 export const startTerminal = (
   session: string,
   cwd: string,
