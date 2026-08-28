@@ -187,6 +187,41 @@ impl ProjectStore {
         Ok(asset)
     }
 
+    /// Assigns a future project image location without creating or overwriting the file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the path is unsafe, unsupported, already claimed, or cannot be stored.
+    pub fn plan_asset_project_path(
+        &self,
+        id: &str,
+        project_path: &str,
+    ) -> Result<AssetManifest, ProjectError> {
+        let relative = crate::catalog::validate_relative(project_path)?;
+        if !crate::catalog::is_supported_image(&relative) {
+            return Err(ProjectError::InvalidProjectPath(project_path.to_owned()));
+        }
+        let path = path_string(&relative);
+        let target = self.root.join(&relative);
+        self.ensure_contained_parent(&target, &path)?;
+        if target.exists() {
+            return Err(ProjectError::ProjectPathExists(path));
+        }
+        let _lock = self.lock()?;
+        if self
+            .assets()?
+            .iter()
+            .any(|asset| asset.id != id && asset.project_path.as_deref() == Some(path.as_str()))
+        {
+            return Err(ProjectError::ProjectPathExists(path));
+        }
+        let mut asset = self.asset(id)?;
+        asset.project_path = Some(path);
+        asset.project_file_sha256 = None;
+        self.write_asset_manifest(&asset)?;
+        Ok(asset)
+    }
+
     /// Clears an asset's project-file link while retaining Pixelate history.
     ///
     /// # Errors

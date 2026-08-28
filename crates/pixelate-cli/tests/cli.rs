@@ -110,7 +110,10 @@ fn guide_documents_every_agent_workflow_family() {
         "list",
         "show_project",
         "project_catalog",
-        "adopt_project_image",
+        "adopt_reference_image",
+        "adopt_existing_pixel_art",
+        "hide_project_image",
+        "restore_project_image",
         "relink_project_image",
         "accept_external_image_change",
         "create_real_folder",
@@ -167,6 +170,28 @@ fn catalog_and_real_folder_routes_share_the_application_workflow() {
     let discovered = run(&["project", "catalog", "--root", root]);
     assert_eq!(discovered["catalog"][0]["path"], "art/hero.png");
     assert!(discovered["catalog"][0].get("asset_id").is_none());
+    run(&[
+        "project",
+        "hide-image",
+        "--root",
+        root,
+        "--path",
+        "art/hero.png",
+    ]);
+    assert!(
+        run(&["project", "catalog", "--root", root])["catalog"]
+            .as_array()
+            .expect("catalog")
+            .is_empty()
+    );
+    run(&[
+        "project",
+        "show-image",
+        "--root",
+        root,
+        "--path",
+        "art/hero.png",
+    ]);
 
     run(&[
         "asset",
@@ -179,6 +204,8 @@ fn catalog_and_real_folder_routes_share_the_application_workflow() {
         "hero",
         "--brief",
         "Hero",
+        "--destination",
+        "art/hero-pixel.png",
     ]);
     run(&[
         "project",
@@ -191,8 +218,9 @@ fn catalog_and_real_folder_routes_share_the_application_workflow() {
         "sprites",
     ]);
     let adopted = run(&["project", "catalog", "--root", root]);
-    assert_eq!(adopted["catalog"][0]["path"], "sprites/hero.png");
+    assert_eq!(adopted["catalog"][0]["path"], "sprites/hero-pixel.png");
     assert_eq!(adopted["catalog"][0]["asset_id"], "hero");
+    assert_eq!(adopted["catalog"][0]["status"], "unexported");
 }
 
 fn write_fixture_png(fixture_path: &Path, output_path: &Path) {

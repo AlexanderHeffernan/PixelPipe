@@ -1,13 +1,14 @@
 use std::fs;
 
 use pixelate_app::{
-    AdoptProjectImage, BrowseProject, CreateFolder, DeleteAsset, DeleteFolder, ExportAsset,
-    ExportAssetFile, ImportReference, InitializeAsset, InspectRevision, MoveAsset, MoveFolder,
-    OpenProject, PreviewRevision, RelinkAsset, RenameAsset, UpdateAssetBrief, UpdateAssetSource,
-    UpdateLinkedSource, adopt_project_image, browse_project, create_folder, delete_asset,
-    delete_folder, export_asset, export_asset_file, import_reference, initialize_asset,
-    inspect_revision, move_asset, move_folder, open_project, preview_revision, relink_asset,
-    rename_asset, update_asset_brief, update_asset_source, update_linked_source,
+    AdoptPixelArt, AdoptProjectImage, BrowseProject, CreateFolder, DeleteAsset, DeleteFolder,
+    ExportAsset, ExportAssetFile, ImportReference, InitializeAsset, InspectRevision, MoveAsset,
+    MoveFolder, OpenProject, PreviewRevision, RelinkAsset, RenameAsset, SetProjectImageIgnored,
+    UpdateAssetBrief, UpdateAssetSource, UpdateLinkedSource, adopt_pixel_art, adopt_project_image,
+    browse_project, create_folder, delete_asset, delete_folder, export_asset, export_asset_file,
+    import_reference, initialize_asset, inspect_revision, move_asset, move_folder, open_project,
+    preview_revision, relink_asset, rename_asset, set_project_image_ignored, update_asset_brief,
+    update_asset_source, update_linked_source,
 };
 use pixelate_project::ProjectStore;
 use serde_json::json;
@@ -98,22 +99,34 @@ fn run_project(command: ProjectCommand) -> Result<serde_json::Value, Box<dyn std
             })?;
             Ok(json!({ "ok": true, "path": path, "deleted": true }))
         }
+        ProjectCommand::HideImage { root, path } => {
+            set_project_image_ignored(SetProjectImageIgnored {
+                start: root,
+                path: path.clone(),
+                ignored: true,
+            })?;
+            Ok(json!({ "ok": true, "path": path, "hidden": true }))
+        }
+        ProjectCommand::ShowImage { root, path } => {
+            set_project_image_ignored(SetProjectImageIgnored {
+                start: root,
+                path: path.clone(),
+                ignored: false,
+            })?;
+            Ok(json!({ "ok": true, "path": path, "hidden": false }))
+        }
     }
 }
 
 fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match command {
-        AssetCommand::List { root } => {
-            let store = ProjectStore::discover(&root)?;
-            Ok(json!({
-                "ok": true,
-                "project_root": store.root(),
-                "assets": store.assets()?,
-            }))
-        }
-        AssetCommand::Init { root, asset, brief } => Ok(
-            json!({ "ok": true, "asset": initialize_asset(InitializeAsset { start: root, asset, brief })? }),
-        ),
+        AssetCommand::List { root } => list_assets_command(&root),
+        AssetCommand::Init {
+            root,
+            asset,
+            brief,
+            path,
+        } => initialize_asset_command(root, asset, brief, path),
         AssetCommand::SetBrief { root, asset, brief } => Ok(
             json!({ "ok": true, "asset": update_asset_brief(UpdateAssetBrief { start: root, asset, brief })? }),
         ),
@@ -133,10 +146,15 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
             path,
             asset,
             brief,
-        } => Ok(json!({
-            "ok": true,
-            "asset": adopt_project_image(AdoptProjectImage { start: root, path, asset, brief })?
-        })),
+            destination,
+        } => adopt_reference_command(root, path, asset, brief, destination),
+        AssetCommand::AdoptPixelArt {
+            root,
+            path,
+            asset,
+            brief,
+            actor,
+        } => adopt_pixel_art_command(root, path, asset, brief, actor),
         AssetCommand::Relink { root, asset, path } => Ok(json!({
             "ok": true,
             "asset": relink_asset(RelinkAsset { start: root, asset, path })?
@@ -200,6 +218,59 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
             Ok(json!({ "ok": true, "project_root": store.root(), "asset": store.asset(&asset)? }))
         }
     }
+}
+
+fn list_assets_command(
+    root: &std::path::Path,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let store = ProjectStore::discover(root)?;
+    Ok(json!({
+        "ok": true,
+        "project_root": store.root(),
+        "assets": store.assets()?,
+    }))
+}
+
+fn initialize_asset_command(
+    root: std::path::PathBuf,
+    asset: String,
+    brief: String,
+    project_path: Option<String>,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    Ok(json!({
+        "ok": true,
+        "asset": initialize_asset(InitializeAsset { start: root, asset, brief, project_path })?
+    }))
+}
+
+fn adopt_reference_command(
+    root: std::path::PathBuf,
+    path: String,
+    asset: String,
+    brief: String,
+    destination: String,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    Ok(json!({
+        "ok": true,
+        "asset": adopt_project_image(AdoptProjectImage {
+            start: root, path, asset, brief, destination
+        })?
+    }))
+}
+
+fn adopt_pixel_art_command(
+    root: std::path::PathBuf,
+    path: String,
+    asset: String,
+    brief: String,
+    actor: String,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    Ok(json!({
+        "ok": true,
+        "revision": adopt_pixel_art(AdoptPixelArt {
+            start: root, path, asset, brief, actor
+        })?
+    }))
 }
 
 fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {

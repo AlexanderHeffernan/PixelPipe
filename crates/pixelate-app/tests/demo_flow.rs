@@ -23,6 +23,7 @@ fn folder_to_export_uses_builtin_pixelization_defaults() {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
         brief: "Strict overhead field medic with a compact silhouette".to_owned(),
+        project_path: None,
     })
     .unwrap();
     import_reference(ImportReference {

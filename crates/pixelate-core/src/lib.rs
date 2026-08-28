@@ -11,6 +11,7 @@ mod conversion;
 mod editing;
 mod inspection;
 mod palette_derivation;
+mod pixel_art_import;
 
 pub use color_treatment::{ColorAdjustments, ColorTreatment};
 pub use composition::{CanvasSettings, compose_canvas};
@@ -25,6 +26,7 @@ pub use editing::{
 };
 pub use inspection::{PaletteUsage, RasterBounds, RasterInspection, inspect_raster};
 pub use palette_derivation::derive_source_palette;
+pub use pixel_art_import::import_pixel_art;
 
 pub const PALETTE_SCHEMA: &str = "pixelate.palette/v1";
 pub const RASTER_SCHEMA: &str = "pixelate.raster/v1";
@@ -67,6 +69,7 @@ pub struct Recipe {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
     ConvertReference { settings: ConversionSettings },
+    ImportPixelArt,
     PatchPixels { patch: PixelPatchSet },
     RemapPalette { remap: PaletteRemap },
     ComposeCanvas { settings: CanvasSettings },
@@ -131,6 +134,8 @@ pub enum CoreError {
     InvalidSubjectScale,
     #[error("derived colour count must be between 2 and 64")]
     InvalidDerivedColorCount,
+    #[error("pixel art contains {0} RGBA colours; exact import supports at most 256")]
+    TooManyColors(usize),
     #[error("connected component count {actual} is outside expected range {min}..={max}")]
     ComponentCount { min: u16, max: u16, actual: u16 },
     #[error("pixel patch coordinate ({x}, {y}) is outside raster bounds")]

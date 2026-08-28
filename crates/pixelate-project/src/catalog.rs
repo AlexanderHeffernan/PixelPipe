@@ -5,7 +5,11 @@ use std::{
 
 use ignore::WalkBuilder;
 
-use crate::{AssetManifest, ProjectError, ProjectStore, assets::path_string, persistence::io_at};
+use crate::{
+    AssetManifest, ProjectError, ProjectManifest, ProjectStore,
+    assets::path_string,
+    persistence::{atomic_write, io_at},
+};
 
 const RESERVED: [&str; 9] = [
     ".pixelate",
@@ -25,6 +29,48 @@ pub struct ProjectImage {
 }
 
 impl ProjectStore {
+    /// Hides one discovered image from the project catalog.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the image is unsafe, missing, or the manifest cannot be stored.
+    pub fn ignore_project_image(&self, path: &str) -> Result<ProjectManifest, ProjectError> {
+        self.validate_project_file(path)?;
+        let _lock = self.lock()?;
+        let mut manifest = self.manifest()?;
+        if !manifest
+            .ignored_project_images
+            .iter()
+            .any(|entry| entry == path)
+        {
+            manifest.ignored_project_images.push(path.to_owned());
+            manifest.ignored_project_images.sort();
+            crate::persistence::atomic_write(
+                &self.root.join(".pixelate/project.toml"),
+                toml::to_string_pretty(&manifest)?.as_bytes(),
+            )?;
+        }
+        Ok(manifest)
+    }
+
+    /// Restores one hidden image to project discovery.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the project manifest cannot be read or stored.
+    pub fn unignore_project_image(&self, path: &str) -> Result<ProjectManifest, ProjectError> {
+        let _lock = self.lock()?;
+        let mut manifest = self.manifest()?;
+        manifest
+            .ignored_project_images
+            .retain(|entry| entry != path);
+        crate::persistence::atomic_write(
+            &self.root.join(".pixelate/project.toml"),
+            toml::to_string_pretty(&manifest)?.as_bytes(),
+        )?;
+        Ok(manifest)
+    }
+
     /// Discovers supported project artwork while honoring ignore files and known output folders.
     ///
     /// # Errors
@@ -89,8 +135,16 @@ impl ProjectStore {
         if target.exists() {
             return Err(ProjectError::ProjectPathExists(path.to_owned()));
         }
-        self.ensure_contained_parent(&target, path)?;
-        fs::create_dir(&target).map_err(|source| io_at(&target, source))
+        let mut ancestor = target
+            .parent()
+            .ok_or_else(|| ProjectError::InvalidProjectPath(path.to_owned()))?;
+        while !ancestor.exists() {
+            ancestor = ancestor
+                .parent()
+                .ok_or_else(|| ProjectError::InvalidProjectPath(path.to_owned()))?;
+        }
+        self.ensure_contained_existing(ancestor, path)?;
+        fs::create_dir_all(&target).map_err(|source| io_at(&target, source))
     }
 
     /// Deletes one empty real project folder. Recursive deletion is never performed.
@@ -118,7 +172,7 @@ impl ProjectStore {
     ///
     /// # Errors
     ///
-    /// Returns an error for Drafts, unsafe paths, collisions, or failed storage.
+    /// Returns an error for assets without a project file, unsafe paths, collisions, or failed storage.
     pub fn move_asset_file(
         &self,
         id: &str,
@@ -137,7 +191,7 @@ impl ProjectStore {
                 .ok_or_else(|| ProjectError::AssetNotReady {
                     asset: id.to_owned(),
                     operation: "move",
-                    reason: "the asset is a Draft",
+                    reason: "the asset has no project file",
                 })?;
         let source = self.root.join(validate_relative(&source_name)?);
         let target = self.root.join(&destination);
@@ -177,12 +231,20 @@ impl ProjectStore {
         let _lock = self.lock()?;
         let originals = self.assets()?;
         let mut updated = originals.clone();
+        let original_project = self.manifest()?;
+        let mut updated_project = original_project.clone();
         for asset in &mut updated {
             if let Some(path) = asset.project_path.as_deref() {
                 let path = validate_relative(path)?;
                 if let Ok(suffix) = path.strip_prefix(&source_relative) {
                     asset.project_path = Some(path_string(&destination_relative.join(suffix)));
                 }
+            }
+        }
+        for path in &mut updated_project.ignored_project_images {
+            let relative = validate_relative(path)?;
+            if let Ok(suffix) = relative.strip_prefix(&source_relative) {
+                *path = path_string(&destination_relative.join(suffix));
             }
         }
         fs::rename(&source_full, &destination_full)
@@ -198,6 +260,18 @@ impl ProjectStore {
                 }
                 return Err(error);
             }
+        }
+        if updated_project != original_project
+            && let Err(error) = atomic_write(
+                &self.root.join(".pixelate/project.toml"),
+                toml::to_string_pretty(&updated_project)?.as_bytes(),
+            )
+        {
+            let _ = fs::rename(&destination_full, &source_full);
+            for original in &originals {
+                let _ = self.write_asset_manifest(original);
+            }
+            return Err(error);
         }
         Ok(updated
             .into_iter()
@@ -216,7 +290,11 @@ impl ProjectStore {
         self.ensure_contained_parent(target, display)
     }
 
-    fn ensure_contained_parent(&self, target: &Path, display: &str) -> Result<(), ProjectError> {
+    pub(crate) fn ensure_contained_parent(
+        &self,
+        target: &Path,
+        display: &str,
+    ) -> Result<(), ProjectError> {
         let parent = target
             .parent()
             .ok_or_else(|| ProjectError::InvalidProjectPath(display.to_owned()))?;
@@ -256,7 +334,7 @@ pub(crate) fn validate_relative(value: &str) -> Result<PathBuf, ProjectError> {
     Ok(path.to_path_buf())
 }
 
-fn is_supported_image(path: &Path) -> bool {
+pub(crate) fn is_supported_image(path: &Path) -> bool {
     path.extension()
         .and_then(|value| value.to_str())
         .is_some_and(|extension| {

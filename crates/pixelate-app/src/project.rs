@@ -11,6 +11,8 @@ pub struct InitializeAsset {
     pub asset: String,
     #[serde(default)]
     pub brief: String,
+    #[serde(default)]
+    pub project_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,9 +45,18 @@ pub fn initialize_asset(request: InitializeAsset) -> Result<AssetManifest, AppEr
         start,
         asset,
         brief,
+        project_path,
     } = request;
     let store = ProjectStore::discover(&start)?;
-    Ok(store.create_asset(&asset, &brief)?)
+    store.create_asset(&asset, &brief)?;
+    let path = project_path.unwrap_or_else(|| format!("{asset}.png"));
+    match store.plan_asset_project_path(&asset, &path) {
+        Ok(asset) => Ok(asset),
+        Err(error) => {
+            let _ = store.delete_asset(&asset);
+            Err(error.into())
+        }
+    }
 }
 
 /// Permanently removes one project asset through the project store.

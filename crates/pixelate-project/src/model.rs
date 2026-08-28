@@ -22,6 +22,8 @@ pub(crate) const REVISION_PAYLOADS: [&str; 6] = [
 pub struct ProjectManifest {
     pub schema: String,
     pub name: String,
+    #[serde(default)]
+    pub ignored_project_images: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

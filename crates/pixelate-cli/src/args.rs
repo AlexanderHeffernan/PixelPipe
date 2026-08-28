@@ -81,6 +81,18 @@ pub(crate) enum ProjectCommand {
         #[arg(long)]
         path: String,
     },
+    HideImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
+    ShowImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -217,6 +229,9 @@ pub(crate) enum AssetCommand {
         asset: String,
         #[arg(long, default_value = "")]
         brief: String,
+        /// Planned project-relative output path; defaults to <asset-id>.png.
+        #[arg(long)]
+        path: Option<String>,
     },
     SetBrief {
         #[arg(long, default_value = ".")]
@@ -250,6 +265,22 @@ pub(crate) enum AssetCommand {
         asset: String,
         #[arg(long, default_value = "")]
         brief: String,
+        /// Planned output path for the future pixelized image.
+        #[arg(long)]
+        destination: String,
+    },
+    /// Adopt an existing project image exactly as editable pixel art.
+    AdoptPixelArt {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        asset: String,
+        #[arg(long, default_value = "")]
+        brief: String,
+        #[arg(long, default_value = "agent")]
+        actor: String,
     },
     Relink {
         #[arg(long, default_value = ".")]

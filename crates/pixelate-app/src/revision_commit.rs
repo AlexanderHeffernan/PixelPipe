@@ -53,9 +53,9 @@ pub(crate) fn component_rule(recipe: &Recipe) -> Option<ComponentRule> {
             Operation::ConvertReference { settings } => Some(ComponentRule::Raster {
                 expectation: settings.components,
             }),
+            Operation::ImportPixelArt | Operation::ComposeCanvas { .. } => None,
             Operation::PatchPixels { patch } => patch.structure,
             Operation::RemapPalette { remap } => remap.structure,
-            Operation::ComposeCanvas { .. } => None,
         })
 }
 

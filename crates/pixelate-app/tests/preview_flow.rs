@@ -162,6 +162,7 @@ fn selected_reference_project() -> (tempfile::TempDir, pixelate_core::Conversion
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
         brief: "Strict overhead field medic".to_owned(),
+        project_path: None,
     })
     .unwrap();
     import_reference(ImportReference {

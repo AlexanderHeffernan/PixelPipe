@@ -32,6 +32,7 @@ fn opens_projects_with_removed_manifest_fields() {
 
     let manifest = store.manifest().expect("manifest");
     assert_eq!(manifest.name, "Fixture Game");
+    assert!(manifest.ignored_project_images.is_empty());
 
     store
         .create_asset("legacy-asset", "Legacy asset")
@@ -64,6 +65,36 @@ fn opens_projects_with_removed_manifest_fields() {
     assert_eq!(
         asset.selected_reference.expect("selection").sha256,
         "legacy-hash"
+    );
+}
+
+#[test]
+fn hidden_project_images_are_persistent_and_reversible() {
+    let temp = tempdir().expect("tempdir");
+    let store = ProjectStore::init(temp.path(), "Fixture Game").expect("init");
+    fs::create_dir(temp.path().join("art")).expect("folder");
+    fs::write(temp.path().join("art/concept.png"), b"image").expect("image");
+
+    let hidden = store.ignore_project_image("art/concept.png").expect("hide");
+    assert_eq!(hidden.ignored_project_images, ["art/concept.png"]);
+    assert_eq!(
+        ProjectStore::discover(temp.path())
+            .expect("discover")
+            .manifest()
+            .expect("manifest")
+            .ignored_project_images,
+        ["art/concept.png"]
+    );
+    assert!(matches!(
+        store.ignore_project_image("../outside.png"),
+        Err(ProjectError::InvalidProjectPath(_))
+    ));
+    assert!(
+        store
+            .unignore_project_image("art/concept.png")
+            .expect("restore")
+            .ignored_project_images
+            .is_empty()
     );
 }
 
@@ -184,6 +215,9 @@ fn folder_moves_update_all_linked_manifests_and_refuse_collisions() {
         store.create_asset(id, id).expect("asset");
         store.link_asset_project_path(id, path).expect("link");
     }
+    store
+        .ignore_project_image("art/units/a.png")
+        .expect("hide source");
 
     store
         .move_project_folder("art/units", "art/characters")
@@ -195,6 +229,10 @@ fn folder_moves_update_all_linked_manifests_and_refuse_collisions() {
     assert_eq!(
         store.asset("b").expect("b").project_path.as_deref(),
         Some("art/characters/b.webp")
+    );
+    assert_eq!(
+        store.manifest().expect("project").ignored_project_images,
+        ["art/characters/a.png"]
     );
     fs::create_dir(temp.path().join("art/taken")).expect("taken");
     assert!(matches!(
@@ -211,6 +249,10 @@ fn folder_operations_reject_internal_paths_and_non_empty_deletion() {
         store.create_project_folder(".git/art"),
         Err(ProjectError::ReservedProjectPath(_))
     ));
+    store
+        .create_project_folder("sprites/units")
+        .expect("create nested");
+    assert!(temp.path().join("sprites/units").is_dir());
     store.create_project_folder("art").expect("create");
     fs::write(temp.path().join("art/file.txt"), b"occupied").expect("file");
     assert!(matches!(

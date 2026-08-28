@@ -42,6 +42,6 @@ pub use revision_commit::RevisionResult;
 pub use revision_preview::{PreviewRevision, RevisionPreview, preview_revision};
 
 pub use pixelate_core::{Palette, RasterInspection};
-pub use pixelate_project::{AssetManifest, ReferenceSelection};
+pub use pixelate_project::{AssetManifest, ProjectManifest, ReferenceSelection};
 
 pub(crate) use revision_commit::{CommitRaster, commit_raster, resolve_revision};

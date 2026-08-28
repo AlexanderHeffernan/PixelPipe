@@ -157,6 +157,9 @@ fn refresh_link_hash(
         return Ok(());
     };
     let linked = store.root().join(&path);
+    if !linked.is_file() {
+        return Ok(());
+    }
     let linked = std::fs::canonicalize(&linked).map_err(|source| AppError::Read {
         path: linked,
         source,

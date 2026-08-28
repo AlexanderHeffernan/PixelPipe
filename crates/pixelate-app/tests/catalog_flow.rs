@@ -1,8 +1,9 @@
 use std::{fs, path::Path};
 
 use pixelate_app::{
-    AdoptProjectImage, BrowseProject, UpdateLinkedSource, adopt_project_image, browse_project,
-    update_linked_source,
+    AdoptPixelArt, AdoptProjectImage, BrowseProject, ProjectFileStatus, SetProjectImageIgnored,
+    UpdateLinkedSource, adopt_pixel_art, adopt_project_image, browse_project,
+    set_project_image_ignored, update_linked_source,
 };
 use pixelate_project::ProjectStore;
 
@@ -21,11 +22,12 @@ fn catalog_deduplicates_adopted_images_and_reports_external_state() {
     assert_eq!(initial.catalog.len(), 1);
     assert_eq!(initial.catalog[0].asset_id, None);
 
-    adopt_project_image(AdoptProjectImage {
+    adopt_pixel_art(AdoptPixelArt {
         start: game.path().to_path_buf(),
         path: "art/hero.png".to_owned(),
         asset: "hero".to_owned(),
         brief: "Hero".to_owned(),
+        actor: "test".to_owned(),
     })
     .expect("adopt");
     let adopted = browse_project(&BrowseProject {
@@ -60,6 +62,53 @@ fn catalog_deduplicates_adopted_images_and_reports_external_state() {
     .expect("browse");
     assert_eq!(format!("{:?}", missing.catalog[0].status), "Missing");
     assert_eq!(store.asset("hero").expect("asset").id, "hero");
+}
+
+#[test]
+fn reference_adoption_hides_source_and_plans_a_distinct_output() {
+    let game = tempfile::tempdir().expect("game");
+    ProjectStore::init(game.path(), "Fixture").expect("project");
+    fs::create_dir(game.path().join("art")).expect("folder");
+    write_png(&game.path().join("art/concept.png"), [40, 80, 120, 255]);
+
+    let asset = adopt_project_image(AdoptProjectImage {
+        start: game.path().to_path_buf(),
+        path: "art/concept.png".to_owned(),
+        asset: "hero".to_owned(),
+        brief: "Hero".to_owned(),
+        destination: "art/hero.png".to_owned(),
+    })
+    .expect("adopt reference");
+    assert_eq!(asset.project_path.as_deref(), Some("art/hero.png"));
+    assert!(asset.selected_reference.is_some());
+    assert!(game.path().join("art/concept.png").is_file());
+    assert!(!game.path().join("art/hero.png").exists());
+
+    let catalog = browse_project(&BrowseProject {
+        start: game.path().to_path_buf(),
+    })
+    .expect("browse");
+    assert_eq!(catalog.catalog.len(), 1);
+    assert_eq!(catalog.catalog[0].path, "art/hero.png");
+    assert_eq!(catalog.catalog[0].status, ProjectFileStatus::Unexported);
+
+    set_project_image_ignored(SetProjectImageIgnored {
+        start: game.path().to_path_buf(),
+        path: "art/concept.png".to_owned(),
+        ignored: false,
+    })
+    .expect("restore");
+    let restored = browse_project(&BrowseProject {
+        start: game.path().to_path_buf(),
+    })
+    .expect("browse");
+    assert_eq!(restored.catalog.len(), 2);
+    assert!(
+        restored
+            .catalog
+            .iter()
+            .any(|entry| entry.path == "art/concept.png")
+    );
 }
 
 fn write_png(path: &Path, color: [u8; 4]) {
