@@ -113,8 +113,8 @@ function dragOver(event: DragEvent) {
     @dragleave.stop="dragLeave"
     @dragover.stop="dragOver"
     @drop.stop="drop"
-    @contextmenu.prevent="menuOpen = true"
-    @keydown.shift.f10.prevent="menuOpen = true"
+    @contextmenu.stop.prevent="menuOpen = true"
+    @keydown.shift.f10.stop.prevent="menuOpen = true"
   >
     <div
       class="browser-folder__heading"

@@ -675,6 +675,7 @@ describe("deterministic workstation", () => {
 
     expect(screen.queryByText("Drafts")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Draft/i })).toBeVisible();
+    expect(screen.queryByText("Not exported")).not.toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Expand art" }));
     expect(screen.getByText("Missing")).toBeVisible();
     await fireEvent.contextMenu(screen.getByRole("button", { name: /medic/i }));
