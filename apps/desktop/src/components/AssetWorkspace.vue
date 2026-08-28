@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PhImageSquare } from "@phosphor-icons/vue";
 import SpriteCanvas from "./SpriteCanvas.vue";
+import ProjectImagePreview from "./ProjectImagePreview.vue";
 import { useWorkspace } from "../workspace/context";
 
 const workspace = useWorkspace();
@@ -8,8 +9,9 @@ const workspace = useWorkspace();
 
 <template>
   <section class="asset-workspace">
+    <ProjectImagePreview v-if="workspace.projectImagePath.value" />
     <div
-      v-if="workspace.canvasImage.value || workspace.loadingArtwork.value"
+      v-else-if="workspace.canvasImage.value || workspace.loadingArtwork.value"
       class="canvas-viewport"
       :class="{ 'is-loading': workspace.canvasLoading.value }"
     >

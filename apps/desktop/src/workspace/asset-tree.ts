@@ -21,18 +21,6 @@ export function useAssetTree(
   project: Ref<ProjectBrowser | undefined>,
   query: Ref<string>,
 ) {
-  const drafts = computed(() => {
-    const needle = query.value.trim().toLowerCase();
-    return (project.value?.assets || []).filter(({ asset }) => {
-      if (asset.project_path) return false;
-      const name = asset.display_name || displayName(asset.id);
-      return (
-        !needle ||
-        name.toLowerCase().includes(needle) ||
-        asset.id.includes(needle)
-      );
-    });
-  });
   const tree = computed(() => {
     const root: AssetTreeFolder = {
       kind: "folder",
@@ -44,11 +32,13 @@ export function useAssetTree(
     const assets = new Map(
       (project.value?.assets || []).map((entry) => [entry.asset.id, entry]),
     );
+    const catalogedAssets = new Set<string>();
     const needle = query.value.trim().toLowerCase();
     for (const catalog of project.value?.catalog || []) {
       const managed = catalog.asset_id
         ? assets.get(catalog.asset_id)
         : undefined;
+      if (catalog.asset_id) catalogedAssets.add(catalog.asset_id);
       const name = catalog.path.split("/").at(-1) || catalog.path;
       const display =
         managed?.asset.display_name || name.replace(/\.[^.]+$/, "");
@@ -78,13 +68,30 @@ export function useAssetTree(
         managed,
       });
     }
+    for (const [assetId, managed] of assets) {
+      if (catalogedAssets.has(assetId)) continue;
+      const path = managed.asset.project_path || `${assetId}.png`;
+      const display = managed.asset.display_name || displayName(assetId);
+      if (
+        needle &&
+        !display.toLowerCase().includes(needle) &&
+        !path.toLowerCase().includes(needle)
+      )
+        continue;
+      root.files.push({
+        kind: "file",
+        path,
+        name: display,
+        catalog: { path, asset_id: assetId, status: "unexported" },
+        managed,
+      });
+    }
     sortFolder(root);
     return root;
   });
   return {
     folders: computed(() => tree.value.folders),
     rootFiles: computed(() => tree.value.files),
-    drafts,
   };
 }
 
@@ -93,6 +100,9 @@ const displayName = (id: string) =>
 
 function sortFolder(folder: AssetTreeFolder) {
   folder.folders.sort((a, b) => a.name.localeCompare(b.name));
-  folder.files.sort((a, b) => a.name.localeCompare(b.name));
+  folder.files.sort((a, b) => {
+    if (Boolean(a.managed) !== Boolean(b.managed)) return a.managed ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
   folder.folders.forEach(sortFolder);
 }

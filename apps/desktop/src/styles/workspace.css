@@ -10,6 +10,72 @@
     radial-gradient(circle at 12% 92%, rgba(91, 38, 80, 0.12), transparent 36%),
     var(--canvas);
 }
+.project-image-stage {
+  display: grid;
+  width: min(900px, calc(100% - 64px));
+  max-height: calc(100% - 64px);
+  margin: auto;
+  grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.75fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(22, 15, 26, 0.78);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.34);
+}
+.project-image-stage__preview {
+  display: grid;
+  min-height: 420px;
+  padding: 28px;
+  place-items: center;
+}
+.project-image-stage__preview img {
+  max-width: 100%;
+  max-height: min(65vh, 680px);
+  object-fit: contain;
+  image-rendering: auto;
+}
+.project-image-stage__details {
+  padding: 30px 26px;
+  border-left: 1px solid var(--line);
+}
+.project-image-stage__details h1 {
+  overflow-wrap: anywhere;
+  font-size: 18px;
+}
+.project-image-stage__details > p {
+  color: var(--muted);
+  font-size: 10px;
+}
+.project-image-stage__actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+}
+.project-image-stage__actions button {
+  min-height: 38px;
+}
+.project-image-import {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.project-image-import h2 {
+  margin: 0;
+  font-size: 12px;
+}
+.project-image-import label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.project-image-import > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
 .canvas-viewport {
   position: relative;
   display: grid;

@@ -27,6 +27,7 @@ export function createWorkspace() {
     clearSelection() {
       view.value = undefined;
       preview.value = undefined;
+      rightSidebarOpen.value = false;
     },
   });
   const {
@@ -81,6 +82,7 @@ export function createWorkspace() {
   async function selectAsset(id: string) {
     projectImagePath.value = "";
     projectImagePreview.value = "";
+    rightSidebarOpen.value = true;
     await canvasLoading.run("Loading sprite…", () => loadAsset(id));
   }
 
@@ -89,11 +91,17 @@ export function createWorkspace() {
     assetId.value = "";
     view.value = undefined;
     preview.value = undefined;
+    rightSidebarOpen.value = false;
     projectImagePath.value = path;
     projectImagePreview.value = await api.loadProjectImage(
       project.value.project_root,
       path,
     );
+  }
+
+  function clearProjectImage() {
+    projectImagePath.value = "";
+    projectImagePreview.value = "";
   }
 
   async function loadAsset(id: string) {
@@ -274,6 +282,7 @@ export function createWorkspace() {
     restoreRecentProject: session.restoreRecentProject,
     selectAsset,
     selectProjectImage,
+    clearProjectImage,
     updateSettings: conversion.updateSettings,
     setColorCount: conversion.setColorCount,
     setBackgroundAutomatic: conversion.setBackgroundAutomatic,
@@ -289,7 +298,8 @@ export function createWorkspace() {
     exportCurrent: assetActions.exportCurrent,
     editor,
     composition,
-    importAssets,
+    importAssets: importAssets.references,
+    importPixelArt: importAssets.pixelArt,
     importReference: assetActions.replaceSource,
     replaceSource: assetActions.replaceSource,
     deleteAsset: session.deleteAsset,

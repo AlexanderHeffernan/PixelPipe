@@ -1,10 +1,10 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use pixelate_app::{
-    AdoptProjectImage, BrowseProject, CommitComposition, ConvertSelectedReference, CreateFolder,
-    DeleteAsset, DeleteFolder, ExportAsset, ExportAssetFile, ImportReference, InitializeAsset,
-    LoadProjectImage, MoveAsset, MoveFolder, OpenProject, PreviewComposition,
+    AdoptPixelArt, AdoptProjectImage, BrowseProject, CommitComposition, ConvertSelectedReference,
+    CreateFolder, DeleteAsset, DeleteFolder, ExportAsset, ExportAssetFile, ImportReference,
+    InitializeAsset, LoadProjectImage, MoveAsset, MoveFolder, OpenProject, PreviewComposition,
     PreviewSelectedReference, ProjectBrowser, RasterInspection, RelinkAsset, RenameAsset,
-    RevisionResult, UpdateAssetBrief, UpdateLinkedSource,
+    RevisionResult, SetProjectImageIgnored, UpdateAssetBrief, UpdateLinkedSource,
 };
 use serde::Serialize;
 
@@ -49,6 +49,18 @@ pub(crate) async fn adopt_project_image(
     request: AdoptProjectImage,
 ) -> CommandResult<pixelate_app::AssetManifest> {
     blocking(move || pixelate_app::adopt_project_image(request)).await
+}
+
+#[tauri::command]
+pub(crate) async fn adopt_pixel_art(request: AdoptPixelArt) -> CommandResult<RevisionResult> {
+    blocking(move || pixelate_app::adopt_pixel_art(request)).await
+}
+
+#[tauri::command]
+pub(crate) fn set_project_image_ignored(
+    request: SetProjectImageIgnored,
+) -> CommandResult<pixelate_app::ProjectManifest> {
+    pixelate_app::set_project_image_ignored(request).map_err(|error| command_error(&error))
 }
 
 #[tauri::command]

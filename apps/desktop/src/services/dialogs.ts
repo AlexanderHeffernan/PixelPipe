@@ -46,11 +46,11 @@ export const confirmDeleteAsset = (asset: string, linked = false) =>
   confirm(
     linked
       ? `Remove “${asset}” from Pixelate and delete its revision history? The linked project image will remain untouched.`
-      : `Delete Draft “${asset}” and all of its Pixelate revision history? This cannot be undone.`,
+      : `Delete unexported asset “${asset}” and all of its Pixelate revision history? No project image exists. This cannot be undone.`,
     {
-      title: linked ? "Remove from Pixelate" : "Delete Draft",
+      title: linked ? "Remove from Pixelate" : "Delete unexported asset",
       kind: "warning",
-      okLabel: linked ? "Remove" : "Delete Draft",
+      okLabel: linked ? "Remove" : "Delete asset",
       cancelLabel: "Cancel",
     },
   );

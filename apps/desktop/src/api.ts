@@ -8,6 +8,7 @@ import type {
   PaletteDraft,
   PixelEdit,
   ProjectBrowser,
+  ProjectManifest,
   RevisionResult,
   RevisionViewResponse,
   ReferenceSelection,
@@ -24,9 +25,14 @@ export const browseProject = (start: string) =>
 export const openProject = (start: string) =>
   invoke<ProjectBrowser>("open_project", { request: { start } });
 
-export const initializeAsset = (start: string, asset: string, brief: string) =>
+export const initializeAsset = (
+  start: string,
+  asset: string,
+  brief: string,
+  projectPath?: string,
+) =>
   invoke<AssetManifest>("initialize_asset", {
-    request: { start, asset, brief },
+    request: { start, asset, brief, project_path: projectPath ?? null },
   });
 
 export const deleteAsset = (start: string, asset: string) =>
@@ -51,9 +57,29 @@ export const adoptProjectImage = (
   path: string,
   asset: string,
   brief: string,
+  destination: string,
 ) =>
   invoke<AssetManifest>("adopt_project_image", {
-    request: { start, path, asset, brief },
+    request: { start, path, asset, brief, destination },
+  });
+
+export const adoptPixelArt = (
+  start: string,
+  path: string,
+  asset: string,
+  brief: string,
+) =>
+  invoke<RevisionResult>("adopt_pixel_art", {
+    request: { start, path, asset, brief, actor: "user" },
+  });
+
+export const setProjectImageIgnored = (
+  start: string,
+  path: string,
+  ignored: boolean,
+) =>
+  invoke<ProjectManifest>("set_project_image_ignored", {
+    request: { start, path, ignored },
   });
 
 export const relinkAsset = (start: string, asset: string, path: string) =>

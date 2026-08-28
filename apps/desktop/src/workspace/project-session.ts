@@ -50,6 +50,7 @@ export function createProjectSession(context: ProjectSessionContext) {
       project.value = await api.openProject(path);
       const first = project.value.assets[0]?.asset.id;
       if (first) await context.selectAsset(first);
+      else context.clearSelection();
       void loadThumbnails();
       showNotice(`Opened ${project.value.project.name}`);
     });
@@ -99,7 +100,7 @@ export function createProjectSession(context: ProjectSessionContext) {
       showNotice(
         asset.project_path
           ? "Removed from Pixelate; project image retained"
-          : "Draft and its Pixelate history deleted",
+          : "Unexported asset and its Pixelate history deleted",
       );
     });
   }

@@ -1,13 +1,7 @@
 <script setup lang="ts">
-import {
-  PhDownloadSimple,
-  PhFolderPlus,
-  PhPlus,
-  PhTrash,
-} from "@phosphor-icons/vue";
-import { nextTick, ref } from "vue";
+import { PhFolderPlus, PhPlus } from "@phosphor-icons/vue";
+import { ref } from "vue";
 import { useAssetTree } from "../workspace/asset-tree";
-import { suggestedAssetId } from "../workspace/catalog-actions";
 import { useWorkspace } from "../workspace/context";
 import { useSidebarResize } from "../workspace/sidebar-resize";
 import AssetBrowserFolder from "./AssetBrowserFolder.vue";
@@ -15,10 +9,10 @@ import AssetBrowserFile from "./AssetBrowserFile.vue";
 
 const workspace = useWorkspace();
 const search = ref("");
-const editing = ref("");
-const editName = ref("");
-const renameInput = ref<HTMLInputElement | HTMLInputElement[]>();
-const { folders, rootFiles, drafts } = useAssetTree(workspace.project, search);
+const addMenu = ref(false);
+const folderForm = ref(false);
+const folderPath = ref("");
+const { folders, rootFiles } = useAssetTree(workspace.project, search);
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
 const { width, isResizing, startResize, resizeWithKeyboard } = useSidebarResize(
@@ -29,40 +23,20 @@ const { width, isResizing, startResize, resizeWithKeyboard } = useSidebarResize(
     maxWidth: MAX_WIDTH,
   },
 );
-const displayName = (id: string) =>
-  id.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-function newAsset() {
-  const name = window.prompt("New asset name");
-  if (!name?.trim()) return;
-  const id = window.prompt("Stable asset ID", suggestedAssetId(name));
-  if (id?.trim()) void workspace.catalog.createAsset(id.trim(), name.trim());
+function createFolder() {
+  if (!folderPath.value.trim()) return;
+  void workspace.catalog.createFolder(folderPath.value.trim());
+  folderForm.value = false;
+  folderPath.value = "";
 }
-function newFolder() {
-  const path = window.prompt("New project-relative folder path");
-  if (path?.trim()) void workspace.catalog.createFolder(path.trim());
+function importReference() {
+  addMenu.value = false;
+  void workspace.importAssets();
 }
-function adoptSelected() {
-  const path = workspace.projectImagePath.value;
-  const proposed = suggestedAssetId(path);
-  const id = window.prompt("Stable asset ID", proposed);
-  if (id?.trim())
-    void workspace.catalog.adopt(path, id.trim(), displayName(id.trim()));
-}
-async function beginRename(id: string, name: string) {
-  editing.value = id;
-  editName.value = name;
-  await nextTick();
-  const input = Array.isArray(renameInput.value)
-    ? renameInput.value[0]
-    : renameInput.value;
-  input?.select();
-}
-async function finishRename(id: string) {
-  if (editing.value !== id) return;
-  editing.value = "";
-  if (editName.value.trim())
-    await workspace.renameAsset(id, editName.value.trim());
+function importPixelArt() {
+  addMenu.value = false;
+  void workspace.importPixelArt();
 }
 </script>
 
@@ -76,13 +50,49 @@ async function finishRename(id: string) {
       <header class="asset-browser-header">
         <h2>Assets</h2>
         <div class="asset-browser-actions">
-          <button aria-label="New Asset" title="New Asset" @click="newAsset">
+          <button
+            aria-label="New Asset"
+            title="New Asset"
+            @click="
+              addMenu = !addMenu;
+              folderForm = false;
+            "
+          >
             <PhPlus /> Asset
           </button>
-          <button aria-label="New Folder" title="New Folder" @click="newFolder">
+          <button
+            aria-label="New Folder"
+            title="New Folder"
+            @click="
+              folderForm = !folderForm;
+              addMenu = false;
+            "
+          >
             <PhFolderPlus /> Folder
           </button>
         </div>
+        <div v-if="addMenu" class="asset-add-menu" role="menu">
+          <button role="menuitem" @click="importReference">
+            Reference image…
+          </button>
+          <button role="menuitem" @click="importPixelArt">
+            Pixel art in project…
+          </button>
+        </div>
+        <form
+          v-if="folderForm"
+          class="asset-inline-form"
+          @submit.prevent="createFolder"
+        >
+          <label
+            >Project-relative folder
+            <input v-model="folderPath" autofocus required
+          /></label>
+          <div>
+            <button type="button" @click="folderForm = false">Cancel</button
+            ><button type="submit">Create</button>
+          </div>
+        </form>
         <input
           v-model="search"
           type="search"
@@ -92,102 +102,45 @@ async function finishRename(id: string) {
       </header>
       <nav class="asset-tree" aria-label="Project assets">
         <div role="tree" aria-label="Project image folders">
+          <AssetBrowserFolder
+            v-for="folder in folders"
+            :key="folder.path"
+            :folder="folder"
+          />
           <AssetBrowserFile
             v-for="file in rootFiles"
             :key="file.path"
             :file="file"
             :level="0"
           />
-          <AssetBrowserFolder
-            v-for="folder in folders"
-            :key="folder.path"
-            :folder="folder"
-          />
         </div>
-        <section
-          v-if="drafts.length"
-          class="drafts-section"
-          aria-labelledby="drafts-heading"
-        >
-          <h3 id="drafts-heading">Drafts</h3>
-          <div
-            v-for="entry in drafts"
-            :key="entry.asset.id"
-            class="draft-row"
-            :aria-current="
-              workspace.assetId.value === entry.asset.id ? 'page' : undefined
-            "
-          >
-            <button
-              v-if="editing !== entry.asset.id"
-              @click="workspace.selectAsset(entry.asset.id)"
-            >
-              <span class="asset-kind is-managed" />{{
-                entry.asset.display_name || displayName(entry.asset.id)
-              }}
-            </button>
-            <input
-              v-else
-              ref="renameInput"
-              v-model="editName"
-              aria-label="Asset name"
-              @keydown.enter.prevent="finishRename(entry.asset.id)"
-              @keydown.esc.prevent="editing = ''"
-              @blur="finishRename(entry.asset.id)"
-            />
-            <button
-              :aria-label="
-                editing === entry.asset.id
-                  ? `Close rename for ${entry.asset.display_name || displayName(entry.asset.id)}`
-                  : `Rename ${entry.asset.display_name || displayName(entry.asset.id)}`
-              "
-              @pointerdown.prevent
-              @click="
-                editing === entry.asset.id
-                  ? (editing = '')
-                  : beginRename(
-                      entry.asset.id,
-                      entry.asset.display_name || displayName(entry.asset.id),
-                    )
-              "
-            >
-              {{ editing === entry.asset.id ? "Close" : "Rename" }}
-            </button>
-            <button
-              :aria-label="`Delete Draft ${entry.asset.id}`"
-              @click="workspace.deleteAsset(entry.asset.id)"
-            >
-              <PhTrash />
-            </button>
-          </div>
-        </section>
-        <p
-          v-if="!folders.length && !rootFiles.length && !drafts.length"
-          class="sidebar-empty"
-        >
+        <p v-if="!folders.length && !rootFiles.length" class="sidebar-empty">
           No supported raster assets
         </p>
+        <details
+          v-if="workspace.project.value?.project.ignored_project_images.length"
+          class="hidden-images"
+        >
+          <summary>
+            Hidden images ({{
+              workspace.project.value.project.ignored_project_images.length
+            }})
+          </summary>
+          <div
+            v-for="path in workspace.project.value.project
+              .ignored_project_images"
+            :key="path"
+          >
+            <span :title="path">{{ path }}</span>
+            <button
+              :aria-label="`Restore ${path}`"
+              @click="workspace.catalog.setIgnored(path, false)"
+            >
+              Restore
+            </button>
+          </div>
+        </details>
       </nav>
-      <section
-        v-if="workspace.projectImagePath.value"
-        class="project-image-preview"
-        aria-label="Project image preview"
-      >
-        <img
-          :src="workspace.projectImagePreview.value"
-          :alt="`${workspace.projectImagePath.value} preview`"
-        />
-        <p>{{ workspace.projectImagePath.value }}</p>
-        <button @click="adoptSelected">Edit in Pixelate</button>
-      </section>
-      <button
-        class="import-asset-button"
-        :disabled="workspace.importing.value"
-        @click="workspace.importAssets"
-      >
-        <PhDownloadSimple aria-hidden="true" /> Import Asset
-      </button>
-      <p class="git-folder-note">Empty folders are not retained by Git.</p>
     </div>
     <div
       class="sidebar-resize-handle sidebar-resize-handle--right"

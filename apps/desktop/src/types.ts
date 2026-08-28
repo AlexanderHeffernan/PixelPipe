@@ -3,6 +3,7 @@ export type Rgba = [number, number, number, number];
 export interface ProjectManifest {
   schema: string;
   name: string;
+  ignored_project_images: string[];
 }
 
 export interface AssetManifest {
@@ -47,7 +48,7 @@ export interface ProjectBrowser {
 export interface CatalogEntry {
   path: string;
   asset_id?: string;
-  status: "current" | "modified" | "missing";
+  status: "current" | "modified" | "missing" | "unexported";
 }
 
 export interface PixelizationDefaults {

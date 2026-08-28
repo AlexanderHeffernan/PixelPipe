@@ -24,18 +24,33 @@ export function createCatalogActions(context: CatalogContext) {
   };
 
   return {
-    createAsset: (id: string, name: string) =>
-      act("Draft created", async (root) => {
-        await api.initializeAsset(root, id, name);
+    createAsset: (id: string, name: string, path?: string) =>
+      act("Asset created", async (root) => {
+        await api.initializeAsset(root, id, name, path);
         await context.refresh();
         await context.selectAsset(id);
       }),
-    adopt: (path: string, id: string, name: string) =>
-      act("Project image adopted", async (root) => {
-        await api.adoptProjectImage(root, path, id, name);
+    adoptReference: (
+      path: string,
+      id: string,
+      name: string,
+      destination: string,
+    ) =>
+      act("Reference imported", async (root) => {
+        await api.adoptProjectImage(root, path, id, name, destination);
         await context.refresh();
         await context.selectAsset(id);
       }),
+    adoptPixelArt: (path: string, id: string, name: string) =>
+      act("Pixel art imported", async (root) => {
+        await api.adoptPixelArt(root, path, id, name);
+        await context.refresh();
+        await context.selectAsset(id);
+      }),
+    setIgnored: (path: string, ignored: boolean) =>
+      act(ignored ? "Project image hidden" : "Project image restored", (root) =>
+        api.setProjectImageIgnored(root, path, ignored),
+      ),
     updateLinkedSource: (id: string) =>
       act("External image imported as source", (root) =>
         api.updateLinkedSource(root, id),
@@ -43,9 +58,7 @@ export function createCatalogActions(context: CatalogContext) {
     relink: (id: string, path: string) =>
       act("Asset relinked", (root) => api.relinkAsset(root, id, path)),
     createFolder: (path: string) =>
-      act("Folder created — empty folders are not retained by Git", (root) =>
-        api.createFolder(root, path),
-      ),
+      act("Folder created", (root) => api.createFolder(root, path)),
     moveFolder: (source: string, destination: string) =>
       act("Folder moved", (root) => api.moveFolder(root, source, destination)),
     deleteFolder: (path: string) =>
