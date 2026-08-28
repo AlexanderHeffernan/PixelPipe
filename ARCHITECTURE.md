@@ -36,6 +36,7 @@ All four crates and the desktop application are active.
 
 ```text
 game-root/
+  art/…                    # real game-project raster folders and files
   .pixelate/
     project.toml
     assets/<asset-id>/
@@ -59,6 +60,22 @@ Selected references and revision payloads are content-verified. Enlarged preview
 PNGs are rendered on demand with exact nearest-neighbour scaling, never persisted
 inside revisions.
 
+An asset manifest may link its stable Pixelate identity to one project-relative
+raster path and records the last verified project-file hash. Existing manifests
+without a path remain valid Drafts. The real game-project folder hierarchy is
+the only user-facing hierarchy; `.pixelate/assets/<asset-id>` remains internal
+immutable storage and never moves when its linked image moves. Discovered PNG,
+JPEG, and WebP files have no Pixelate identity until explicit adoption imports a
+verified internal source copy. Discovery honors project ignore rules, excludes
+internal/dependency/output folders, and does not follow symlink escapes.
+
+Real folder creation, rename/move, linked-image moves, and empty-folder deletion
+are explicit contained operations. Collisions are refused. A folder move updates
+every affected asset manifest with rollback on failure. Removing a linked asset
+from Pixelate retains the project image; project-file deletion is not a Pixelate
+operation. Empty folders receive no `.gitkeep` and therefore are not retained by
+Git.
+
 ## CLI parity
 
 Every desktop capability must use the same application use case as a CLI route.
@@ -66,7 +83,9 @@ Every desktop capability must use the same application use case as a CLI route.
 | Capability | CLI |
 | --- | --- |
 | Project discovery | `init`, `project show` |
+| Project image catalog and real folders | `project catalog`, `create-folder`, `move-folder`, `delete-folder` |
 | Asset lifecycle and brief | `asset list`, `init`, `inspect`, `set-brief`, `rename`, `delete` |
+| Project-image adoption, relink, move, external update | `asset adopt`, `relink`, `move`, `update-linked-source` |
 | Source import/replacement | `reference import`, `asset update-source` |
 | Pixelization and canvas placement | `revision pixelize`, `compose` |
 | Inspection and vision-friendly preview | `revision inspect`, `preview` |

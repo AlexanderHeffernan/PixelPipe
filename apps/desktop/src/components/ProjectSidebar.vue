@@ -11,13 +11,14 @@ import { suggestedAssetId } from "../workspace/catalog-actions";
 import { useWorkspace } from "../workspace/context";
 import { useSidebarResize } from "../workspace/sidebar-resize";
 import AssetBrowserFolder from "./AssetBrowserFolder.vue";
+import AssetBrowserFile from "./AssetBrowserFile.vue";
 
 const workspace = useWorkspace();
 const search = ref("");
 const editing = ref("");
 const editName = ref("");
 const renameInput = ref<HTMLInputElement | HTMLInputElement[]>();
-const { folders, drafts } = useAssetTree(workspace.project, search);
+const { folders, rootFiles, drafts } = useAssetTree(workspace.project, search);
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
 const { width, isResizing, startResize, resizeWithKeyboard } = useSidebarResize(
@@ -91,6 +92,12 @@ async function finishRename(id: string) {
       </header>
       <nav class="asset-tree" aria-label="Project assets">
         <div role="tree" aria-label="Project image folders">
+          <AssetBrowserFile
+            v-for="file in rootFiles"
+            :key="file.path"
+            :file="file"
+            :level="0"
+          />
           <AssetBrowserFolder
             v-for="folder in folders"
             :key="folder.path"
@@ -154,7 +161,10 @@ async function finishRename(id: string) {
             </button>
           </div>
         </section>
-        <p v-if="!folders.length && !drafts.length" class="sidebar-empty">
+        <p
+          v-if="!folders.length && !rootFiles.length && !drafts.length"
+          class="sidebar-empty"
+        >
           No supported raster assets
         </p>
       </nav>

@@ -175,6 +175,11 @@ impl ProjectStore {
                 .map_err(|source| io_at(&self.root.join(&relative), source))?,
         );
         let _lock = self.lock()?;
+        if self.assets()?.iter().any(|asset| {
+            asset.id != id && asset.project_path.as_deref() == Some(path_string(&relative).as_str())
+        }) {
+            return Err(ProjectError::ProjectPathExists(path_string(&relative)));
+        }
         let mut asset = self.asset(id)?;
         asset.project_path = Some(path_string(&relative));
         asset.project_file_sha256 = Some(hash);

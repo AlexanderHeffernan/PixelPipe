@@ -33,7 +33,7 @@ export function useAssetTree(
       );
     });
   });
-  const folders = computed(() => {
+  const tree = computed(() => {
     const root: AssetTreeFolder = {
       kind: "folder",
       path: "",
@@ -79,9 +79,13 @@ export function useAssetTree(
       });
     }
     sortFolder(root);
-    return root.folders;
+    return root;
   });
-  return { folders, drafts };
+  return {
+    folders: computed(() => tree.value.folders),
+    rootFiles: computed(() => tree.value.files),
+    drafts,
+  };
 }
 
 const displayName = (id: string) =>

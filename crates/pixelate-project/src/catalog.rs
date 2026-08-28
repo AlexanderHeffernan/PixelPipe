@@ -79,6 +79,10 @@ impl ProjectStore {
     }
 
     /// Creates a real, empty project folder without adding placeholder files.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for unsafe, existing, escaped, or unwritable paths.
     pub fn create_project_folder(&self, path: &str) -> Result<(), ProjectError> {
         let relative = validate_relative(path)?;
         let target = self.root.join(&relative);
@@ -90,6 +94,10 @@ impl ProjectStore {
     }
 
     /// Deletes one empty real project folder. Recursive deletion is never performed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for unsafe, missing, escaped, or non-empty folders.
     pub fn delete_project_folder(&self, path: &str) -> Result<(), ProjectError> {
         let relative = validate_relative(path)?;
         let target = self.root.join(&relative);
@@ -107,6 +115,10 @@ impl ProjectStore {
     }
 
     /// Moves a linked project image and updates its authoritative manifest link.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for Drafts, unsafe paths, collisions, or failed storage.
     pub fn move_asset_file(
         &self,
         id: &str,
@@ -141,6 +153,10 @@ impl ProjectStore {
     }
 
     /// Moves a project folder and atomically updates every linked asset path, rolling back on error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for unsafe paths, collisions, escapes, or failed persistence.
     pub fn move_project_folder(
         &self,
         source: &str,

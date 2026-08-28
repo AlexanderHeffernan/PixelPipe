@@ -107,9 +107,7 @@ pub(crate) fn build_catalog(
             .project_file_sha256
             .as_deref()
             .is_some_and(|expected| {
-                fs::read(&full)
-                    .ok()
-                    .is_some_and(|bytes| sha256_hex(&bytes) != expected)
+                fs::read(&full).is_ok_and(|bytes| sha256_hex(&bytes) != expected)
             })
         {
             ProjectFileStatus::Modified
@@ -127,6 +125,10 @@ pub(crate) fn build_catalog(
 }
 
 /// Adopts an existing project image by importing a verified internal copy, leaving the file untouched.
+///
+/// # Errors
+///
+/// Returns an error when the path, image, identity, import, or link is invalid.
 pub fn adopt_project_image(request: AdoptProjectImage) -> Result<AssetManifest, AppError> {
     let store = ProjectStore::discover(&request.start)?;
     let relative = store.root().join(&request.path);
@@ -145,11 +147,21 @@ pub fn adopt_project_image(request: AdoptProjectImage) -> Result<AssetManifest, 
     result
 }
 
+/// Relinks a managed asset to an existing supported project image.
+///
+/// # Errors
+///
+/// Returns an error when the project, asset, path, or image is invalid.
 pub fn relink_asset(request: RelinkAsset) -> Result<AssetManifest, AppError> {
-    Ok(ProjectStore::discover(&request.start)?
-        .link_asset_project_path(&request.asset, &request.path)?)
+    let RelinkAsset { start, asset, path } = request;
+    Ok(ProjectStore::discover(&start)?.link_asset_project_path(&asset, &path)?)
 }
 
+/// Imports the current linked project file as the asset's selected source.
+///
+/// # Errors
+///
+/// Returns an error when the link is missing or the image cannot be verified and imported.
 pub fn update_linked_source(request: UpdateLinkedSource) -> Result<AssetManifest, AppError> {
     let store = ProjectStore::discover(&request.start)?;
     let asset = store.asset(&request.asset)?;
@@ -168,30 +180,69 @@ pub fn update_linked_source(request: UpdateLinkedSource) -> Result<AssetManifest
     Ok(store.link_asset_project_path(&request.asset, &path)?)
 }
 
+/// Creates one real project folder.
+///
+/// # Errors
+///
+/// Returns an error when the path is unsafe, exists, or cannot be created.
 pub fn create_folder(request: CreateFolder) -> Result<(), AppError> {
-    Ok(ProjectStore::discover(&request.start)?.create_project_folder(&request.path)?)
+    let CreateFolder { start, path } = request;
+    Ok(ProjectStore::discover(&start)?.create_project_folder(&path)?)
 }
+/// Moves or renames one real project folder and its managed links.
+///
+/// # Errors
+///
+/// Returns an error when a path is unsafe, collides, or cannot be moved atomically.
 pub fn move_folder(request: MoveFolder) -> Result<Vec<AssetManifest>, AppError> {
-    Ok(ProjectStore::discover(&request.start)?
-        .move_project_folder(&request.source, &request.destination)?)
+    let MoveFolder {
+        start,
+        source,
+        destination,
+    } = request;
+    Ok(ProjectStore::discover(&start)?.move_project_folder(&source, &destination)?)
 }
+/// Deletes one empty real project folder.
+///
+/// # Errors
+///
+/// Returns an error when the folder is unsafe, missing, non-empty, or cannot be deleted.
 pub fn delete_folder(request: DeleteFolder) -> Result<(), AppError> {
-    Ok(ProjectStore::discover(&request.start)?.delete_project_folder(&request.path)?)
+    let DeleteFolder { start, path } = request;
+    Ok(ProjectStore::discover(&start)?.delete_project_folder(&path)?)
 }
+/// Moves a linked asset's project image without changing its stable identity.
+///
+/// # Errors
+///
+/// Returns an error when the asset is a Draft or a path is unsafe, missing, or occupied.
 pub fn move_asset(request: MoveAsset) -> Result<AssetManifest, AppError> {
-    Ok(ProjectStore::discover(&request.start)?
-        .move_asset_file(&request.asset, &request.destination)?)
+    let MoveAsset {
+        start,
+        asset,
+        destination,
+    } = request;
+    Ok(ProjectStore::discover(&start)?.move_asset_file(&asset, &destination)?)
 }
+/// Lazily reads one discovered project image for preview.
+///
+/// # Errors
+///
+/// Returns an error when the image is not in the current safe discovery catalog or cannot be read.
 pub fn load_project_image(request: LoadProjectImage) -> Result<Vec<u8>, AppError> {
-    let store = ProjectStore::discover(&request.start)?;
+    let LoadProjectImage {
+        start,
+        path: requested_path,
+    } = request;
+    let store = ProjectStore::discover(&start)?;
     let path = store.root().join(
         store
             .project_images()?
             .into_iter()
-            .find(|image| image.path == request.path)
-            .ok_or_else(|| {
-                pixelate_project::ProjectError::ProjectPathNotFound(request.path.clone())
-            })?
+            .find(|image| image.path == requested_path)
+            .ok_or(pixelate_project::ProjectError::ProjectPathNotFound(
+                requested_path,
+            ))?
             .path,
     );
     fs::read(&path).map_err(|source| AppError::Read { path, source })

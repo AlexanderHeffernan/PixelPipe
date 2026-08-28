@@ -30,6 +30,19 @@ Choose a game folder. Pixelate creates a `.pixelate` project and supplies focuse
 pixelization defaults directly. Other game files remain untouched until an
 explicit export.
 
+The Assets browser discovers supported PNG, JPEG, and WebP artwork in the game
+project's real folder structure while honoring ignore rules and excluding
+internal, dependency, and build folders. Existing images are preview-only until
+you explicitly choose **Edit in Pixelate**, which imports a verified internal
+source copy without rewriting the project file. Managed assets keep stable IDs
+and immutable history when images or containing folders move. Assets without a
+linked project path appear under Drafts.
+
+Pixelate can explicitly create, rename/move, and delete empty real folders, and
+move linked images without overwriting collisions. It never recursively deletes
+project files or creates `.gitkeep`; empty folders are not retained by Git.
+Removing a linked asset from Pixelate leaves its project image intact.
+
 The macOS app and Linux AppImage check for signed updates when they open and
 every six hours. An available update is always shown before anything is
 downloaded or installed. Open Settings to see the installed version, check
@@ -65,6 +78,12 @@ pixelate guide --root .
 capabilities. It tells an agent how to create or update an asset, inspect state,
 refine pixels or colours, export, and visually verify its work without reading
 internal `.pixelate` files.
+
+Use `pixelate project catalog --root .` to inspect discovered and managed project
+images, including missing or externally modified links. Folder operations and
+adoption are available through `project create-folder|move-folder|delete-folder`
+and `asset adopt|relink|move|update-linked-source`; all refuse unsafe paths and
+silent overwrites.
 
 The CLI never prints unsolicited update notices. Use `pixelate version` for
 machine-readable version information and explicitly run `pixelate update` to
