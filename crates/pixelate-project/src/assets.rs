@@ -66,6 +66,8 @@ impl ProjectStore {
             schema: ASSET_SCHEMA.to_owned(),
             id: id.to_owned(),
             display_name: None,
+            project_path: None,
+            project_file_sha256: None,
             brief: AssetBrief {
                 schema: ASSET_BRIEF_SCHEMA.to_owned(),
                 text: brief.to_owned(),
@@ -157,6 +159,43 @@ impl ProjectStore {
         Ok(asset)
     }
 
+    /// Links an asset to a verified project file without changing its identity or history.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the path is unsafe, missing, unsupported, or cannot be stored.
+    pub fn link_asset_project_path(
+        &self,
+        id: &str,
+        project_path: &str,
+    ) -> Result<AssetManifest, ProjectError> {
+        let relative = self.validate_project_file(project_path)?;
+        let hash = pixelate_core::sha256_hex(
+            &fs::read(self.root.join(&relative))
+                .map_err(|source| io_at(&self.root.join(&relative), source))?,
+        );
+        let _lock = self.lock()?;
+        let mut asset = self.asset(id)?;
+        asset.project_path = Some(path_string(&relative));
+        asset.project_file_sha256 = Some(hash);
+        self.write_asset_manifest(&asset)?;
+        Ok(asset)
+    }
+
+    /// Clears an asset's project-file link while retaining Pixelate history.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the asset cannot be loaded or stored.
+    pub fn unlink_asset_project_path(&self, id: &str) -> Result<AssetManifest, ProjectError> {
+        let _lock = self.lock()?;
+        let mut asset = self.asset(id)?;
+        asset.project_path = None;
+        asset.project_file_sha256 = None;
+        self.write_asset_manifest(&asset)?;
+        Ok(asset)
+    }
+
     /// Lists initialized asset manifests in stable asset-ID order.
     ///
     /// # Errors
@@ -174,6 +213,22 @@ impl ProjectStore {
         ids.sort();
         ids.into_iter().map(|id| self.asset(&id)).collect()
     }
+}
+
+impl ProjectStore {
+    pub(crate) fn write_asset_manifest(&self, asset: &AssetManifest) -> Result<(), ProjectError> {
+        atomic_write(
+            &self.asset_path(&asset.id).join("asset.toml"),
+            toml::to_string_pretty(asset)?.as_bytes(),
+        )
+    }
+}
+
+pub(crate) fn path_string(path: &std::path::Path) -> String {
+    path.components()
+        .map(|part| part.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 pub(crate) fn validate_asset_id(id: &str) -> Result<(), ProjectError> {
