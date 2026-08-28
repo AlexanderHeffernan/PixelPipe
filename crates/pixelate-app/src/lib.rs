@@ -1,3 +1,4 @@
+mod catalog;
 mod composition;
 mod conversion_preview;
 mod error;
@@ -12,6 +13,7 @@ mod reference;
 mod revision_commit;
 mod revision_preview;
 
+pub use catalog::*;
 pub use composition::{
     CommitComposition, CompositionPreview, PreviewComposition, commit_composition,
     preview_composition,

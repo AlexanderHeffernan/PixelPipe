@@ -56,6 +56,31 @@ pub(crate) enum ProjectCommand {
         #[arg(long, default_value = ".")]
         root: PathBuf,
     },
+    /// List supported project images and their Pixelate status.
+    Catalog {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+    },
+    CreateFolder {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
+    MoveFolder {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        destination: String,
+    },
+    DeleteFolder {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -214,6 +239,40 @@ pub(crate) enum AssetCommand {
         asset: String,
         #[arg(long)]
         name: String,
+    },
+    /// Adopt an existing project image without rewriting it.
+    Adopt {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        asset: String,
+        #[arg(long, default_value = "")]
+        brief: String,
+    },
+    Relink {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        path: String,
+    },
+    Move {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        destination: String,
+    },
+    /// Import the externally changed linked project image as the selected source.
+    UpdateLinkedSource {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
     },
     /// Replace the source and reconvert with the asset's current style.
     UpdateSource {

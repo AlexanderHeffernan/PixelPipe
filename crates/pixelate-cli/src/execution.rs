@@ -1,10 +1,13 @@
 use std::fs;
 
 use pixelate_app::{
-    DeleteAsset, ExportAsset, ExportAssetFile, ImportReference, InitializeAsset, InspectRevision,
-    OpenProject, PreviewRevision, RenameAsset, UpdateAssetBrief, UpdateAssetSource, delete_asset,
-    export_asset, export_asset_file, import_reference, initialize_asset, inspect_revision,
-    open_project, preview_revision, rename_asset, update_asset_brief, update_asset_source,
+    AdoptProjectImage, BrowseProject, CreateFolder, DeleteAsset, DeleteFolder, ExportAsset,
+    ExportAssetFile, ImportReference, InitializeAsset, InspectRevision, MoveAsset, MoveFolder,
+    OpenProject, PreviewRevision, RelinkAsset, RenameAsset, UpdateAssetBrief, UpdateAssetSource,
+    UpdateLinkedSource, adopt_project_image, browse_project, create_folder, delete_asset,
+    delete_folder, export_asset, export_asset_file, import_reference, initialize_asset,
+    inspect_revision, move_asset, move_folder, open_project, preview_revision, relink_asset,
+    rename_asset, update_asset_brief, update_asset_source, update_linked_source,
 };
 use pixelate_project::ProjectStore;
 use serde_json::json;
@@ -56,9 +59,46 @@ fn run_reference(
 }
 
 fn run_project(command: ProjectCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let ProjectCommand::Show { root } = command;
-    let store = ProjectStore::discover(&root)?;
-    Ok(json!({ "ok": true, "project_root": store.root(), "project": store.manifest()? }))
+    match command {
+        ProjectCommand::Show { root } => {
+            let store = ProjectStore::discover(&root)?;
+            Ok(json!({ "ok": true, "project_root": store.root(), "project": store.manifest()? }))
+        }
+        ProjectCommand::Catalog { root } => {
+            let browser = browse_project(&BrowseProject { start: root })?;
+            Ok(
+                json!({ "ok": true, "project_root": browser.project_root, "catalog": browser.catalog }),
+            )
+        }
+        ProjectCommand::CreateFolder { root, path } => {
+            create_folder(CreateFolder {
+                start: root,
+                path: path.clone(),
+            })?;
+            Ok(json!({ "ok": true, "path": path }))
+        }
+        ProjectCommand::MoveFolder {
+            root,
+            source,
+            destination,
+        } => {
+            let assets = move_folder(MoveFolder {
+                start: root,
+                source: source.clone(),
+                destination: destination.clone(),
+            })?;
+            Ok(
+                json!({ "ok": true, "source": source, "destination": destination, "assets": assets }),
+            )
+        }
+        ProjectCommand::DeleteFolder { root, path } => {
+            delete_folder(DeleteFolder {
+                start: root,
+                path: path.clone(),
+            })?;
+            Ok(json!({ "ok": true, "path": path, "deleted": true }))
+        }
+    }
 }
 
 fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
@@ -87,6 +127,31 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
         AssetCommand::Rename { root, asset, name } => Ok(json!({
             "ok": true,
             "asset": rename_asset(RenameAsset { start: root, asset, display_name: name })?
+        })),
+        AssetCommand::Adopt {
+            root,
+            path,
+            asset,
+            brief,
+        } => Ok(json!({
+            "ok": true,
+            "asset": adopt_project_image(AdoptProjectImage { start: root, path, asset, brief })?
+        })),
+        AssetCommand::Relink { root, asset, path } => Ok(json!({
+            "ok": true,
+            "asset": relink_asset(RelinkAsset { start: root, asset, path })?
+        })),
+        AssetCommand::Move {
+            root,
+            asset,
+            destination,
+        } => Ok(json!({
+            "ok": true,
+            "asset": move_asset(MoveAsset { start: root, asset, destination })?
+        })),
+        AssetCommand::UpdateLinkedSource { root, asset } => Ok(json!({
+            "ok": true,
+            "asset": update_linked_source(UpdateLinkedSource { start: root, asset })?
         })),
         AssetCommand::UpdateSource {
             root,
