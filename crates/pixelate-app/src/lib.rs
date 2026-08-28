@@ -3,6 +3,7 @@ mod composition;
 mod conversion_preview;
 mod error;
 mod export;
+mod frame_import;
 mod inspection;
 mod onboarding;
 mod palette_editing;

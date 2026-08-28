@@ -214,7 +214,7 @@ describe("deterministic workstation", () => {
     ).not.toBeInTheDocument();
 
     const duration = screen.getByLabelText(
-      "Selected frame duration in milliseconds",
+      "Animation frame duration in milliseconds",
     );
     await fireEvent.update(duration, "140");
     await fireEvent.change(duration);
@@ -223,12 +223,18 @@ describe("deterministic workstation", () => {
         "/game",
         "field-medic",
         "r000001",
-        { type: "set_duration", frame_id: "idle-b", duration_ms: 140 },
+        { type: "set_all_durations", duration_ms: 140 },
         "user",
       ),
     );
 
     const secondItem = second.closest("li")!;
+    await fireEvent.contextMenu(secondItem);
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await fireEvent.pointerDown(screen.getByText("Frame duration"));
+    expect(
+      screen.queryByRole("menuitem", { name: "Rename" }),
+    ).not.toBeInTheDocument();
     await fireEvent.contextMenu(secondItem);
     await fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
     const name = screen.getByRole("textbox", { name: "Frame name" });
@@ -244,16 +250,31 @@ describe("deterministic workstation", () => {
       ),
     );
 
-    const transfer = {
-      effectAllowed: "none",
-      setData: vi.fn(),
-      getData: vi.fn(() => "idle-b"),
-    };
-    await fireEvent.dragStart(secondItem, { dataTransfer: transfer });
     const third = screen
       .getByRole("button", { name: "Frame 3, 160 milliseconds" })
       .closest("li")!;
-    await fireEvent.drop(third, { dataTransfer: transfer });
+    const items = screen.getAllByRole("listitem");
+    items.forEach((item, index) =>
+      vi.spyOn(item, "getBoundingClientRect").mockReturnValue({
+        left: index * 100,
+        right: index * 100 + 100,
+        top: 0,
+        bottom: 100,
+        width: 100,
+        height: 100,
+        x: index * 100,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    );
+    await fireEvent.pointerDown(secondItem, {
+      button: 0,
+      clientX: 150,
+      clientY: 20,
+    });
+    await fireEvent.pointerMove(window, { clientX: 290, clientY: 20 });
+    expect(third).toHaveClass("drop-after");
+    await fireEvent.pointerUp(window, { clientX: 290, clientY: 20 });
     await waitFor(() =>
       expect(api.mutateFrames).toHaveBeenCalledWith(
         "/game",
@@ -293,6 +314,13 @@ describe("deterministic workstation", () => {
     await waitFor(() =>
       expect(setItem).toHaveBeenCalledWith("pixelate.timeline-height", "290"),
     );
+    for (let step = 0; step < 20; step += 1)
+      await fireEvent.keyDown(resize, { key: "ArrowDown" });
+    expect(resize).toHaveAttribute("aria-valuenow", "94");
+    expect(screen.getByRole("region", { name: "Frame timeline" })).toHaveClass(
+      "is-minimal",
+    );
+    expect(timelineCss).toContain("height: 16px");
     await fireEvent.click(
       screen.getByRole("button", { name: "Close frame timeline" }),
     );
@@ -326,6 +354,7 @@ describe("deterministic workstation", () => {
     expect(timelineCss).toContain("overflow-x: auto");
     expect(timelineCss).toContain("@media (max-width: 760px)");
     expect(timelineCss).toContain("prefers-reduced-motion: reduce");
+    expect(screen.queryByText(/ ms$/)).not.toBeInTheDocument();
   });
 
   it("plays the selected animation in its asset thumbnail", async () => {
@@ -354,6 +383,57 @@ describe("deterministic workstation", () => {
     await waitFor(() => expect(thumbnail.src).toContain("base64,a"));
     await vi.advanceTimersByTimeAsync(11);
     await waitFor(() => expect(thumbnail.src).toContain("base64,b"));
+  });
+
+  it("never carries an animated thumbnail into the next selected asset", async () => {
+    const twoAssets = structuredClone(project);
+    twoAssets.assets.push({
+      asset: {
+        ...structuredClone(project.assets[0].asset),
+        id: "scout",
+        display_name: "Scout",
+        head: "r000002",
+      },
+      revisions: [],
+    });
+    vi.mocked(api.openProject).mockResolvedValue(twoAssets);
+    vi.mocked(api.browseProject).mockResolvedValue(twoAssets);
+    const animated = structuredClone(revisionView);
+    animated.metadata.frames = [
+      { id: "a", duration_ms: 1000 },
+      { id: "b", duration_ms: 1000 },
+    ];
+    vi.mocked(api.loadRevision).mockImplementation(
+      async (_root, asset, revision, frame) => {
+        const loaded = structuredClone(
+          asset === "scout" ? revisionView : animated,
+        );
+        loaded.metadata.asset = asset;
+        loaded.metadata.revision = revision ?? "r000001";
+        loaded.metadata.selected_frame_id =
+          frame ?? loaded.metadata.frames[0].id;
+        loaded.native_png_base64 = asset === "scout" ? "scout" : (frame ?? "a");
+        return loaded;
+      },
+    );
+    await openWorkstation();
+    await enterCanvas();
+    await waitFor(() =>
+      expect(
+        document.querySelector<HTMLImageElement>(
+          ".asset-row[aria-current='page'] .asset-thumbnail img",
+        )?.src,
+      ).toContain("base64,a"),
+    );
+    await fireEvent.click(screen.getByRole("button", { name: "Scout" }));
+    await screen.findByRole("img", { name: "scout pixel art" });
+    await waitFor(() =>
+      expect(
+        document.querySelector<HTMLImageElement>(
+          ".asset-row[aria-current='page'] .asset-thumbnail img",
+        )?.src,
+      ).toContain("base64,scout"),
+    );
   });
 
   it("plays stored frame durations, stops at loop-off end, and pauses before editing", async () => {

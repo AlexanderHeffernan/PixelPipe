@@ -1,4 +1,4 @@
-import { nextTick, ref, type Ref } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, type Ref } from "vue";
 import type { createAnimation } from "./animation";
 
 export function useTimelineFrames(
@@ -9,6 +9,10 @@ export function useTimelineFrames(
   const editingFrameId = ref("");
   const editName = ref("");
   const draggedFrameId = ref("");
+  const dropPosition = ref<number>();
+  let pendingFrameId = "";
+  let pointerStartX = 0;
+  let pointerStartY = 0;
 
   function setDuration(event: Event) {
     const value = Math.max(
@@ -16,8 +20,7 @@ export function useTimelineFrames(
       Number((event.target as HTMLInputElement).value) || 1,
     );
     void animation.mutate({
-      type: "set_duration",
-      frame_id: animation.selectedFrameId.value,
+      type: "set_all_durations",
       duration_ms: value,
     });
   }
@@ -40,6 +43,14 @@ export function useTimelineFrames(
   function openFrameMenu(event: MouseEvent, frameId: string) {
     event.preventDefault();
     contextFrameId.value = frameId;
+  }
+
+  function closeFrameMenu(event: PointerEvent) {
+    if (
+      contextFrameId.value &&
+      !(event.target as HTMLElement | null)?.closest(".frame-context")
+    )
+      contextFrameId.value = "";
   }
 
   async function beginRename(frameId: string) {
@@ -73,41 +84,77 @@ export function useTimelineFrames(
     void animation.mutate({ type: "delete", frame_id: frameId });
   }
 
-  function dragStart(event: DragEvent, frameId: string) {
-    draggedFrameId.value = frameId;
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", frameId);
-    }
+  function pointerDown(event: PointerEvent, frameId: string) {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("input"))
+      return;
+    pendingFrameId = frameId;
+    pointerStartX = event.clientX;
+    pointerStartY = event.clientY;
   }
 
-  function dropFrame(event: DragEvent, targetIndex: number) {
+  function pointerMove(event: PointerEvent) {
+    if (!pendingFrameId) return;
+    if (
+      !draggedFrameId.value &&
+      Math.hypot(event.clientX - pointerStartX, event.clientY - pointerStartY) <
+        5
+    )
+      return;
     event.preventDefault();
-    const frameId =
-      draggedFrameId.value || event.dataTransfer?.getData("text/plain") || "";
+    draggedFrameId.value = pendingFrameId;
+    const cards = Array.from(
+      strip.value?.querySelectorAll<HTMLElement>("[data-frame-index]") ?? [],
+    );
+    dropPosition.value = cards.findIndex((card) => {
+      const bounds = card.getBoundingClientRect();
+      return event.clientX < bounds.left + bounds.width / 2;
+    });
+    if (dropPosition.value < 0) dropPosition.value = cards.length;
+  }
+
+  function pointerUp() {
+    const frameId = draggedFrameId.value;
+    const slot = dropPosition.value;
+    pendingFrameId = "";
     draggedFrameId.value = "";
-    const current = animation.frames.value.findIndex(
+    dropPosition.value = undefined;
+    if (!frameId || slot === undefined) return;
+    const source = animation.frames.value.findIndex(
       (frame) => frame.id === frameId,
     );
-    if (frameId && current !== targetIndex)
+    const position = slot > source ? slot - 1 : slot;
+    if (source !== position)
       void animation.mutate(
-        { type: "reorder", frame_id: frameId, position: targetIndex },
+        { type: "reorder", frame_id: frameId, position },
         frameId,
       );
   }
+
+  onMounted(() => {
+    document.addEventListener("pointerdown", closeFrameMenu);
+    window.addEventListener("pointermove", pointerMove);
+    window.addEventListener("pointerup", pointerUp);
+    window.addEventListener("pointercancel", pointerUp);
+  });
+  onBeforeUnmount(() => {
+    document.removeEventListener("pointerdown", closeFrameMenu);
+    window.removeEventListener("pointermove", pointerMove);
+    window.removeEventListener("pointerup", pointerUp);
+    window.removeEventListener("pointercancel", pointerUp);
+  });
 
   return {
     contextFrameId,
     editingFrameId,
     editName,
     draggedFrameId,
+    dropPosition,
     setDuration,
     reorder,
     openFrameMenu,
     beginRename,
     finishRename,
     deleteFrame,
-    dragStart,
-    dropFrame,
+    pointerDown,
   };
 }

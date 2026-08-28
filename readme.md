@@ -100,7 +100,7 @@ Turn that sprite into an animation without changing asset identity:
 pixelate frame duplicate --root /path/to/game --asset signal-flare \
   --frame frame-0001
 pixelate frame duration --root /path/to/game --asset signal-flare \
-  --frame frame-0002 --duration 140
+  --duration 140
 pixelate frame rename --root /path/to/game --asset signal-flare \
   --frame frame-0002 --name 'Passing pose'
 pixelate revision draw --root /path/to/game --asset signal-flare \
@@ -126,7 +126,11 @@ timing, and pass `--frame <stable-id>` to inspect one pose.
 Inspection also reports exact adjacent and loop-closing pixel transitions,
 separating silhouette changes from palette-index changes over opaque overlap.
 Large opaque-colour change with little silhouette motion is a prompt to fix the
-source pose, not to blur or automatically smooth the indexed result.
+source pose, not to blur or automatically smooth the indexed result. Structured
+motion warnings flag ≥40% opaque-colour churn or ≥20% silhouette replacement;
+replace the warning's destination frame with `frame replace`, inspect again, and
+do not call the animation complete until warnings are cleared or reviewed by the
+human as intentional broad motion.
 
 ### Visual verification
 

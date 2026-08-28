@@ -260,6 +260,7 @@ export type FrameMutationAction =
   | { type: "delete"; frame_id: string }
   | { type: "reorder"; frame_id: string; position: number }
   | { type: "set_duration"; frame_id: string; duration_ms: number }
+  | { type: "set_all_durations"; duration_ms: number }
   | { type: "rename"; frame_id: string; name: string }
   | {
       type: "import_frame";

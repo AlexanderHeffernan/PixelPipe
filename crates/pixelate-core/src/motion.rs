@@ -5,6 +5,7 @@ use crate::{CoreError, IndexedSequence};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SequenceMotion {
     pub transitions: Vec<FrameTransition>,
+    pub warnings: Vec<MotionWarning>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -15,6 +16,20 @@ pub struct FrameTransition {
     pub silhouette_changes: u64,
     pub opaque_color_changes: u64,
     pub opaque_overlap_pixels: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MotionWarning {
+    pub from_frame_id: String,
+    pub to_frame_id: String,
+    pub kind: MotionWarningKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MotionWarningKind {
+    HighOpaqueColorChurn,
+    BroadSilhouetteChange,
 }
 
 /// Measures exact indexed-pixel changes between adjacent frames and loop closure.
@@ -30,10 +45,11 @@ pub fn inspect_sequence_motion(sequence: &IndexedSequence) -> Result<SequenceMot
     if sequence.frames.len() < 2 {
         return Ok(SequenceMotion {
             transitions: Vec::new(),
+            warnings: Vec::new(),
         });
     }
     let transparent = sequence.palette.transparent_index;
-    let transitions = sequence
+    let transitions: Vec<FrameTransition> = sequence
         .frames
         .iter()
         .zip(sequence.frames.iter().cycle().skip(1))
@@ -61,7 +77,38 @@ pub fn inspect_sequence_motion(sequence: &IndexedSequence) -> Result<SequenceMot
             }
         })
         .collect();
-    Ok(SequenceMotion { transitions })
+    let warnings = transitions
+        .iter()
+        .flat_map(|transition| {
+            let mut warnings = Vec::new();
+            if transition.opaque_overlap_pixels > 0
+                && transition.opaque_color_changes.saturating_mul(5)
+                    >= transition.opaque_overlap_pixels.saturating_mul(2)
+            {
+                warnings.push(MotionWarning {
+                    from_frame_id: transition.from_frame_id.clone(),
+                    to_frame_id: transition.to_frame_id.clone(),
+                    kind: MotionWarningKind::HighOpaqueColorChurn,
+                });
+            }
+            let visible_union = transition
+                .opaque_overlap_pixels
+                .saturating_add(transition.silhouette_changes);
+            if visible_union > 0 && transition.silhouette_changes.saturating_mul(5) >= visible_union
+            {
+                warnings.push(MotionWarning {
+                    from_frame_id: transition.from_frame_id.clone(),
+                    to_frame_id: transition.to_frame_id.clone(),
+                    kind: MotionWarningKind::BroadSilhouetteChange,
+                });
+            }
+            warnings
+        })
+        .collect();
+    Ok(SequenceMotion {
+        transitions,
+        warnings,
+    })
 }
 
 #[cfg(test)]
@@ -106,5 +153,10 @@ mod tests {
         assert_eq!(motion.transitions[0].silhouette_changes, 1);
         assert_eq!(motion.transitions[0].opaque_color_changes, 1);
         assert_eq!(motion.transitions[0].opaque_overlap_pixels, 2);
+        assert_eq!(motion.warnings.len(), 4);
+        assert_eq!(
+            motion.warnings[0].kind,
+            MotionWarningKind::HighOpaqueColorChurn
+        );
     }
 }

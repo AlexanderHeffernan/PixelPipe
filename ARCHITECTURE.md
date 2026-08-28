@@ -77,7 +77,8 @@ compatible with the original contracts.
 Deterministic motion inspection counts exact adjacent-frame and loop-closing
 changes, distinguishing silhouette movement from opaque palette-index churn.
 It diagnoses inconsistent inputs without mutating or temporally smoothing the
-indexed source of truth.
+indexed source of truth. Review warnings use fixed ratio thresholds and identify
+the destination frame for an immutable `frame replace` correction.
 
 ## CLI parity
 
@@ -91,7 +92,7 @@ Every desktop capability must use the same application use case as a CLI route.
 | Pixelization and canvas placement | `revision pixelize`, `compose` |
 | Inspection and vision-friendly preview | `revision inspect`, `preview` |
 | Pixel and palette editing | `revision draw`, `fill`, `recolor`, `remap` |
-| Frame editing and ordered import | `frame add`, `duplicate`, `import`, `import-sequence`, `import-sheet`, `delete`, `reorder`, `duration`, `rename` |
+| Frame editing and ordered import | `frame add`, `duplicate`, `import`, `replace`, `import-sequence`, `import-sheet`, `delete`, `reorder`, `duration`, `rename` |
 | History navigation | `revision set-head` |
 | Bundle or named image export | `asset export`, `export-file` |
 | Installed version | `version` |

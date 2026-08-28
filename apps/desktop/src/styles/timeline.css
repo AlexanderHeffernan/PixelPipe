@@ -175,15 +175,39 @@
   display: flex;
   flex: 0 0 auto;
   cursor: grab;
+  touch-action: none;
 }
 .frame-strip > li.is-dragging {
   opacity: 0.45;
+}
+.is-frame-dragging .frame-strip,
+.is-frame-dragging .frame-strip > li {
+  cursor: grabbing;
+  user-select: none;
+}
+.frame-strip > li.drop-before::before,
+.frame-strip > li.drop-after::after {
+  position: absolute;
+  z-index: 10;
+  top: 2px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(206, 112, 67, 0.2);
+  content: "";
+}
+.frame-strip > li.drop-before::before {
+  left: -5px;
+}
+.frame-strip > li.drop-after::after {
+  right: -5px;
 }
 .frame-card {
   position: relative;
   display: grid;
   width: clamp(54px, calc((var(--timeline-height) - 82px) * 0.72), 112px);
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px 5px;
   padding: 5px;
   border: 1px solid var(--line);
@@ -195,7 +219,7 @@
 .frame-select {
   position: relative;
   display: block;
-  grid-column: 1 / 3;
+  grid-column: 1;
   width: 100%;
   padding: 0;
   border: 0;
@@ -217,10 +241,6 @@
   white-space: nowrap;
   font-size: 9px;
 }
-.frame-card small {
-  font-size: 8px;
-  opacity: 0.72;
-}
 .frame-card:has(.frame-select[aria-current="true"]) {
   border-color: var(--accent);
   color: white;
@@ -240,14 +260,21 @@
 .frame-card input {
   min-width: 0;
   width: 100%;
-  padding: 1px 3px;
+  height: 16px;
+  min-height: 16px;
+  padding: 0 3px;
+  border-radius: 3px;
+  line-height: 16px;
   font-size: 9px;
 }
 .is-minimal .frame-select {
   display: none;
 }
 .is-minimal .frame-card {
+  height: 24px;
   width: 62px;
+  align-items: center;
+  padding-block: 3px;
 }
 .is-expanded .frame-strip {
   gap: 9px;

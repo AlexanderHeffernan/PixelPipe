@@ -14,6 +14,7 @@ pub(crate) fn run_frame(
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let revision = match command {
         command @ (FrameCommand::Import { .. }
+        | FrameCommand::Replace { .. }
         | FrameCommand::ImportSequence { .. }
         | FrameCommand::ImportSheet { .. }) => run_import(command)?,
         command @ (FrameCommand::Duration { .. } | FrameCommand::Rename { .. }) => {
@@ -96,6 +97,7 @@ fn run_mutation(
             unreachable!("metadata commands are routed separately")
         }
         FrameCommand::Import { .. }
+        | FrameCommand::Replace { .. }
         | FrameCommand::ImportSequence { .. }
         | FrameCommand::ImportSheet { .. } => {
             unreachable!("import commands are routed separately")
@@ -118,9 +120,14 @@ fn run_metadata_mutation(
             root,
             asset,
             parent,
-            FrameMutationAction::SetDuration {
-                frame_id: frame,
-                duration_ms: duration,
+            match frame {
+                Some(frame_id) => FrameMutationAction::SetDuration {
+                    frame_id,
+                    duration_ms: duration,
+                },
+                None => FrameMutationAction::SetAllDurations {
+                    duration_ms: duration,
+                },
             },
             actor,
         ),
@@ -166,6 +173,23 @@ fn run_import(
                 file,
                 position,
                 duration_ms: duration,
+            },
+            actor,
+        ),
+        FrameCommand::Replace {
+            root,
+            asset,
+            parent,
+            frame,
+            file,
+            actor,
+        } => mutation(
+            root,
+            asset,
+            parent,
+            FrameMutationAction::ReplaceFrame {
+                frame_id: frame,
+                file,
             },
             actor,
         ),

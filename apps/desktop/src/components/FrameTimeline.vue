@@ -25,14 +25,14 @@ const {
   editingFrameId,
   editName,
   draggedFrameId,
+  dropPosition,
   setDuration,
   reorder,
   openFrameMenu,
   beginRename,
   finishRename,
   deleteFrame,
-  dragStart,
-  dropFrame,
+  pointerDown,
 } = useTimelineFrames(animation, strip);
 const {
   resizing,
@@ -112,6 +112,7 @@ function remove() {
     :class="{
       open,
       resizing,
+      'is-frame-dragging': draggedFrameId,
       'is-minimal': minimal,
       'is-compact': !expanded,
       'is-expanded': expanded,
@@ -184,14 +185,12 @@ function remove() {
         </div>
 
         <label class="frame-duration">
-          <span>Duration</span>
+          <span>Frame duration</span>
           <input
-            aria-label="Selected frame duration in milliseconds"
+            aria-label="Animation frame duration in milliseconds"
             type="number"
             min="1"
-            :value="
-              animation.frames.value[animation.selectedIndex.value]?.duration_ms
-            "
+            :value="animation.frames.value[0]?.duration_ms"
             @change="setDuration"
           />
           <span>ms</span>
@@ -243,12 +242,16 @@ function remove() {
         <li
           v-for="(frame, index) in animation.frames.value"
           :key="frame.id"
-          :class="{ 'is-dragging': draggedFrameId === frame.id }"
-          draggable="true"
-          @dragstart="dragStart($event, frame.id)"
-          @dragend="draggedFrameId = ''"
-          @dragover.prevent
-          @drop="dropFrame($event, index)"
+          :data-frame-index="index"
+          :class="{
+            'is-dragging': draggedFrameId === frame.id,
+            'drop-before': draggedFrameId && dropPosition === index,
+            'drop-after':
+              draggedFrameId &&
+              dropPosition === animation.frames.value.length &&
+              index === animation.frames.value.length - 1,
+          }"
+          @pointerdown="pointerDown($event, frame.id)"
           @contextmenu="openFrameMenu($event, frame.id)"
         >
           <div class="frame-card">
@@ -284,7 +287,6 @@ function remove() {
               @blur="finishRename(frame.id)"
             />
             <span v-else>{{ frame.name ?? `Frame ${index + 1}` }}</span>
-            <small>{{ frame.duration_ms }} ms</small>
           </div>
           <div
             v-if="contextFrameId === frame.id"

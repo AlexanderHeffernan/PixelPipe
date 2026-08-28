@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-const MIN_HEIGHT = 124;
+const MIN_HEIGHT = 94;
 const MAX_HEIGHT = 300;
 const DEFAULT_HEIGHT = 150;
 const HEIGHT_KEY = "pixelate.timeline-height";
@@ -32,7 +32,7 @@ export function useTimelineDrawer() {
   const maximumHeight = computed(() =>
     Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, windowHeight.value - 300)),
   );
-  const minimal = computed(() => height.value <= 145);
+  const minimal = computed(() => height.value <= 124);
   const expanded = computed(() => height.value >= 235);
 
   function clampHeight(value: number) {

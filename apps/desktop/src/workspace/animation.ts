@@ -20,10 +20,17 @@ export function createAnimation(context: AnimationContext) {
   const thumbnails = ref<Record<string, string>>({});
   let timer: ReturnType<typeof setTimeout> | undefined;
   let playbackGeneration = 0;
+  let thumbnailGeneration = 0;
 
-  const frames = computed(() => context.view.value?.metadata.frames ?? []);
-  const selectedFrameId = computed(
-    () => context.view.value?.metadata.selected_frame_id ?? "",
+  const frames = computed(() =>
+    context.view.value?.metadata.asset === context.assetId.value
+      ? context.view.value.metadata.frames
+      : [],
+  );
+  const selectedFrameId = computed(() =>
+    context.view.value?.metadata.asset === context.assetId.value
+      ? context.view.value.metadata.selected_frame_id
+      : "",
   );
   const selectedIndex = computed(() =>
     frames.value.findIndex((frame) => frame.id === selectedFrameId.value),
@@ -31,7 +38,7 @@ export function createAnimation(context: AnimationContext) {
 
   watch(
     () =>
-      `${context.view.value?.metadata.revision}:${frames.value.map((frame) => frame.id).join(",")}`,
+      `${context.assetId.value}:${context.view.value?.metadata.asset}:${context.view.value?.metadata.revision}:${frames.value.map((frame) => frame.id).join(",")}`,
     () => void loadThumbnails().catch(() => undefined),
   );
   onScopeDispose(pause);
@@ -162,26 +169,30 @@ export function createAnimation(context: AnimationContext) {
   async function loadThumbnails() {
     const root = context.project.value?.project_root;
     const revision = context.view.value?.metadata.revision;
-    if (!root || !revision) return;
+    const asset = context.assetId.value;
+    const generation = ++thumbnailGeneration;
+    if (!root || !revision || context.view.value?.metadata.asset !== asset) {
+      thumbnails.value = {};
+      return;
+    }
     const loaded = await Promise.all(
       frames.value.map(
         async (frame) =>
           [
             frame.id,
             api.pngDataUrl(
-              (
-                await api.loadRevision(
-                  root,
-                  context.assetId.value,
-                  revision,
-                  frame.id,
-                )
-              ).native_png_base64,
+              (await api.loadRevision(root, asset, revision, frame.id))
+                .native_png_base64,
             ),
           ] as const,
       ),
     );
-    thumbnails.value = Object.fromEntries(loaded);
+    if (
+      generation === thumbnailGeneration &&
+      context.assetId.value === asset &&
+      context.view.value?.metadata.revision === revision
+    )
+      thumbnails.value = Object.fromEntries(loaded);
   }
 
   return {

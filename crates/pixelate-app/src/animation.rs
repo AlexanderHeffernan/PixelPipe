@@ -12,6 +12,7 @@ use pixelate_core::{
 use pixelate_project::{ProjectStore, RevisionSnapshot};
 use serde::Deserialize;
 
+use crate::frame_import::{default_actor, default_duration, import_frame, replace_frame};
 use crate::{AppError, CommitSequence, RevisionResult, commit_sequence};
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +47,9 @@ pub enum FrameMutationAction {
         frame_id: String,
         duration_ms: u32,
     },
+    SetAllDurations {
+        duration_ms: u32,
+    },
     Rename {
         frame_id: String,
         name: String,
@@ -54,6 +58,10 @@ pub enum FrameMutationAction {
         file: PathBuf,
         position: Option<usize>,
         duration_ms: Option<u32>,
+    },
+    ReplaceFrame {
+        frame_id: String,
+        file: PathBuf,
     },
 }
 
@@ -127,6 +135,12 @@ pub fn mutate_frames(request: FrameMutation) -> Result<RevisionResult, AppError>
                 duration_ms,
             }
         }
+        FrameMutationAction::SetAllDurations { duration_ms } => {
+            for frame in &mut sequence.frames {
+                frame.duration_ms = duration_ms;
+            }
+            FrameOperation::SetAllDurations { duration_ms }
+        }
         FrameMutationAction::Rename { frame_id, name } => {
             let name = name.trim().to_owned();
             find_frame_mut(&mut sequence, &frame_id)?.name = Some(name.clone());
@@ -144,6 +158,9 @@ pub fn mutate_frames(request: FrameMutation) -> Result<RevisionResult, AppError>
             position,
             duration_ms,
         )?,
+        FrameMutationAction::ReplaceFrame { frame_id, file } => {
+            replace_frame(&store, &request.asset, &mut sequence, &frame_id, &file)?
+        }
     };
     commit_animation(
         &store,
@@ -336,34 +353,6 @@ fn duplicate_frame(
     })
 }
 
-fn import_frame(
-    store: &ProjectStore,
-    asset: &str,
-    sequence: &mut IndexedSequence,
-    file: &PathBuf,
-    position: Option<usize>,
-    duration_ms: Option<u32>,
-) -> Result<FrameOperation, AppError> {
-    let source = read_image(file)?;
-    let style = style(store, asset)?;
-    let raster = convert_reference(&source, &sequence.palette, &style.settings)?.raster;
-    let id = sequence.next_frame_id();
-    let position = insertion_position(position, sequence.frames.len())?;
-    sequence.frames.insert(
-        position,
-        IndexedFrame {
-            id: id.clone(),
-            name: None,
-            duration_ms: duration_ms.unwrap_or(DEFAULT_FRAME_DURATION_MS),
-            pixels: raster.pixels,
-        },
-    );
-    Ok(FrameOperation::ImportFrame {
-        frame_id: id,
-        position,
-    })
-}
-
 fn commit_animation(
     store: &ProjectStore,
     asset: &str,
@@ -425,7 +414,10 @@ fn convert_sources(
         .collect()
 }
 
-fn style(store: &ProjectStore, asset: &str) -> Result<pixelate_project::AssetStyle, AppError> {
+pub(crate) fn style(
+    store: &ProjectStore,
+    asset: &str,
+) -> Result<pixelate_project::AssetStyle, AppError> {
     store.asset(asset)?.style.ok_or_else(|| {
         AppError::UnsupportedConversion(
             "frame image import requires an established pixelization style".to_owned(),
@@ -433,7 +425,7 @@ fn style(store: &ProjectStore, asset: &str) -> Result<pixelate_project::AssetSty
     })
 }
 
-fn read_image(path: &PathBuf) -> Result<RgbaImage, AppError> {
+pub(crate) fn read_image(path: &PathBuf) -> Result<RgbaImage, AppError> {
     let bytes = fs::read(path).map_err(|source| AppError::Read {
         path: path.clone(),
         source,
@@ -474,7 +466,7 @@ fn frame_pixel_count(sequence: &IndexedSequence) -> Result<usize, AppError> {
     usize::try_from(u64::from(sequence.width) * u64::from(sequence.height))
         .map_err(|_| pixelate_core::CoreError::DimensionOverflow.into())
 }
-fn insertion_position(position: Option<usize>, len: usize) -> Result<usize, AppError> {
+pub(crate) fn insertion_position(position: Option<usize>, len: usize) -> Result<usize, AppError> {
     let position = position.unwrap_or(len);
     if position > len {
         Err(AppError::InvalidFramePosition(position))
@@ -492,16 +484,10 @@ fn frame_index(sequence: &IndexedSequence, id: &str) -> Result<usize, AppError> 
 fn find_frame<'a>(sequence: &'a IndexedSequence, id: &str) -> Result<&'a IndexedFrame, AppError> {
     Ok(&sequence.frames[frame_index(sequence, id)?])
 }
-fn find_frame_mut<'a>(
+pub(crate) fn find_frame_mut<'a>(
     sequence: &'a mut IndexedSequence,
     id: &str,
 ) -> Result<&'a mut IndexedFrame, AppError> {
     let index = frame_index(sequence, id)?;
     Ok(&mut sequence.frames[index])
-}
-fn default_duration() -> u32 {
-    DEFAULT_FRAME_DURATION_MS
-}
-fn default_actor() -> String {
-    "agent".to_owned()
 }

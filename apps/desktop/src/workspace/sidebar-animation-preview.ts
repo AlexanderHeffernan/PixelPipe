@@ -38,7 +38,10 @@ export function useSidebarAnimationPreview(context: PreviewContext) {
         entry.asset.head,
       );
       frames = first.metadata.frames;
-      if (frames.length < 2 || currentGeneration !== generation) return;
+      if (frames.length < 2 || currentGeneration !== generation) {
+        delete images.value[entry.asset.id];
+        return;
+      }
       const loaded = await Promise.all(
         frames.map(
           async (frame) =>
@@ -59,7 +62,10 @@ export function useSidebarAnimationPreview(context: PreviewContext) {
       );
       thumbnails = Object.fromEntries(loaded);
     }
-    if (frames.length < 2 || currentGeneration !== generation) return;
+    if (frames.length < 2 || currentGeneration !== generation) {
+      delete images.value[entry.asset.id];
+      return;
+    }
     let index = 0;
     const advance = () => {
       if (currentGeneration !== generation) return;

@@ -346,8 +346,9 @@ pub(crate) enum FrameCommand {
         asset: String,
         #[arg(long)]
         parent: Option<String>,
+        /// Stable frame ID. Omit to set every frame to the same duration.
         #[arg(long)]
-        frame: String,
+        frame: Option<String>,
         #[arg(long)]
         duration: u32,
         #[arg(long, default_value = "agent")]
@@ -380,6 +381,20 @@ pub(crate) enum FrameCommand {
         position: Option<usize>,
         #[arg(long)]
         duration: Option<u32>,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Replace {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        frame: String,
+        #[arg(long)]
+        file: PathBuf,
         #[arg(long, default_value = "agent")]
         actor: String,
     },

@@ -49,10 +49,7 @@ fn frame_mutations_are_parent_linked_and_restore_as_a_whole() {
         start: root.clone(),
         asset: "hero".into(),
         parent: duplicate.revision.clone(),
-        action: FrameMutationAction::SetDuration {
-            frame_id: "frame-0002".into(),
-            duration_ms: 175,
-        },
+        action: FrameMutationAction::SetAllDurations { duration_ms: 175 },
         actor: "test".into(),
     })
     .unwrap();
@@ -98,6 +95,7 @@ fn frame_mutations_are_parent_linked_and_restore_as_a_whole() {
     );
     assert_eq!(snapshot.sequence.frames[0].duration_ms, 175);
     assert_eq!(snapshot.sequence.frames[1].duration_ms, 110);
+    assert_eq!(snapshot.sequence.frames[2].duration_ms, 175);
     verify_named_motion(&root, &snapshot, &deleted_revision);
     verify_targeted_edit_and_undo(&root, &store, &snapshot, &deleted_revision);
 
@@ -131,6 +129,7 @@ fn verify_named_motion(root: &Path, snapshot: &pixelate_project::RevisionSnapsho
     })
     .unwrap();
     assert_eq!(inspection.motion.transitions.len(), 3);
+    assert!(!inspection.motion.warnings.is_empty());
 }
 
 fn import_then_delete(root: &Path, parent: String) -> (String, String) {
@@ -148,17 +147,30 @@ fn import_then_delete(root: &Path, parent: String) -> (String, String) {
         actor: "test".into(),
     })
     .unwrap();
+    let replacement_source = root.join("replacement-frame.png");
+    write_image(&replacement_source, 12, 12, [30, 220, 30, 255]);
+    let replaced = mutate_frames(FrameMutation {
+        start: root.to_path_buf(),
+        asset: "hero".into(),
+        parent: imported.revision,
+        action: FrameMutationAction::ReplaceFrame {
+            frame_id: "frame-0004".into(),
+            file: replacement_source,
+        },
+        actor: "test".into(),
+    })
+    .unwrap();
     let deleted = mutate_frames(FrameMutation {
         start: root.to_path_buf(),
         asset: "hero".into(),
-        parent: imported.revision.clone(),
+        parent: replaced.revision.clone(),
         action: FrameMutationAction::Delete {
             frame_id: "frame-0001".into(),
         },
         actor: "test".into(),
     })
     .unwrap();
-    (deleted.revision, imported.revision)
+    (deleted.revision, replaced.revision)
 }
 
 fn verify_targeted_edit_and_undo(
