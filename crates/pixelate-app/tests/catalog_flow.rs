@@ -1,8 +1,9 @@
 use std::{fs, path::Path};
 
 use pixelate_app::{
-    AdoptPixelArt, AdoptProjectImage, BrowseProject, ProjectFileStatus, SetProjectImageIgnored,
-    UpdateLinkedSource, adopt_pixel_art, adopt_project_image, browse_project,
+    AdoptPixelArt, AdoptProjectImage, BrowseProject, DeleteProjectImage, MoveAsset,
+    ProjectFileStatus, SetProjectImageIgnored, UpdateLinkedSource, adopt_pixel_art,
+    adopt_project_image, browse_project, delete_project_image, move_asset,
     set_project_image_ignored, update_linked_source,
 };
 use pixelate_project::ProjectStore;
@@ -109,6 +110,50 @@ fn reference_adoption_hides_source_and_plans_a_distinct_output() {
             .iter()
             .any(|entry| entry.path == "art/concept.png")
     );
+}
+
+#[test]
+fn deleting_a_linked_project_image_retains_asset_history_and_reports_missing() {
+    let game = tempfile::tempdir().expect("game");
+    let store = ProjectStore::init(game.path(), "Fixture").expect("project");
+    write_png(&game.path().join("hero.png"), [40, 80, 120, 255]);
+    adopt_pixel_art(AdoptPixelArt {
+        start: game.path().to_path_buf(),
+        path: "hero.png".to_owned(),
+        asset: "hero".to_owned(),
+        brief: "Hero".to_owned(),
+        actor: "test".to_owned(),
+    })
+    .expect("adopt");
+
+    delete_project_image(DeleteProjectImage {
+        start: game.path().to_path_buf(),
+        path: "hero.png".to_owned(),
+    })
+    .expect("delete project image");
+    assert!(store.asset("hero").expect("asset retained").head.is_some());
+    let browser = browse_project(&BrowseProject {
+        start: game.path().to_path_buf(),
+    })
+    .expect("browse");
+    assert_eq!(browser.catalog[0].status, ProjectFileStatus::Missing);
+}
+
+#[test]
+fn moving_a_legacy_pathless_asset_plans_its_real_folder_location() {
+    let game = tempfile::tempdir().expect("game");
+    let store = ProjectStore::init(game.path(), "Fixture").expect("project");
+    fs::create_dir(game.path().join("sprites")).expect("folder");
+    store.create_asset("hero", "Hero").expect("asset");
+
+    let moved = move_asset(MoveAsset {
+        start: game.path().to_path_buf(),
+        asset: "hero".to_owned(),
+        destination: "sprites/hero.png".to_owned(),
+    })
+    .expect("move");
+    assert_eq!(moved.project_path.as_deref(), Some("sprites/hero.png"));
+    assert!(!game.path().join("sprites/hero.png").exists());
 }
 
 fn write_png(path: &Path, color: [u8; 4]) {

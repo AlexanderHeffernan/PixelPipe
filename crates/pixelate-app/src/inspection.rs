@@ -29,6 +29,7 @@ pub struct ProjectBrowser {
     pub project: ProjectManifest,
     pub assets: Vec<AssetBrowser>,
     pub catalog: Vec<CatalogEntry>,
+    pub folders: Vec<String>,
     pub pixelization: PixelizationDefaults,
 }
 
@@ -82,11 +83,17 @@ pub fn browse_project(request: &BrowseProject) -> Result<ProjectBrowser, AppErro
         })
         .collect::<Result<Vec<_>, ProjectError>>()?;
     let catalog = crate::build_catalog(&store, &assets)?;
+    let folders = store
+        .project_folders()?
+        .into_iter()
+        .map(|folder| folder.path)
+        .collect();
     Ok(ProjectBrowser {
         project_root: store.root().to_path_buf(),
         project,
         assets,
         catalog,
+        folders,
         pixelization: pixelization_defaults(),
     })
 }

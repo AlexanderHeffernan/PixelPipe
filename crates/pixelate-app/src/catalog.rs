@@ -88,6 +88,12 @@ pub struct DeleteFolder {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DeleteProjectImage {
+    pub start: PathBuf,
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct MoveAsset {
     pub start: PathBuf,
     pub asset: String,
@@ -324,6 +330,15 @@ pub fn delete_folder(request: DeleteFolder) -> Result<(), AppError> {
     let DeleteFolder { start, path } = request;
     Ok(ProjectStore::discover(&start)?.delete_project_folder(&path)?)
 }
+/// Deletes one supported project image while retaining any Pixelate asset and revision history.
+///
+/// # Errors
+///
+/// Returns an error when the path is unsafe, missing, escaped, or unsupported.
+pub fn delete_project_image(request: DeleteProjectImage) -> Result<(), AppError> {
+    let DeleteProjectImage { start, path } = request;
+    Ok(ProjectStore::discover(&start)?.delete_project_image(&path)?)
+}
 /// Moves a linked asset's project image without changing its stable identity.
 ///
 /// # Errors
@@ -337,11 +352,12 @@ pub fn move_asset(request: MoveAsset) -> Result<AssetManifest, AppError> {
     } = request;
     let store = ProjectStore::discover(&start)?;
     let manifest = store.asset(&asset)?;
-    if manifest.project_file_sha256.is_none()
-        && manifest
-            .project_path
-            .as_deref()
-            .is_some_and(|path| !store.root().join(path).is_file())
+    if manifest.project_path.is_none()
+        || (manifest.project_file_sha256.is_none()
+            && manifest
+                .project_path
+                .as_deref()
+                .is_some_and(|path| !store.root().join(path).is_file()))
     {
         Ok(store.plan_asset_project_path(&asset, &destination)?)
     } else {

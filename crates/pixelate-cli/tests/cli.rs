@@ -119,6 +119,7 @@ fn guide_documents_every_agent_workflow_family() {
         "create_real_folder",
         "rename_or_move_real_folder",
         "delete_empty_real_folder",
+        "delete_project_image",
         "move_linked_asset",
         "update_brief",
         "rename",

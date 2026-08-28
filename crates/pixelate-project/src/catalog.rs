@@ -28,6 +28,11 @@ pub struct ProjectImage {
     pub path: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectFolder {
+    pub path: String,
+}
+
 impl ProjectStore {
     /// Hides one discovered image from the project catalog.
     ///
@@ -111,6 +116,51 @@ impl ProjectStore {
         Ok(images)
     }
 
+    /// Discovers empty, safe project folders so newly created asset folders remain visible.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a traversed filesystem entry cannot be inspected.
+    pub fn project_folders(&self) -> Result<Vec<ProjectFolder>, ProjectError> {
+        let mut folders = Vec::new();
+        let root = self.root.clone();
+        let walker = WalkBuilder::new(&self.root)
+            .hidden(false)
+            .require_git(false)
+            .follow_links(false)
+            .filter_entry(move |entry| {
+                entry.path() == root
+                    || entry
+                        .file_name()
+                        .to_str()
+                        .is_some_and(|name| !name.starts_with('.') && !RESERVED.contains(&name))
+            })
+            .build();
+        for result in walker {
+            let entry = result.map_err(|error| ProjectError::Io {
+                path: self.root.clone(),
+                source: std::io::Error::other(error),
+            })?;
+            if entry.path() == self.root || !entry.file_type().is_some_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            if fs::read_dir(entry.path())
+                .map_err(|source| io_at(entry.path(), source))?
+                .next()
+                .is_none()
+            {
+                let relative = entry.path().strip_prefix(&self.root).map_err(|_| {
+                    ProjectError::InvalidProjectPath(entry.path().display().to_string())
+                })?;
+                folders.push(ProjectFolder {
+                    path: path_string(relative),
+                });
+            }
+        }
+        folders.sort_by(|left, right| left.path.cmp(&right.path));
+        Ok(folders)
+    }
+
     pub(crate) fn validate_project_file(&self, path: &str) -> Result<PathBuf, ProjectError> {
         let relative = validate_relative(path)?;
         if !is_supported_image(&relative) {
@@ -166,6 +216,17 @@ impl ProjectStore {
                 io_at(&target, source)
             }
         })
+    }
+
+    /// Deletes one supported project image without changing any Pixelate asset history.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for unsafe, missing, escaped, or unsupported file paths.
+    pub fn delete_project_image(&self, path: &str) -> Result<(), ProjectError> {
+        let relative = self.validate_project_file(path)?;
+        let target = self.root.join(relative);
+        fs::remove_file(&target).map_err(|source| io_at(&target, source))
     }
 
     /// Moves a linked project image and updates its authoritative manifest link.

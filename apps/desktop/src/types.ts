@@ -42,6 +42,7 @@ export interface ProjectBrowser {
   project: ProjectManifest;
   assets: AssetBrowser[];
   catalog: CatalogEntry[];
+  folders: string[];
   pixelization: PixelizationDefaults;
 }
 

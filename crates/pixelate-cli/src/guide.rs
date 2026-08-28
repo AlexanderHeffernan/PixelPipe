@@ -57,6 +57,7 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             "create_real_folder": "pixelate project create-folder --root . --path <project-relative-folder>",
             "rename_or_move_real_folder": "pixelate project move-folder --root . --source <folder> --destination <folder>",
             "delete_empty_real_folder": "pixelate project delete-folder --root . --path <folder>",
+            "delete_project_image": "pixelate project delete-image --root . --path <project-relative-image>",
             "move_linked_asset": "pixelate asset move --root . --asset <asset-id> --destination <project-relative-image>",
             "update_brief": "pixelate asset set-brief --root . --asset <asset-id> --brief '<brief>'",
             "rename": "pixelate asset rename --root . --asset <asset-id> --name '<display-name>'",

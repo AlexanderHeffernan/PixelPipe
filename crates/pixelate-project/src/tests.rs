@@ -263,6 +263,31 @@ fn folder_operations_reject_internal_paths_and_non_empty_deletion() {
     store.delete_project_folder("art").expect("delete empty");
 }
 
+#[test]
+fn discovers_empty_asset_folders_and_safely_deletes_only_images() {
+    let temp = tempdir().expect("tempdir");
+    let store = ProjectStore::init(temp.path(), "Fixture Game").expect("init");
+    store
+        .create_project_folder("sprites/units")
+        .expect("create folder");
+    assert_eq!(
+        store.project_folders().expect("folders"),
+        [crate::ProjectFolder {
+            path: "sprites/units".to_owned()
+        }]
+    );
+
+    fs::write(temp.path().join("sprites/hero.png"), b"image").expect("image");
+    store
+        .delete_project_image("sprites/hero.png")
+        .expect("delete image");
+    assert!(!temp.path().join("sprites/hero.png").exists());
+    assert!(matches!(
+        store.delete_project_image(".pixelate/internal.png"),
+        Err(ProjectError::ReservedProjectPath(_))
+    ));
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_symlink_escape_targets() {

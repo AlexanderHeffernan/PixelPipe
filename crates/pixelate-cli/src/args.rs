@@ -81,6 +81,13 @@ pub(crate) enum ProjectCommand {
         #[arg(long)]
         path: String,
     },
+    /// Permanently delete one supported project image without deleting Pixelate history.
+    DeleteImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
     HideImage {
         #[arg(long, default_value = ".")]
         root: PathBuf,

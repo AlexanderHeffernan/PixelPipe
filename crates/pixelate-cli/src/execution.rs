@@ -2,13 +2,14 @@ use std::fs;
 
 use pixelate_app::{
     AdoptPixelArt, AdoptProjectImage, BrowseProject, CreateFolder, DeleteAsset, DeleteFolder,
-    ExportAsset, ExportAssetFile, ImportReference, InitializeAsset, InspectRevision, MoveAsset,
-    MoveFolder, OpenProject, PreviewRevision, RelinkAsset, RenameAsset, SetProjectImageIgnored,
-    UpdateAssetBrief, UpdateAssetSource, UpdateLinkedSource, adopt_pixel_art, adopt_project_image,
-    browse_project, create_folder, delete_asset, delete_folder, export_asset, export_asset_file,
-    import_reference, initialize_asset, inspect_revision, move_asset, move_folder, open_project,
-    preview_revision, relink_asset, rename_asset, set_project_image_ignored, update_asset_brief,
-    update_asset_source, update_linked_source,
+    DeleteProjectImage, ExportAsset, ExportAssetFile, ImportReference, InitializeAsset,
+    InspectRevision, MoveAsset, MoveFolder, OpenProject, PreviewRevision, RelinkAsset, RenameAsset,
+    SetProjectImageIgnored, UpdateAssetBrief, UpdateAssetSource, UpdateLinkedSource,
+    adopt_pixel_art, adopt_project_image, browse_project, create_folder, delete_asset,
+    delete_folder, delete_project_image, export_asset, export_asset_file, import_reference,
+    initialize_asset, inspect_revision, move_asset, move_folder, open_project, preview_revision,
+    relink_asset, rename_asset, set_project_image_ignored, update_asset_brief, update_asset_source,
+    update_linked_source,
 };
 use pixelate_project::ProjectStore;
 use serde_json::json;
@@ -94,6 +95,13 @@ fn run_project(command: ProjectCommand) -> Result<serde_json::Value, Box<dyn std
         }
         ProjectCommand::DeleteFolder { root, path } => {
             delete_folder(DeleteFolder {
+                start: root,
+                path: path.clone(),
+            })?;
+            Ok(json!({ "ok": true, "path": path, "deleted": true }))
+        }
+        ProjectCommand::DeleteImage { root, path } => {
+            delete_project_image(DeleteProjectImage {
                 start: root,
                 path: path.clone(),
             })?;
