@@ -9,6 +9,7 @@ mod palette_editing;
 mod pixel_editing;
 mod pixelization;
 mod project;
+mod project_image;
 mod reference;
 mod revision_commit;
 mod revision_preview;
@@ -34,6 +35,7 @@ pub use pixelization::{
     pixelization_defaults,
 };
 pub use project::*;
+pub use project_image::{LoadProjectImage, ProjectImageView, load_project_image};
 pub use reference::{
     ImportReference, UpdateAssetSource, UpdateAssetSourceResult, import_reference,
     update_asset_source,

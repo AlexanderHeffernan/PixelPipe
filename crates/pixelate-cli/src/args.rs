@@ -61,6 +61,13 @@ pub(crate) enum ProjectCommand {
         #[arg(long, default_value = ".")]
         root: PathBuf,
     },
+    /// Inspect one supported project image and exact pixel-art eligibility.
+    InspectImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
     CreateFolder {
         #[arg(long, default_value = ".")]
         root: PathBuf,

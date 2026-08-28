@@ -107,12 +107,6 @@ pub struct MoveAsset {
     pub destination: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct LoadProjectImage {
-    pub start: PathBuf,
-    pub path: String,
-}
-
 pub(crate) fn build_catalog(
     store: &ProjectStore,
     assets: &[AssetBrowser],
@@ -384,27 +378,4 @@ pub fn move_asset(request: MoveAsset) -> Result<AssetManifest, AppError> {
     } else {
         Ok(store.move_asset_file(&asset, &destination)?)
     }
-}
-/// Lazily reads one discovered project image for preview.
-///
-/// # Errors
-///
-/// Returns an error when the image is not in the current safe discovery catalog or cannot be read.
-pub fn load_project_image(request: LoadProjectImage) -> Result<Vec<u8>, AppError> {
-    let LoadProjectImage {
-        start,
-        path: requested_path,
-    } = request;
-    let store = ProjectStore::discover(&start)?;
-    let path = store.root().join(
-        store
-            .project_images()?
-            .into_iter()
-            .find(|image| image.path == requested_path)
-            .ok_or(pixelate_project::ProjectError::ProjectPathNotFound(
-                requested_path,
-            ))?
-            .path,
-    );
-    fs::read(&path).map_err(|source| AppError::Read { path, source })
 }

@@ -9,7 +9,7 @@ use commands::{
         delete_project_image, export_asset, export_asset_file, import_reference, initialize_asset,
         load_project_image, move_asset, move_folder, move_project_image, open_project,
         preview_composition, preview_selected_reference, relink_asset, rename_asset,
-        set_project_image_ignored, update_asset_brief, update_linked_source,
+        reveal_project_image, set_project_image_ignored, update_asset_brief, update_linked_source,
     },
     revisions::{fill_revision, load_revision, patch_revision, remap_revision, set_asset_head},
     terminal::{TerminalSessions, close_terminal, resize_terminal, start_terminal, write_terminal},
@@ -24,6 +24,7 @@ use commands::{
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(TerminalSessions::default())
@@ -46,6 +47,7 @@ pub fn run() {
             move_project_image,
             move_asset,
             load_project_image,
+            reveal_project_image,
             import_reference,
             export_asset,
             export_asset_file,

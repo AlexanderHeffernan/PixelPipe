@@ -110,6 +110,7 @@ fn guide_documents_every_agent_workflow_family() {
         "list",
         "show_project",
         "project_catalog",
+        "inspect_project_image",
         "adopt_reference_image",
         "adopt_existing_pixel_art",
         "hide_project_image",
@@ -172,6 +173,17 @@ fn catalog_and_real_folder_routes_share_the_application_workflow() {
     let discovered = run(&["project", "catalog", "--root", root]);
     assert_eq!(discovered["catalog"][0]["path"], "art/hero.png");
     assert!(discovered["catalog"][0].get("asset_id").is_none());
+    let inspected = run(&[
+        "project",
+        "inspect-image",
+        "--root",
+        root,
+        "--path",
+        "art/hero.png",
+    ]);
+    assert_eq!(inspected["width"], 6);
+    assert_eq!(inspected["height"], 6);
+    assert_eq!(inspected["pixel_art_importable"], true);
     run(&[
         "project",
         "move-image",

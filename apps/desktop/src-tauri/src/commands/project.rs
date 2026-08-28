@@ -8,6 +8,7 @@ use pixelate_app::{
     UpdateLinkedSource,
 };
 use serde::Serialize;
+use tauri_plugin_opener::OpenerExt;
 
 use super::{CommandResult, blocking, command_error};
 
@@ -106,8 +107,18 @@ pub(crate) fn move_asset(request: MoveAsset) -> CommandResult<pixelate_app::Asse
     pixelate_app::move_asset(request).map_err(|error| command_error(&error))
 }
 
+#[derive(Debug, Serialize)]
+pub(crate) struct ProjectImageResponse {
+    data_url: String,
+    width: u32,
+    height: u32,
+    pixel_art_importable: bool,
+}
+
 #[tauri::command]
-pub(crate) async fn load_project_image(request: LoadProjectImage) -> CommandResult<String> {
+pub(crate) async fn load_project_image(
+    request: LoadProjectImage,
+) -> CommandResult<ProjectImageResponse> {
     blocking(move || {
         let extension = request
             .path
@@ -120,10 +131,26 @@ pub(crate) async fn load_project_image(request: LoadProjectImage) -> CommandResu
             "webp" => "image/webp",
             _ => "image/png",
         };
-        let bytes = pixelate_app::load_project_image(request)?;
-        Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
+        let view = pixelate_app::load_project_image(request)?;
+        Ok(ProjectImageResponse {
+            data_url: format!("data:{mime};base64,{}", STANDARD.encode(view.bytes)),
+            width: view.width,
+            height: view.height,
+            pixel_art_importable: view.pixel_art_importable,
+        })
     })
     .await
+}
+
+#[tauri::command]
+pub(crate) async fn reveal_project_image(
+    app: tauri::AppHandle,
+    request: LoadProjectImage,
+) -> CommandResult<()> {
+    let view = blocking(move || pixelate_app::load_project_image(request)).await?;
+    app.opener()
+        .reveal_item_in_dir(view.path)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

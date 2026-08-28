@@ -3,13 +3,14 @@ use std::fs;
 use pixelate_app::{
     AdoptPixelArt, AdoptProjectImage, BrowseProject, CreateFolder, DeleteAsset, DeleteFolder,
     DeleteProjectImage, ExportAsset, ExportAssetFile, ImportReference, InitializeAsset,
-    InspectRevision, MoveAsset, MoveFolder, MoveProjectImage, OpenProject, PreviewRevision,
-    RelinkAsset, RenameAsset, SetProjectImageIgnored, UpdateAssetBrief, UpdateAssetSource,
-    UpdateLinkedSource, adopt_pixel_art, adopt_project_image, browse_project, create_folder,
-    delete_asset, delete_folder, delete_project_image, export_asset, export_asset_file,
-    import_reference, initialize_asset, inspect_revision, move_asset, move_folder,
-    move_project_image, open_project, preview_revision, relink_asset, rename_asset,
-    set_project_image_ignored, update_asset_brief, update_asset_source, update_linked_source,
+    InspectRevision, LoadProjectImage, MoveAsset, MoveFolder, MoveProjectImage, OpenProject,
+    PreviewRevision, RelinkAsset, RenameAsset, SetProjectImageIgnored, UpdateAssetBrief,
+    UpdateAssetSource, UpdateLinkedSource, adopt_pixel_art, adopt_project_image, browse_project,
+    create_folder, delete_asset, delete_folder, delete_project_image, export_asset,
+    export_asset_file, import_reference, initialize_asset, inspect_revision, load_project_image,
+    move_asset, move_folder, move_project_image, open_project, preview_revision, relink_asset,
+    rename_asset, set_project_image_ignored, update_asset_brief, update_asset_source,
+    update_linked_source,
 };
 use pixelate_project::ProjectStore;
 use serde_json::json;
@@ -71,6 +72,20 @@ fn run_project(command: ProjectCommand) -> Result<serde_json::Value, Box<dyn std
             Ok(
                 json!({ "ok": true, "project_root": browser.project_root, "catalog": browser.catalog }),
             )
+        }
+        ProjectCommand::InspectImage { root, path } => {
+            let view = load_project_image(LoadProjectImage {
+                start: root,
+                path: path.clone(),
+            })?;
+            Ok(json!({
+                "ok": true,
+                "path": path,
+                "resolved_path": view.path,
+                "width": view.width,
+                "height": view.height,
+                "pixel_art_importable": view.pixel_art_importable,
+            }))
         }
         ProjectCommand::CreateFolder { root, path } => {
             create_folder(CreateFolder {
