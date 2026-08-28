@@ -1,30 +1,56 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 import {
-  PhArrowsOutSimple,
-  PhArrowsInSimple,
+  PhCaretDown,
   PhCaretLeft,
   PhCaretRight,
   PhCopy,
+  PhFilmStrip,
   PhPause,
   PhPlay,
   PhPlus,
   PhTrash,
 } from "@phosphor-icons/vue";
 import { useWorkspace } from "../workspace/context";
+import { useTimelineDrawer } from "../workspace/timeline-drawer";
 
 const workspace = useWorkspace();
+const animation = workspace.animation;
 const strip = ref<HTMLElement>();
 const overflowOpen = ref(false);
-const animation = workspace.animation;
+const {
+  open,
+  resizing,
+  height,
+  maximumHeight,
+  expanded,
+  minimumHeight,
+  startResize,
+  resizeWithKeyboard,
+} = useTimelineDrawer();
 
 watch(animation.selectedFrameId, () => void keepSelectedVisible());
+watch(open, (isOpen) => {
+  if (isOpen) void keepSelectedVisible();
+});
+watch(
+  () => animation.frames.value.length,
+  (count) => {
+    if (count <= 1) closeTimeline();
+  },
+);
 
 async function keepSelectedVisible() {
   await nextTick();
   strip.value
     ?.querySelector<HTMLElement>("[aria-current='true']")
     ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+}
+
+function closeTimeline() {
+  open.value = false;
+  overflowOpen.value = false;
+  animation.pause();
 }
 
 function setDuration(event: Event) {
@@ -66,11 +92,10 @@ function addFrame() {
 }
 
 function duplicate() {
-  const position = animation.selectedIndex.value + 1;
   void animation.mutate({
     type: "duplicate",
     frame_id: animation.selectedFrameId.value,
-    position,
+    position: animation.selectedIndex.value + 1,
   });
 }
 
@@ -84,18 +109,54 @@ function remove() {
 
 <template>
   <section
-    v-if="workspace.mode.value === 'edit' && workspace.view.value"
+    v-if="
+      workspace.mode.value === 'edit' &&
+      workspace.view.value &&
+      animation.frames.value.length > 1
+    "
     class="frame-timeline"
-    :class="`is-${animation.density.value}`"
+    :class="{
+      open,
+      resizing,
+      'is-compact': !expanded,
+      'is-expanded': expanded,
+    }"
+    :style="open ? { height: `${height}px` } : undefined"
     aria-label="Frame timeline"
   >
-    <div v-if="animation.frames.value.length === 1" class="single-frame-bar">
-      <span>1 frame</span><i aria-hidden="true">—</i>
-      <button @click="addFrame"><PhPlus /> Add Frame</button>
+    <div v-if="!open" class="timeline-closed">
+      <button aria-label="Open frame timeline" @click="open = true">
+        <PhFilmStrip />
+        <span>Animation</span>
+        <small>{{ animation.frames.value.length }} frames</small>
+      </button>
     </div>
 
     <template v-else>
-      <header class="timeline-controls">
+      <div
+        class="timeline-resize-handle"
+        role="separator"
+        aria-label="Resize frame timeline"
+        aria-orientation="horizontal"
+        :aria-valuemin="minimumHeight"
+        :aria-valuemax="maximumHeight"
+        :aria-valuenow="height"
+        tabindex="0"
+        @pointerdown="startResize"
+        @keydown="resizeWithKeyboard"
+      ></div>
+
+      <header class="timeline-heading">
+        <span>
+          <PhFilmStrip /> Animation
+          <small>{{ animation.frames.value.length }} frames</small>
+        </span>
+        <button aria-label="Close frame timeline" @click="closeTimeline">
+          <PhCaretDown />
+        </button>
+      </header>
+
+      <div class="timeline-controls">
         <div class="playback-controls" aria-label="Playback controls">
           <button aria-label="Previous frame" @click="animation.previous">
             <PhCaretLeft />
@@ -147,20 +208,6 @@ function remove() {
           <button aria-label="Delete selected frame" @click="remove">
             <PhTrash />
           </button>
-          <button
-            :aria-label="
-              animation.density.value === 'compact'
-                ? 'Expand timeline'
-                : 'Collapse timeline'
-            "
-            @click="
-              animation.density.value =
-                animation.density.value === 'compact' ? 'expanded' : 'compact'
-            "
-          >
-            <PhArrowsOutSimple v-if="animation.density.value === 'compact'" />
-            <PhArrowsInSimple v-else />
-          </button>
           <div class="timeline-overflow">
             <button
               aria-label="More frame actions"
@@ -179,7 +226,7 @@ function remove() {
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
       <ol ref="strip" class="frame-strip" aria-label="Ordered frames">
         <li v-for="(frame, index) in animation.frames.value" :key="frame.id">

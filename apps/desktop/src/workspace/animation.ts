@@ -2,24 +2,6 @@ import { computed, onScopeDispose, ref, watch, type Ref } from "vue";
 import * as api from "../api";
 import type { ProjectBrowser, RevisionViewResponse } from "../types";
 
-const DENSITY_KEY = "pixelate.timeline-density";
-
-function savedDensity() {
-  try {
-    return window.localStorage?.getItem(DENSITY_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function saveDensity(value: string) {
-  try {
-    window.localStorage?.setItem(DENSITY_KEY, value);
-  } catch {
-    // Preference storage can be unavailable in hardened webviews.
-  }
-}
-
 interface AnimationContext {
   project: Ref<ProjectBrowser | undefined>;
   assetId: Ref<string>;
@@ -31,9 +13,6 @@ interface AnimationContext {
 }
 
 export function createAnimation(context: AnimationContext) {
-  const density = ref<"compact" | "expanded">(
-    savedDensity() === "expanded" ? "expanded" : "compact",
-  );
   const playing = ref(false);
   const loop = ref(true);
   const thumbnails = ref<Record<string, string>>({});
@@ -48,7 +27,6 @@ export function createAnimation(context: AnimationContext) {
     frames.value.findIndex((frame) => frame.id === selectedFrameId.value),
   );
 
-  watch(density, saveDensity);
   watch(
     () =>
       `${context.view.value?.metadata.revision}:${frames.value.map((frame) => frame.id).join(",")}`,
@@ -194,7 +172,6 @@ export function createAnimation(context: AnimationContext) {
   }
 
   return {
-    density,
     playing,
     loop,
     frames,

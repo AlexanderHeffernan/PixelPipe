@@ -5,6 +5,7 @@ import {
   PhArrowCounterClockwise,
   PhEraser,
   PhEyedropper,
+  PhFilmStrip,
   PhPaintBucket,
   PhPencilSimple,
 } from "@phosphor-icons/vue";
@@ -247,6 +248,17 @@ function keyDown(event: KeyboardEvent) {
           "
         />
       </label>
+      <template v-if="workspace.animation.frames.value.length === 1">
+        <span class="toolbar-divider"></span>
+        <button
+          aria-label="Add frame to create animation"
+          title="Add frame to create animation"
+          @click="workspace.animation.mutate({ type: 'add_blank' })"
+        >
+          <PhFilmStrip weight="regular" />
+          <span>Add frame</span>
+        </button>
+      </template>
     </div>
     <div class="preview-navigation" aria-label="Preview zoom">
       <button aria-label="Zoom out" @click="adjustZoom(zoom - 0.25)">−</button>

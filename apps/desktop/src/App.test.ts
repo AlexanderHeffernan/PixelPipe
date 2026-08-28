@@ -124,18 +124,31 @@ describe("deterministic workstation", () => {
     );
   });
 
-  it("keeps a one-frame asset timeline minimal and discoverable", async () => {
+  it("keeps the timeline absent until a one-frame asset becomes an animation", async () => {
     await openWorkstation();
     await enterCanvas();
-    expect(screen.getByText("1 frame")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Add Frame" })).toBeVisible();
+    expect(
+      screen.queryByRole("region", { name: "Frame timeline" }),
+    ).not.toBeInTheDocument();
+    const add = screen.getByRole("button", {
+      name: "Add frame to create animation",
+    });
+    expect(add).toBeVisible();
+    await fireEvent.click(add);
+    expect(api.mutateFrames).toHaveBeenCalledWith(
+      "/game",
+      "field-medic",
+      "r000001",
+      { type: "add_blank" },
+      "user",
+    );
     expect(
       screen.queryByRole("button", { name: "Play animation" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Animation")).not.toBeInTheDocument();
   });
 
-  it("selects, expands, edits, and keyboard-reorders stable animation frames", async () => {
+  it("opens, edits, resizes, and keyboard-reorders stable animation frames", async () => {
     const animated = structuredClone(revisionView);
     animated.metadata.frames = [
       { id: "idle-a", duration_ms: 80 },
@@ -155,6 +168,12 @@ describe("deterministic workstation", () => {
     );
     await openWorkstation();
     await enterCanvas();
+    expect(
+      screen.queryByRole("list", { name: "Ordered frames" }),
+    ).not.toBeInTheDocument();
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Open frame timeline" }),
+    );
 
     const second = screen.getByRole("button", {
       name: "Frame 2, 120 milliseconds",
@@ -168,12 +187,11 @@ describe("deterministic workstation", () => {
         "idle-b",
       ),
     );
-    await fireEvent.click(
-      screen.getByRole("button", { name: "Expand timeline" }),
-    );
-    expect(
-      screen.getByRole("button", { name: "Collapse timeline" }),
-    ).toBeVisible();
+    const resize = screen.getByRole("separator", {
+      name: "Resize frame timeline",
+    });
+    for (let step = 0; step < 8; step += 1)
+      await fireEvent.keyDown(resize, { key: "ArrowUp" });
     expect(
       screen.getByText("Shift + ←/→ reorders the focused frame"),
     ).toBeVisible();
@@ -205,8 +223,8 @@ describe("deterministic workstation", () => {
     );
   });
 
-  it("persists timeline density outside project data", async () => {
-    const getItem = vi.fn(() => "expanded");
+  it("persists and drag-resizes the open timeline outside project data", async () => {
+    const getItem = vi.fn(() => "240");
     const setItem = vi.fn();
     Object.defineProperty(window, "localStorage", {
       configurable: true,
@@ -218,16 +236,27 @@ describe("deterministic workstation", () => {
 
     await openWorkstation();
     await enterCanvas();
-    expect(getItem).toHaveBeenCalledWith("pixelate.timeline-density");
     await fireEvent.click(
-      screen.getByRole("button", { name: "Collapse timeline" }),
+      screen.getByRole("button", { name: "Open frame timeline" }),
     );
+    expect(getItem).toHaveBeenCalledWith("pixelate.timeline-height");
+    const resize = screen.getByRole("separator", {
+      name: "Resize frame timeline",
+    });
+    expect(resize).toHaveAttribute("aria-valuenow", "240");
+    await fireEvent.pointerDown(resize, { button: 0, clientY: 300 });
+    await fireEvent.pointerMove(window, { clientY: 250 });
+    await fireEvent.pointerUp(window);
+    expect(resize).toHaveAttribute("aria-valuenow", "290");
     await waitFor(() =>
-      expect(setItem).toHaveBeenCalledWith(
-        "pixelate.timeline-density",
-        "compact",
-      ),
+      expect(setItem).toHaveBeenCalledWith("pixelate.timeline-height", "290"),
     );
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Close frame timeline" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Open frame timeline" }),
+    ).toBeVisible();
   });
 
   it("keeps long sequences in one accessible horizontal strip", async () => {
@@ -240,6 +269,9 @@ describe("deterministic workstation", () => {
 
     await openWorkstation();
     await enterCanvas();
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Open frame timeline" }),
+    );
     const strip = screen.getByRole("list", { name: "Ordered frames" });
     expect(strip).toHaveClass("frame-strip");
     expect(screen.getAllByRole("listitem")).toHaveLength(21);
@@ -273,6 +305,9 @@ describe("deterministic workstation", () => {
     );
     await openWorkstation();
     await enterCanvas();
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Open frame timeline" }),
+    );
     await fireEvent.click(screen.getByRole("button", { name: "Loop" }));
     await fireEvent.click(
       screen.getByRole("button", { name: "Play animation" }),

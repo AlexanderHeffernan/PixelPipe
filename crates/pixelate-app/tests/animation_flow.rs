@@ -2,10 +2,10 @@ use std::{fs, path::Path};
 
 use pixelate_app::{
     ConvertSelectedReference, ExportAsset, FrameMutation, FrameMutationAction, ImportImageSequence,
-    ImportReference, ImportSpritesheet, InitializeAsset, OpenProject, PatchRevisionDocument,
-    SetAssetHead, convert_selected_reference, export_asset, import_image_sequence,
-    import_reference, import_spritesheet, initialize_asset, mutate_frames, open_project,
-    patch_revision_document, set_asset_head,
+    ImportReference, ImportSpritesheet, InitializeAsset, InspectRevision, OpenProject,
+    PatchRevisionDocument, SetAssetHead, convert_selected_reference, export_asset,
+    import_image_sequence, import_reference, import_spritesheet, initialize_asset,
+    load_revision_view, mutate_frames, open_project, patch_revision_document, set_asset_head,
 };
 use pixelate_core::{PATCH_SCHEMA, PixelPatch, PixelPatchSet, sha256_hex, stable_json};
 use pixelate_project::ProjectStore;
@@ -25,6 +25,14 @@ fn frame_mutations_are_parent_linked_and_restore_as_a_whole() {
         actor: "test".into(),
     })
     .unwrap();
+    let blank_view = load_revision_view(InspectRevision {
+        start: root.clone(),
+        asset: "hero".into(),
+        revision: Some(add.revision.clone()),
+        frame_id: Some("frame-0002".into()),
+    })
+    .unwrap();
+    assert_eq!(blank_view.metadata.inspection.visible_bounds, None);
     let duplicate = mutate_frames(FrameMutation {
         start: root.clone(),
         asset: "hero".into(),
