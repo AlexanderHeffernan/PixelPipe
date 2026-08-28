@@ -32,11 +32,13 @@ explicit export.
 
 The Assets browser discovers supported PNG, JPEG, and WebP artwork in the game
 project's real folder structure while honoring ignore rules and excluding
-internal, dependency, and build folders. Existing images are preview-only until
-you explicitly choose **Edit in Pixelate**, which imports a verified internal
-source copy without rewriting the project file. Managed assets keep stable IDs
-and immutable history when images or containing folders move. Assets without a
-linked project path appear under Drafts.
+internal, dependency, and build folders. Existing images open in a large preview
+where you can hide them, use them as references, or import them exactly as pixel
+art without rewriting the project file. Reference sources leave the browser once
+adopted and can be restored from Hidden images. Managed assets keep stable IDs
+and immutable history when images or containing folders move. Legacy pathless
+assets appear at the project root as unexported assets; new assets default to
+`<asset-id>.png` unless an explicit project-relative output path is supplied.
 
 Pixelate can explicitly create, rename/move, and delete empty real folders, and
 move linked images without overwriting collisions. It never recursively deletes
@@ -81,8 +83,9 @@ internal `.pixelate` files.
 
 Use `pixelate project catalog --root .` to inspect discovered and managed project
 images, including missing or externally modified links. Folder operations and
-adoption are available through `project create-folder|move-folder|delete-folder`
-and `asset adopt|relink|move|update-linked-source`; all refuse unsafe paths and
+visibility, and adoption are available through
+`project hide-image|show-image|create-folder|move-folder|delete-folder` and
+`asset adopt|adopt-pixel-art|relink|move|update-linked-source`; all refuse unsafe paths and
 silent overwrites.
 
 The CLI never prints unsolicited update notices. Use `pixelate version` for
@@ -95,7 +98,7 @@ A typical direct flow is:
 ```sh
 pixelate init --root /path/to/game --name "My Game"
 pixelate asset init --root /path/to/game --asset signal-flare \
-  --brief "Strict overhead signal flare"
+  --brief "Strict overhead signal flare" --path assets/signal-flare.png
 pixelate reference import --root /path/to/game --asset signal-flare \
   --file /path/to/reference.png
 pixelate revision pixelize --root /path/to/game --asset signal-flare \
