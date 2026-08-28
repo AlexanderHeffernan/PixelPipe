@@ -73,6 +73,7 @@ pub fn export_asset(request: ExportAsset) -> Result<ExportResult, AppError> {
     }
     atomic_write(&png, &snapshot.native_png)?;
     atomic_write(&metadata, &stable_json(&snapshot.raster)?)?;
+    refresh_link_hash(&store, &request.asset, &png)?;
     Ok(ExportResult {
         asset: request.asset,
         revision,
@@ -135,6 +136,7 @@ pub fn export_asset_file(request: ExportAssetFile) -> Result<ExportFileResult, A
         }
     };
     atomic_write(&request.destination, &bytes)?;
+    refresh_link_hash(&store, &request.asset, &request.destination)?;
     Ok(ExportFileResult {
         asset: request.asset,
         revision,
@@ -143,6 +145,30 @@ pub fn export_asset_file(request: ExportAssetFile) -> Result<ExportFileResult, A
         width: snapshot.raster.width,
         height: snapshot.raster.height,
     })
+}
+
+fn refresh_link_hash(
+    store: &ProjectStore,
+    asset: &str,
+    destination: &PathBuf,
+) -> Result<(), AppError> {
+    let manifest = store.asset(asset)?;
+    let Some(path) = manifest.project_path else {
+        return Ok(());
+    };
+    let linked = store.root().join(&path);
+    let linked = std::fs::canonicalize(&linked).map_err(|source| AppError::Read {
+        path: linked,
+        source,
+    })?;
+    let destination = std::fs::canonicalize(destination).map_err(|source| AppError::Read {
+        path: destination.clone(),
+        source,
+    })?;
+    if linked == destination {
+        store.link_asset_project_path(asset, &path)?;
+    }
+    Ok(())
 }
 
 fn atomic_write(path: &PathBuf, bytes: &[u8]) -> Result<(), AppError> {
