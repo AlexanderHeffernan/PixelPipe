@@ -36,6 +36,7 @@ impl ProjectStore {
         let manifest = ProjectManifest {
             schema: PROJECT_SCHEMA.to_owned(),
             name: name.to_owned(),
+            ignored_project_images: Vec::new(),
         };
         atomic_write(
             &pixelate.join("project.toml"),

@@ -31,6 +31,7 @@ export const project: ProjectBrowser = {
   project: {
     schema: "pixelate.project/v1",
     name: "Fixture Game",
+    ignored_project_images: [],
   },
   assets: [
     {
@@ -46,6 +47,8 @@ export const project: ProjectBrowser = {
       revisions: [],
     },
   ],
+  catalog: [],
+  folders: [],
   pixelization: { color_count: 16, settings },
 };
 

@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { PhImageSquare } from "@phosphor-icons/vue";
+import { PhImageSquare, PhWarningCircle } from "@phosphor-icons/vue";
 import SpriteCanvas from "./SpriteCanvas.vue";
+import ProjectImagePreview from "./ProjectImagePreview.vue";
 import { useWorkspace } from "../workspace/context";
+import AppButton from "./AppButton.vue";
+import AppToast from "./AppToast.vue";
 
 const workspace = useWorkspace();
 </script>
@@ -9,20 +12,32 @@ const workspace = useWorkspace();
 <template>
   <section class="asset-workspace">
     <div
-      v-if="workspace.canvasImage.value || workspace.loadingArtwork.value"
-      class="canvas-viewport"
-      :class="{ 'is-loading': workspace.canvasLoading.value }"
+      v-if="workspace.artworkError.value"
+      class="canvas-empty canvas-error"
+      role="alert"
     >
-      <SpriteCanvas />
-      <div
-        v-if="workspace.canvasLoading.value"
-        class="canvas-loading"
-        role="status"
-        aria-live="polite"
-      >
+      <PhWarningCircle aria-hidden="true" />
+      <h1>Couldn’t load this artwork</h1>
+      <p>{{ workspace.artworkError.value }}</p>
+    </div>
+    <div
+      v-else-if="workspace.canvasLoading.value"
+      class="canvas-viewport"
+      :class="{ 'is-loading': workspace.loadingArtwork.value }"
+    >
+      <SpriteCanvas v-if="workspace.loadingArtwork.value" />
+      <div class="canvas-loading" role="status" aria-live="polite">
         <i aria-hidden="true"></i>
         <strong>{{ workspace.loadingMessage.value }}</strong>
       </div>
+    </div>
+    <ProjectImagePreview
+      v-else-if="
+        workspace.projectImagePath.value && workspace.projectImagePreview.value
+      "
+    />
+    <div v-else-if="workspace.canvasImage.value" class="canvas-viewport">
+      <SpriteCanvas />
     </div>
 
     <div v-else-if="workspace.selectedAsset.value" class="canvas-empty">
@@ -38,17 +53,34 @@ const workspace = useWorkspace();
     </div>
 
     <div v-else class="canvas-empty">
-      <h1>Create your first asset</h1>
-      <p>
+      <h1>
+        {{
+          workspace.project.value?.assets.length
+            ? "Select an asset"
+            : "Create your first asset"
+        }}
+      </h1>
+      <p v-if="workspace.project.value?.assets.length">
+        Choose managed pixel art or a project image from the asset browser.
+      </p>
+      <p v-else>
         Start from a reference image or prepare an asset for your coding agent.
       </p>
-      <button
-        class="primary"
-        :disabled="workspace.importing.value"
-        @click="workspace.importAssets"
-      >
-        Import Asset…
-      </button>
+      <div class="canvas-empty__actions">
+        <AppButton
+          variant="primary"
+          :disabled="workspace.importing.value"
+          @click="workspace.importAssets"
+        >
+          Convert a Reference Image…
+        </AppButton>
+        <AppButton
+          :disabled="workspace.importing.value"
+          @click="workspace.importPixelArt"
+        >
+          Import Finished Pixel Art…
+        </AppButton>
+      </div>
     </div>
 
     <span
@@ -60,13 +92,12 @@ const workspace = useWorkspace();
       <i></i>Importing…
     </span>
 
-    <div
+    <AppToast
       v-if="workspace.error.value || workspace.notice.value"
-      class="toast workspace-toast"
-      :class="{ error: workspace.error.value }"
-      :role="workspace.error.value ? 'alert' : 'status'"
-    >
-      {{ workspace.error.value || workspace.notice.value }}
-    </div>
+      class="workspace-toast"
+      :message="workspace.error.value || workspace.notice.value"
+      :error="Boolean(workspace.error.value)"
+      @close="workspace.dismissMessage"
+    />
   </section>
 </template>

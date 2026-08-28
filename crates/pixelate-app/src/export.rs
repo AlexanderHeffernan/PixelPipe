@@ -73,6 +73,7 @@ pub fn export_asset(request: ExportAsset) -> Result<ExportResult, AppError> {
     }
     atomic_write(&png, &snapshot.native_png)?;
     atomic_write(&metadata, &stable_json(&snapshot.raster)?)?;
+    refresh_link_hash(&store, &request.asset, &png)?;
     Ok(ExportResult {
         asset: request.asset,
         revision,
@@ -135,6 +136,7 @@ pub fn export_asset_file(request: ExportAssetFile) -> Result<ExportFileResult, A
         }
     };
     atomic_write(&request.destination, &bytes)?;
+    refresh_link_hash(&store, &request.asset, &request.destination)?;
     Ok(ExportFileResult {
         asset: request.asset,
         revision,
@@ -143,6 +145,45 @@ pub fn export_asset_file(request: ExportAssetFile) -> Result<ExportFileResult, A
         width: snapshot.raster.width,
         height: snapshot.raster.height,
     })
+}
+
+fn refresh_link_hash(
+    store: &ProjectStore,
+    asset: &str,
+    destination: &PathBuf,
+) -> Result<(), AppError> {
+    let manifest = store.asset(asset)?;
+    let destination = std::fs::canonicalize(destination).map_err(|source| AppError::Read {
+        path: destination.clone(),
+        source,
+    })?;
+    let root = std::fs::canonicalize(store.root()).map_err(|source| AppError::Read {
+        path: store.root().to_path_buf(),
+        source,
+    })?;
+    if let Some(path) = manifest.project_path {
+        let linked = store.root().join(&path);
+        if linked.is_file()
+            && std::fs::canonicalize(&linked).map_err(|source| AppError::Read {
+                path: linked,
+                source,
+            })? == destination
+        {
+            store.link_asset_project_path(asset, &path)?;
+        }
+    } else if let Ok(relative) = destination.strip_prefix(&root)
+        && let Some(path) = relative.to_str()
+    {
+        match store.link_asset_project_path(asset, path) {
+            Ok(_)
+            | Err(
+                pixelate_project::ProjectError::InvalidProjectPath(_)
+                | pixelate_project::ProjectError::ReservedProjectPath(_),
+            ) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }
 
 fn atomic_write(path: &PathBuf, bytes: &[u8]) -> Result<(), AppError> {

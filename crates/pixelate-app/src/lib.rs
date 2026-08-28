@@ -1,3 +1,4 @@
+mod catalog;
 mod composition;
 mod conversion_preview;
 mod error;
@@ -8,10 +9,12 @@ mod palette_editing;
 mod pixel_editing;
 mod pixelization;
 mod project;
+mod project_image;
 mod reference;
 mod revision_commit;
 mod revision_preview;
 
+pub use catalog::*;
 pub use composition::{
     CommitComposition, CompositionPreview, PreviewComposition, commit_composition,
     preview_composition,
@@ -32,6 +35,7 @@ pub use pixelization::{
     pixelization_defaults,
 };
 pub use project::*;
+pub use project_image::{LoadProjectImage, ProjectImageView, load_project_image};
 pub use reference::{
     ImportReference, UpdateAssetSource, UpdateAssetSourceResult, import_reference,
     update_asset_source,
@@ -40,6 +44,6 @@ pub use revision_commit::RevisionResult;
 pub use revision_preview::{PreviewRevision, RevisionPreview, preview_revision};
 
 pub use pixelate_core::{Palette, RasterInspection};
-pub use pixelate_project::{AssetManifest, ReferenceSelection};
+pub use pixelate_project::{AssetManifest, ProjectManifest, ReferenceSelection};
 
 pub(crate) use revision_commit::{CommitRaster, commit_raster, resolve_revision};

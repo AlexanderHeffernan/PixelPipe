@@ -7,7 +7,8 @@ use pixelate_project::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AppError, PixelizationDefaults, pixelization_defaults, revision_commit::resolve_revision,
+    AppError, CatalogEntry, PixelizationDefaults, pixelization_defaults,
+    revision_commit::resolve_revision,
 };
 
 #[derive(Debug, Deserialize)]
@@ -27,6 +28,8 @@ pub struct ProjectBrowser {
     pub project_root: PathBuf,
     pub project: ProjectManifest,
     pub assets: Vec<AssetBrowser>,
+    pub catalog: Vec<CatalogEntry>,
+    pub folders: Vec<String>,
     pub pixelization: PixelizationDefaults,
 }
 
@@ -79,10 +82,18 @@ pub fn browse_project(request: &BrowseProject) -> Result<ProjectBrowser, AppErro
             Ok(AssetBrowser { asset, revisions })
         })
         .collect::<Result<Vec<_>, ProjectError>>()?;
+    let catalog = crate::build_catalog(&store, &assets)?;
+    let folders = store
+        .project_folders()?
+        .into_iter()
+        .map(|folder| folder.path)
+        .collect();
     Ok(ProjectBrowser {
         project_root: store.root().to_path_buf(),
         project,
         assets,
+        catalog,
+        folders,
         pixelization: pixelization_defaults(),
     })
 }

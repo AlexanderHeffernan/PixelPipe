@@ -34,6 +34,7 @@ pub struct UpdateAssetSourceResult {
 ///
 /// Returns an error when the file, image, project, or asset transition is invalid.
 pub fn import_reference(request: ImportReference) -> Result<ReferenceSelection, AppError> {
+    let source_file = request.file.clone();
     let bytes = fs::read(&request.file).map_err(|source| AppError::Read {
         path: request.file,
         source,
@@ -47,9 +48,31 @@ pub fn import_reference(request: ImportReference) -> Result<ReferenceSelection, 
     let normalized = normalized.into_inner();
     decode_rgba_png(&normalized)?;
     let store = ProjectStore::discover(&request.start)?;
-    store
+    let selection = store
         .select_imported_reference(&request.asset, &normalized)
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    if let Some(path) = project_relative_path(&store, &source_file)
+        && store
+            .project_images()?
+            .iter()
+            .any(|image| image.path == path)
+    {
+        store.ignore_project_image(&path)?;
+    }
+    Ok(selection)
+}
+
+fn project_relative_path(store: &ProjectStore, file: &std::path::Path) -> Option<String> {
+    let root = fs::canonicalize(store.root()).ok()?;
+    let file = fs::canonicalize(file).ok()?;
+    let relative = file.strip_prefix(root).ok()?;
+    Some(
+        relative
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
 }
 
 /// Replaces an existing asset source and reconverts it with its current style.

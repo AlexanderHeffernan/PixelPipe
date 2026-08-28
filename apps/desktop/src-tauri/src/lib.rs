@@ -4,9 +4,12 @@ use commands::{
     cli_install::{cli_installation_status, install_cli, uninstall_cli},
     preferences::{recent_project, remember_project},
     project::{
-        browse_project, commit_composition, convert_selected_reference, delete_asset, export_asset,
-        export_asset_file, import_reference, initialize_asset, open_project, preview_composition,
-        preview_selected_reference, rename_asset, update_asset_brief,
+        adopt_pixel_art, adopt_project_image, browse_project, commit_composition,
+        convert_selected_reference, create_folder, delete_asset, delete_folder,
+        delete_project_image, export_asset, export_asset_file, import_reference, initialize_asset,
+        load_project_image, move_asset, move_folder, move_project_image, open_project,
+        preview_composition, preview_selected_reference, relink_asset, rename_asset,
+        reveal_project_image, set_project_image_ignored, update_asset_brief, update_linked_source,
     },
     revisions::{fill_revision, load_revision, patch_revision, remap_revision, set_asset_head},
     terminal::{TerminalSessions, close_terminal, resize_terminal, start_terminal, write_terminal},
@@ -21,6 +24,7 @@ use commands::{
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(TerminalSessions::default())
@@ -31,6 +35,19 @@ pub fn run() {
             delete_asset,
             update_asset_brief,
             rename_asset,
+            adopt_project_image,
+            adopt_pixel_art,
+            set_project_image_ignored,
+            relink_asset,
+            update_linked_source,
+            create_folder,
+            move_folder,
+            delete_folder,
+            delete_project_image,
+            move_project_image,
+            move_asset,
+            load_project_image,
+            reveal_project_image,
             import_reference,
             export_asset,
             export_asset_file,

@@ -109,6 +109,20 @@ fn guide_documents_every_agent_workflow_family() {
         "update_cli",
         "list",
         "show_project",
+        "project_catalog",
+        "inspect_project_image",
+        "adopt_reference_image",
+        "adopt_existing_pixel_art",
+        "hide_project_image",
+        "restore_project_image",
+        "relink_project_image",
+        "accept_external_image_change",
+        "create_real_folder",
+        "rename_or_move_real_folder",
+        "delete_empty_real_folder",
+        "delete_project_image",
+        "move_unmanaged_project_image",
+        "move_linked_asset",
         "update_brief",
         "rename",
         "delete",
@@ -142,6 +156,95 @@ fn version_is_available_without_update_notifications() {
     let version = run(&["version"]);
     assert_eq!(version["version"], env!("CARGO_PKG_VERSION"));
     assert!(version.get("update_available").is_none());
+}
+
+#[test]
+fn catalog_and_real_folder_routes_share_the_application_workflow() {
+    let project = tempfile::tempdir().expect("project");
+    let root = project.path().to_str().expect("project path");
+    run(&["init", "--root", root, "--name", "Catalog Fixture"]);
+    run(&["project", "create-folder", "--root", root, "--path", "art"]);
+    let source = project.path().join("art/hero.png");
+    write_fixture_png(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../pixelate-core/tests/fixtures/m2/reference.rgba.json"),
+        &source,
+    );
+    let discovered = run(&["project", "catalog", "--root", root]);
+    assert_eq!(discovered["catalog"][0]["path"], "art/hero.png");
+    assert!(discovered["catalog"][0].get("asset_id").is_none());
+    let inspected = run(&[
+        "project",
+        "inspect-image",
+        "--root",
+        root,
+        "--path",
+        "art/hero.png",
+    ]);
+    assert_eq!(inspected["width"], 6);
+    assert_eq!(inspected["height"], 6);
+    assert_eq!(inspected["pixel_art_importable"], true);
+    run(&[
+        "project",
+        "move-image",
+        "--root",
+        root,
+        "--source",
+        "art/hero.png",
+        "--destination",
+        "art/concept.png",
+    ]);
+    run(&[
+        "project",
+        "hide-image",
+        "--root",
+        root,
+        "--path",
+        "art/concept.png",
+    ]);
+    assert!(
+        run(&["project", "catalog", "--root", root])["catalog"]
+            .as_array()
+            .expect("catalog")
+            .is_empty()
+    );
+    run(&[
+        "project",
+        "show-image",
+        "--root",
+        root,
+        "--path",
+        "art/concept.png",
+    ]);
+
+    run(&[
+        "asset",
+        "adopt",
+        "--root",
+        root,
+        "--path",
+        "art/concept.png",
+        "--asset",
+        "hero",
+        "--brief",
+        "Hero",
+        "--destination",
+        "art/hero-pixel.png",
+    ]);
+    run(&[
+        "project",
+        "move-folder",
+        "--root",
+        root,
+        "--source",
+        "art",
+        "--destination",
+        "sprites",
+    ]);
+    let adopted = run(&["project", "catalog", "--root", root]);
+    assert_eq!(adopted["catalog"][0]["path"], "sprites/hero-pixel.png");
+    assert_eq!(adopted["catalog"][0]["asset_id"], "hero");
+    assert_eq!(adopted["catalog"][0]["status"], "unexported");
 }
 
 fn write_fixture_png(fixture_path: &Path, output_path: &Path) {

@@ -5,6 +5,7 @@ use pixelate_app::{
     InitializeAsset, OpenProject, browse_project, convert_selected_reference, export_asset,
     export_asset_file, import_reference, initialize_asset, open_project,
 };
+use pixelate_project::ProjectStore;
 
 #[test]
 fn folder_to_export_uses_builtin_pixelization_defaults() {
@@ -22,6 +23,7 @@ fn folder_to_export_uses_builtin_pixelization_defaults() {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
         brief: "Strict overhead field medic with a compact silhouette".to_owned(),
+        project_path: None,
     })
     .unwrap();
     import_reference(ImportReference {
@@ -66,6 +68,7 @@ fn folder_to_export_uses_builtin_pixelization_defaults() {
     assert!(exported.metadata.is_file());
     assert_eq!(&fs::read(&exported.png).unwrap()[..8], b"\x89PNG\r\n\x1a\n");
 
+    unlink_asset(game.path(), "field-medic");
     let named_png = export_asset_file(ExportAssetFile {
         start: game.path().to_path_buf(),
         asset: "field-medic".to_owned(),
@@ -78,6 +81,7 @@ fn folder_to_export_uses_builtin_pixelization_defaults() {
         fs::read(named_png.file).unwrap(),
         fs::read(exported.png).unwrap()
     );
+    assert_project_path(game.path(), "field-medic", "Medic Final.png");
 
     let named_webp = export_asset_file(ExportAssetFile {
         start: game.path().to_path_buf(),
@@ -89,6 +93,40 @@ fn folder_to_export_uses_builtin_pixelization_defaults() {
     assert_eq!((named_webp.width, named_webp.height), (32, 32));
     let decoded = image::load_from_memory(&fs::read(named_webp.file).unwrap()).unwrap();
     assert_eq!((decoded.width(), decoded.height()), (32, 32));
+
+    let linked = game.path().join("medic-linked.png");
+    fs::write(&linked, b"old project image").unwrap();
+    ProjectStore::discover(game.path())
+        .unwrap()
+        .link_asset_project_path("field-medic", "medic-linked.png")
+        .unwrap();
+    export_asset_file(ExportAssetFile {
+        start: game.path().to_path_buf(),
+        asset: "field-medic".to_owned(),
+        destination: linked.clone(),
+        overwrite: true,
+    })
+    .unwrap();
+    let manifest = ProjectStore::discover(game.path())
+        .unwrap()
+        .asset("field-medic")
+        .unwrap();
+    assert_eq!(
+        manifest.project_file_sha256.as_deref(),
+        Some(pixelate_core::sha256_hex(&fs::read(linked).unwrap()).as_str())
+    );
+}
+
+fn unlink_asset(root: &Path, asset: &str) {
+    ProjectStore::discover(root)
+        .unwrap()
+        .unlink_asset_project_path(asset)
+        .unwrap();
+}
+
+fn assert_project_path(root: &Path, asset: &str, expected: &str) {
+    let manifest = ProjectStore::discover(root).unwrap().asset(asset).unwrap();
+    assert_eq!(manifest.project_path.as_deref(), Some(expected));
 }
 
 fn write_reference(path: &Path) {

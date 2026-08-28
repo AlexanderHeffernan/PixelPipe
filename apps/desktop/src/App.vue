@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import CliInstallPrompt from "./cli-install/CliInstallPrompt.vue";
 import AssetWorkspace from "./components/AssetWorkspace.vue";
+import AppToast from "./components/AppToast.vue";
 import ConversionInspector from "./components/ConversionInspector.vue";
 import ProjectSidebar from "./components/ProjectSidebar.vue";
 import WelcomeView from "./components/WelcomeView.vue";
@@ -43,23 +44,22 @@ onBeforeUnmount(() => {
         <TerminalDrawer />
       </div>
       <ConversionInspector
+        v-if="workspace.inspectorApplicable.value"
         :class="{ 'is-collapsed': !workspace.rightSidebarOpen.value }"
         :inert="!workspace.rightSidebarOpen.value || undefined"
         :aria-hidden="!workspace.rightSidebarOpen.value || undefined"
       />
     </div>
     <WelcomeView v-else />
-    <div
+    <AppToast
       v-if="
         !workspace.project.value &&
         (workspace.error.value || workspace.notice.value)
       "
-      class="toast"
-      :class="{ error: workspace.error.value }"
-      :role="workspace.error.value ? 'alert' : 'status'"
-    >
-      {{ workspace.error.value || workspace.notice.value }}
-    </div>
+      :message="workspace.error.value || workspace.notice.value"
+      :error="Boolean(workspace.error.value)"
+      @close="workspace.dismissMessage"
+    />
     <SettingsModal v-if="settingsOpen" @close="settingsOpen = false" />
     <CliInstallPrompt />
     <UpdatePrompt />

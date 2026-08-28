@@ -56,6 +56,66 @@ pub(crate) enum ProjectCommand {
         #[arg(long, default_value = ".")]
         root: PathBuf,
     },
+    /// List supported project images and their Pixelate status.
+    Catalog {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+    },
+    /// Inspect one supported project image and exact pixel-art eligibility.
+    InspectImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
+    CreateFolder {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
+    MoveFolder {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        destination: String,
+    },
+    DeleteFolder {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
+    /// Permanently delete one supported project image without deleting Pixelate history.
+    DeleteImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
+    /// Move one unmanaged project image without adopting it into Pixelate.
+    MoveImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        destination: String,
+    },
+    HideImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
+    ShowImage {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -192,6 +252,9 @@ pub(crate) enum AssetCommand {
         asset: String,
         #[arg(long, default_value = "")]
         brief: String,
+        /// Planned project-relative output path; defaults to <asset-id>.png.
+        #[arg(long)]
+        path: Option<String>,
     },
     SetBrief {
         #[arg(long, default_value = ".")]
@@ -214,6 +277,56 @@ pub(crate) enum AssetCommand {
         asset: String,
         #[arg(long)]
         name: String,
+    },
+    /// Adopt an existing project image without rewriting it.
+    Adopt {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        asset: String,
+        #[arg(long, default_value = "")]
+        brief: String,
+        /// Planned output path for the future pixelized image.
+        #[arg(long)]
+        destination: String,
+    },
+    /// Adopt an existing project image exactly as editable pixel art.
+    AdoptPixelArt {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        asset: String,
+        #[arg(long, default_value = "")]
+        brief: String,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Relink {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        path: String,
+    },
+    Move {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        destination: String,
+    },
+    /// Import the externally changed linked project image as the selected source.
+    UpdateLinkedSource {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
     },
     /// Replace the source and reconvert with the asset's current style.
     UpdateSource {

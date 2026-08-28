@@ -8,6 +8,7 @@ import type {
   PaletteDraft,
   PixelEdit,
   ProjectBrowser,
+  ProjectManifest,
   RevisionResult,
   RevisionViewResponse,
   ReferenceSelection,
@@ -24,9 +25,14 @@ export const browseProject = (start: string) =>
 export const openProject = (start: string) =>
   invoke<ProjectBrowser>("open_project", { request: { start } });
 
-export const initializeAsset = (start: string, asset: string, brief: string) =>
+export const initializeAsset = (
+  start: string,
+  asset: string,
+  brief: string,
+  projectPath?: string,
+) =>
   invoke<AssetManifest>("initialize_asset", {
-    request: { start, asset, brief },
+    request: { start, asset, brief, project_path: projectPath ?? null },
   });
 
 export const deleteAsset = (start: string, asset: string) =>
@@ -45,6 +51,93 @@ export const renameAsset = (
   invoke<AssetManifest>("rename_asset", {
     request: { start, asset, display_name: displayName },
   });
+
+export const adoptProjectImage = (
+  start: string,
+  path: string,
+  asset: string,
+  brief: string,
+  destination: string,
+) =>
+  invoke<AssetManifest>("adopt_project_image", {
+    request: { start, path, asset, brief, destination },
+  });
+
+export const adoptPixelArt = (
+  start: string,
+  path: string,
+  asset: string,
+  brief: string,
+) =>
+  invoke<RevisionResult>("adopt_pixel_art", {
+    request: { start, path, asset, brief, actor: "user" },
+  });
+
+export const setProjectImageIgnored = (
+  start: string,
+  path: string,
+  ignored: boolean,
+) =>
+  invoke<ProjectManifest>("set_project_image_ignored", {
+    request: { start, path, ignored },
+  });
+
+export const relinkAsset = (start: string, asset: string, path: string) =>
+  invoke<AssetManifest>("relink_asset", {
+    request: { start, asset, path },
+  });
+
+export const updateLinkedSource = (start: string, asset: string) =>
+  invoke<AssetManifest>("update_linked_source", {
+    request: { start, asset },
+  });
+
+export const createFolder = (start: string, path: string) =>
+  invoke<void>("create_folder", { request: { start, path } });
+
+export const moveFolder = (
+  start: string,
+  source: string,
+  destination: string,
+) =>
+  invoke<AssetManifest[]>("move_folder", {
+    request: { start, source, destination },
+  });
+
+export const deleteFolder = (start: string, path: string) =>
+  invoke<void>("delete_folder", { request: { start, path } });
+
+export const deleteProjectImage = (start: string, path: string) =>
+  invoke<void>("delete_project_image", { request: { start, path } });
+
+export const moveProjectImage = (
+  start: string,
+  source: string,
+  destination: string,
+) =>
+  invoke<void>("move_project_image", {
+    request: { start, source, destination },
+  });
+
+export const moveAsset = (start: string, asset: string, destination: string) =>
+  invoke<AssetManifest>("move_asset", {
+    request: { start, asset, destination },
+  });
+
+export interface ProjectImageResponse {
+  data_url: string;
+  width: number;
+  height: number;
+  pixel_art_importable: boolean;
+}
+
+export const loadProjectImage = (start: string, path: string) =>
+  invoke<ProjectImageResponse>("load_project_image", {
+    request: { start, path },
+  });
+
+export const revealProjectImage = (start: string, path: string) =>
+  invoke<void>("reveal_project_image", { request: { start, path } });
 
 export const importReference = (start: string, asset: string, file: string) =>
   invoke<ReferenceSelection>("import_reference", {

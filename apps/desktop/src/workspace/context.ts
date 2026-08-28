@@ -6,6 +6,7 @@ import { createConversionPreview } from "./conversion-preview";
 import { createCompositionPreview } from "./composition-preview";
 import { createAssetImport } from "./asset-import";
 import { createCanvasLoading } from "./canvas-loading";
+import { createCatalogActions } from "./catalog-actions";
 import { createPixelEditor } from "./pixel-editor";
 import { createProjectSession } from "./project-session";
 import { createProjectSync, type ExternalAssetChange } from "./project-sync";
@@ -18,12 +19,21 @@ export function createWorkspace() {
   const leftSidebarOpen = ref(true);
   const rightSidebarOpen = ref(true);
   const importing = ref(false);
+  const projectImagePath = ref("");
+  const projectImagePreview = ref("");
+  const projectImagePixelArtImportable = ref(false);
+  const artworkError = ref("");
   const assetModes = new Map<string, WorkspaceMode>();
   const session = createProjectSession({
     selectAsset,
     clearSelection() {
       view.value = undefined;
       preview.value = undefined;
+      projectImagePath.value = "";
+      projectImagePreview.value = "";
+      projectImagePixelArtImportable.value = false;
+      artworkError.value = "";
+      rightSidebarOpen.value = false;
     },
   });
   const {
@@ -36,6 +46,7 @@ export function createWorkspace() {
     selectedAsset,
     run,
     showNotice,
+    dismissMessage,
     refresh,
   } = session;
 
@@ -47,6 +58,9 @@ export function createWorkspace() {
       preview.value?.native_png_base64 ?? view.value?.native_png_base64;
     return bytes ? api.pngDataUrl(bytes) : "";
   });
+  const inspectorApplicable = computed(() =>
+    Boolean(view.value || preview.value),
+  );
   const canvasLoading = createCanvasLoading(canvasImage);
   const canConvert = computed(() =>
     Boolean(selectedAsset.value?.asset.selected_reference),
@@ -76,7 +90,78 @@ export function createWorkspace() {
   });
 
   async function selectAsset(id: string) {
-    await canvasLoading.run("Loading sprite…", () => loadAsset(id));
+    artworkError.value = "";
+    projectImagePath.value = "";
+    projectImagePreview.value = "";
+    projectImagePixelArtImportable.value = false;
+    rightSidebarOpen.value = false;
+    await canvasLoading.run("Loading sprite…", async () => {
+      view.value = undefined;
+      preview.value = undefined;
+      try {
+        await loadAsset(id);
+        if (
+          selectedAsset.value?.asset.selected_reference &&
+          !view.value &&
+          !preview.value &&
+          previewError.value
+        ) {
+          throw new Error(previewError.value);
+        }
+        rightSidebarOpen.value = Boolean(view.value || preview.value);
+      } catch (caught) {
+        view.value = undefined;
+        preview.value = undefined;
+        rightSidebarOpen.value = false;
+        artworkError.value =
+          caught instanceof Error ? caught.message : String(caught);
+      }
+    });
+  }
+
+  async function selectProjectImage(path: string) {
+    if (!project.value) return;
+    if (projectImagePath.value === path) {
+      clearProjectImage();
+      return;
+    }
+    assetId.value = "";
+    view.value = undefined;
+    preview.value = undefined;
+    artworkError.value = "";
+    rightSidebarOpen.value = false;
+    projectImagePath.value = path;
+    projectImagePreview.value = "";
+    projectImagePixelArtImportable.value = false;
+    await canvasLoading.run("Loading image…", async () => {
+      try {
+        const image = await api.loadProjectImage(
+          project.value!.project_root,
+          path,
+        );
+        projectImagePreview.value = image.data_url;
+        projectImagePixelArtImportable.value = image.pixel_art_importable;
+      } catch (caught) {
+        projectImagePreview.value = "";
+        artworkError.value =
+          caught instanceof Error ? caught.message : String(caught);
+      }
+    });
+  }
+
+  function clearProjectImage() {
+    projectImagePath.value = "";
+    projectImagePreview.value = "";
+    projectImagePixelArtImportable.value = false;
+    artworkError.value = "";
+  }
+
+  function clearAsset() {
+    assetId.value = "";
+    view.value = undefined;
+    preview.value = undefined;
+    artworkError.value = "";
+    rightSidebarOpen.value = false;
   }
 
   async function loadAsset(id: string) {
@@ -217,6 +302,13 @@ export function createWorkspace() {
     selectAsset,
     notice: showNotice,
   });
+  const catalog = createCatalogActions({
+    project,
+    run,
+    refresh,
+    selectAsset,
+    notice: showNotice,
+  });
 
   return {
     project,
@@ -232,6 +324,10 @@ export function createWorkspace() {
     rightSidebarOpen,
     busy,
     importing,
+    projectImagePath,
+    projectImagePreview,
+    projectImagePixelArtImportable,
+    artworkError,
     previewBusy,
     previewError,
     canvasLoading: canvasLoading.active,
@@ -239,14 +335,19 @@ export function createWorkspace() {
     loadingMessage: canvasLoading.message,
     error,
     notice,
+    dismissMessage,
     selectedAsset,
     inspection,
+    inspectorApplicable,
     canvasImage,
     canConvert,
     chooseProject: session.chooseProject,
     syncExternalChanges,
     restoreRecentProject: session.restoreRecentProject,
     selectAsset,
+    selectProjectImage,
+    clearProjectImage,
+    clearAsset,
     updateSettings: conversion.updateSettings,
     setColorCount: conversion.setColorCount,
     setBackgroundAutomatic: conversion.setBackgroundAutomatic,
@@ -262,11 +363,13 @@ export function createWorkspace() {
     exportCurrent: assetActions.exportCurrent,
     editor,
     composition,
-    importAssets,
+    importAssets: importAssets.references,
+    importPixelArt: importAssets.pixelArt,
     importReference: assetActions.replaceSource,
     replaceSource: assetActions.replaceSource,
     deleteAsset: session.deleteAsset,
     renameAsset: session.renameAsset,
+    catalog,
   };
 }
 type Workspace = ReturnType<typeof createWorkspace>;

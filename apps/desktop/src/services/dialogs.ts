@@ -29,11 +29,11 @@ export async function chooseReferenceImage(): Promise<string | undefined> {
 }
 
 export async function chooseExportFile(
-  asset: string,
+  defaultPath: string,
 ): Promise<string | undefined> {
   const selected = await save({
     title: "Export sprite at native resolution",
-    defaultPath: `${asset}.png`,
+    defaultPath,
     filters: [
       { name: "PNG image", extensions: ["png"] },
       { name: "Lossless WebP image", extensions: ["webp"] },
@@ -42,13 +42,15 @@ export async function chooseExportFile(
   return typeof selected === "string" ? selected : undefined;
 }
 
-export const confirmDeleteAsset = (asset: string) =>
+export const confirmDeleteAsset = (asset: string, linked = false) =>
   confirm(
-    `Delete “${asset}” and all of its revision history? This cannot be undone.`,
+    linked
+      ? `Remove “${asset}” from Pixelate and delete its revision history? The linked project image will remain untouched.`
+      : `Delete unexported asset “${asset}” and all of its Pixelate revision history? No project image exists. This cannot be undone.`,
     {
-      title: "Delete Asset",
+      title: linked ? "Remove from Pixelate" : "Delete unexported asset",
       kind: "warning",
-      okLabel: "Delete",
+      okLabel: linked ? "Remove" : "Delete asset",
       cancelLabel: "Cancel",
     },
   );

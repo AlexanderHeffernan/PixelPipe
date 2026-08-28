@@ -3,12 +3,15 @@ export type Rgba = [number, number, number, number];
 export interface ProjectManifest {
   schema: string;
   name: string;
+  ignored_project_images: string[];
 }
 
 export interface AssetManifest {
   schema: string;
   id: string;
   display_name?: string;
+  project_path?: string;
+  project_file_sha256?: string;
   brief: { schema: string; text: string };
   selected_reference?: ReferenceSelection;
   head?: string;
@@ -38,7 +41,15 @@ export interface ProjectBrowser {
   project_root: string;
   project: ProjectManifest;
   assets: AssetBrowser[];
+  catalog: CatalogEntry[];
+  folders: string[];
   pixelization: PixelizationDefaults;
+}
+
+export interface CatalogEntry {
+  path: string;
+  asset_id?: string;
+  status: "current" | "modified" | "missing" | "unexported";
 }
 
 export interface PixelizationDefaults {

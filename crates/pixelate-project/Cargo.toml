@@ -9,6 +9,7 @@ publish = false
 [dependencies]
 atomicwrites.workspace = true
 fs2.workspace = true
+ignore.workspace = true
 pixelate-core = { path = "../pixelate-core" }
 serde.workspace = true
 serde_json.workspace = true

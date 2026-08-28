@@ -13,7 +13,7 @@ interface AssetImportContext {
 }
 
 export function createAssetImport(context: AssetImportContext) {
-  return async function importAssets() {
+  async function importReferences() {
     if (!context.project.value) return;
     const files = await chooseReferenceImages();
     if (!files.length) return;
@@ -58,7 +58,43 @@ export function createAssetImport(context: AssetImportContext) {
     } finally {
       context.importing.value = false;
     }
-  };
+  }
+
+  async function importPixelArt() {
+    if (!context.project.value) return;
+    const files = await chooseReferenceImages();
+    if (!files.length) return;
+    const root = context.project.value.project_root
+      .replaceAll("\\", "/")
+      .replace(/\/$/, "");
+    const existing = context.project.value.assets.map(({ asset }) => asset.id);
+    await context.run(async () => {
+      let selected = "";
+      for (const file of files) {
+        const normalized = file.replaceAll("\\", "/");
+        if (!normalized.startsWith(`${root}/`)) {
+          throw new Error(
+            "Choose pixel art that is already inside the opened project",
+          );
+        }
+        const path = normalized.slice(root.length + 1);
+        const name = fileName(file);
+        const id = availableAssetId(name, existing);
+        await api.adoptPixelArt(root, path, id, name);
+        existing.push(id);
+        selected = id;
+      }
+      await context.refresh();
+      if (selected) await context.selectAsset(selected);
+      context.notice(
+        files.length === 1
+          ? "Pixel art imported"
+          : `${files.length} pixel art assets imported`,
+      );
+    });
+  }
+
+  return { references: importReferences, pixelArt: importPixelArt };
 }
 
 const slug = (value: string) =>

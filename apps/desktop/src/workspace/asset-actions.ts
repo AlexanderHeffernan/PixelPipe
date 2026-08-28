@@ -101,7 +101,17 @@ export function createAssetActions(context: AssetActionContext) {
     if (!context.project.value || !context.selectedAsset.value?.asset.head)
       return;
     if (!(await context.composition.commitIfDirty())) return;
-    const destination = await chooseExportFile(context.assetId.value);
+    const root = context.project.value.project_root;
+    const separator = root.includes("\\") ? "\\" : "/";
+    const relative =
+      context.selectedAsset.value.asset.project_path ||
+      `${context.assetId.value}.png`;
+    const destination = await chooseExportFile(
+      `${root.replace(/[\\/]$/, "")}${separator}${relative.replaceAll(
+        "/",
+        separator,
+      )}`,
+    );
     if (!destination) return;
     await context.run(async () => {
       const result = await api.exportAssetFile(
@@ -113,6 +123,7 @@ export function createAssetActions(context: AssetActionContext) {
       context.notice(
         `Exported ${result.width}×${result.height} ${result.format.toUpperCase()}`,
       );
+      await context.refresh();
     });
   }
 

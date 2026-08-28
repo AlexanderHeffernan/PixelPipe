@@ -22,6 +22,8 @@ pub(crate) const REVISION_PAYLOADS: [&str; 6] = [
 pub struct ProjectManifest {
     pub schema: String,
     pub name: String,
+    #[serde(default)]
+    pub ignored_project_images: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +32,10 @@ pub struct AssetManifest {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_file_sha256: Option<String>,
     #[serde(default)]
     pub brief: AssetBrief,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -150,6 +156,18 @@ pub enum ProjectError {
     },
     #[error("invalid asset id '{0}'; use lowercase letters, numbers, and single hyphens")]
     InvalidAssetId(String),
+    #[error("invalid project-relative path '{0}'")]
+    InvalidProjectPath(String),
+    #[error("project path is reserved or hidden: '{0}'")]
+    ReservedProjectPath(String),
+    #[error("project path already exists: '{0}'")]
+    ProjectPathExists(String),
+    #[error("project path does not exist: '{0}'")]
+    ProjectPathNotFound(String),
+    #[error("folder is not empty: '{0}'")]
+    FolderNotEmpty(String),
+    #[error("project path escapes through a symbolic link: '{0}'")]
+    SymlinkEscape(String),
     #[error("asset manifest identity '{actual}' does not match path identity '{expected}'")]
     AssetIdentityMismatch { expected: String, actual: String },
     #[error("asset '{0}' already exists")]
