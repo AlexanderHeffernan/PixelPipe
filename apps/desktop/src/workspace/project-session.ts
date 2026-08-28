@@ -77,7 +77,15 @@ export function createProjectSession(context: ProjectSessionContext) {
   }
 
   async function deleteAsset(id: string) {
-    if (!project.value || !(await confirmDeleteAsset(id))) return;
+    const asset = project.value?.assets.find(
+      (entry) => entry.asset.id === id,
+    )?.asset;
+    if (
+      !project.value ||
+      !asset ||
+      !(await confirmDeleteAsset(id, Boolean(asset.project_path)))
+    )
+      return;
     await run(async () => {
       await api.deleteAsset(project.value!.project_root, id);
       delete thumbnails.value[id];
@@ -88,7 +96,11 @@ export function createProjectSession(context: ProjectSessionContext) {
         assetId.value = "";
         context.clearSelection();
       }
-      showNotice("Asset deleted");
+      showNotice(
+        asset.project_path
+          ? "Removed from Pixelate; project image retained"
+          : "Draft and its Pixelate history deleted",
+      );
     });
   }
 

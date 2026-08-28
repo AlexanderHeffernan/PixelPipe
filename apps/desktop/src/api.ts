@@ -46,6 +46,49 @@ export const renameAsset = (
     request: { start, asset, display_name: displayName },
   });
 
+export const adoptProjectImage = (
+  start: string,
+  path: string,
+  asset: string,
+  brief: string,
+) =>
+  invoke<AssetManifest>("adopt_project_image", {
+    request: { start, path, asset, brief },
+  });
+
+export const relinkAsset = (start: string, asset: string, path: string) =>
+  invoke<AssetManifest>("relink_asset", {
+    request: { start, asset, path },
+  });
+
+export const updateLinkedSource = (start: string, asset: string) =>
+  invoke<AssetManifest>("update_linked_source", {
+    request: { start, asset },
+  });
+
+export const createFolder = (start: string, path: string) =>
+  invoke<void>("create_folder", { request: { start, path } });
+
+export const moveFolder = (
+  start: string,
+  source: string,
+  destination: string,
+) =>
+  invoke<AssetManifest[]>("move_folder", {
+    request: { start, source, destination },
+  });
+
+export const deleteFolder = (start: string, path: string) =>
+  invoke<void>("delete_folder", { request: { start, path } });
+
+export const moveAsset = (start: string, asset: string, destination: string) =>
+  invoke<AssetManifest>("move_asset", {
+    request: { start, asset, destination },
+  });
+
+export const loadProjectImage = (start: string, path: string) =>
+  invoke<string>("load_project_image", { request: { start, path } });
+
 export const importReference = (start: string, asset: string, file: string) =>
   invoke<ReferenceSelection>("import_reference", {
     request: { start, asset, file },

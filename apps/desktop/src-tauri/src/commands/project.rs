@@ -1,9 +1,10 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use pixelate_app::{
-    BrowseProject, CommitComposition, ConvertSelectedReference, DeleteAsset, ExportAsset,
-    ExportAssetFile, ImportReference, InitializeAsset, OpenProject, PreviewComposition,
-    PreviewSelectedReference, ProjectBrowser, RasterInspection, RenameAsset, RevisionResult,
-    UpdateAssetBrief,
+    AdoptProjectImage, BrowseProject, CommitComposition, ConvertSelectedReference, CreateFolder,
+    DeleteAsset, DeleteFolder, ExportAsset, ExportAssetFile, ImportReference, InitializeAsset,
+    LoadProjectImage, MoveAsset, MoveFolder, OpenProject, PreviewComposition,
+    PreviewSelectedReference, ProjectBrowser, RasterInspection, RelinkAsset, RenameAsset,
+    RevisionResult, UpdateAssetBrief, UpdateLinkedSource,
 };
 use serde::Serialize;
 
@@ -41,6 +42,65 @@ pub(crate) fn update_asset_brief(
 #[tauri::command]
 pub(crate) fn rename_asset(request: RenameAsset) -> CommandResult<pixelate_app::AssetManifest> {
     pixelate_app::rename_asset(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+pub(crate) async fn adopt_project_image(
+    request: AdoptProjectImage,
+) -> CommandResult<pixelate_app::AssetManifest> {
+    blocking(move || pixelate_app::adopt_project_image(request)).await
+}
+
+#[tauri::command]
+pub(crate) fn relink_asset(request: RelinkAsset) -> CommandResult<pixelate_app::AssetManifest> {
+    pixelate_app::relink_asset(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+pub(crate) async fn update_linked_source(
+    request: UpdateLinkedSource,
+) -> CommandResult<pixelate_app::AssetManifest> {
+    blocking(move || pixelate_app::update_linked_source(request)).await
+}
+
+#[tauri::command]
+pub(crate) fn create_folder(request: CreateFolder) -> CommandResult<()> {
+    pixelate_app::create_folder(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+pub(crate) fn move_folder(request: MoveFolder) -> CommandResult<Vec<pixelate_app::AssetManifest>> {
+    pixelate_app::move_folder(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+pub(crate) fn delete_folder(request: DeleteFolder) -> CommandResult<()> {
+    pixelate_app::delete_folder(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+pub(crate) fn move_asset(request: MoveAsset) -> CommandResult<pixelate_app::AssetManifest> {
+    pixelate_app::move_asset(request).map_err(|error| command_error(&error))
+}
+
+#[tauri::command]
+pub(crate) async fn load_project_image(request: LoadProjectImage) -> CommandResult<String> {
+    blocking(move || {
+        let extension = request
+            .path
+            .rsplit('.')
+            .next()
+            .unwrap_or("png")
+            .to_ascii_lowercase();
+        let mime = match extension.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "webp" => "image/webp",
+            _ => "image/png",
+        };
+        let bytes = pixelate_app::load_project_image(request)?;
+        Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
+    })
+    .await
 }
 
 #[tauri::command]

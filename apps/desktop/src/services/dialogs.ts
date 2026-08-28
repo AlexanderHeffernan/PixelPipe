@@ -42,13 +42,15 @@ export async function chooseExportFile(
   return typeof selected === "string" ? selected : undefined;
 }
 
-export const confirmDeleteAsset = (asset: string) =>
+export const confirmDeleteAsset = (asset: string, linked = false) =>
   confirm(
-    `Delete “${asset}” and all of its revision history? This cannot be undone.`,
+    linked
+      ? `Remove “${asset}” from Pixelate and delete its revision history? The linked project image will remain untouched.`
+      : `Delete Draft “${asset}” and all of its Pixelate revision history? This cannot be undone.`,
     {
-      title: "Delete Asset",
+      title: linked ? "Remove from Pixelate" : "Delete Draft",
       kind: "warning",
-      okLabel: "Delete",
+      okLabel: linked ? "Remove" : "Delete Draft",
       cancelLabel: "Cancel",
     },
   );

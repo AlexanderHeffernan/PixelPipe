@@ -46,6 +46,7 @@ export const project: ProjectBrowser = {
       revisions: [],
     },
   ],
+  catalog: [],
   pixelization: { color_count: 16, settings },
 };
 

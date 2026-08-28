@@ -6,6 +6,7 @@ import { createConversionPreview } from "./conversion-preview";
 import { createCompositionPreview } from "./composition-preview";
 import { createAssetImport } from "./asset-import";
 import { createCanvasLoading } from "./canvas-loading";
+import { createCatalogActions } from "./catalog-actions";
 import { createPixelEditor } from "./pixel-editor";
 import { createProjectSession } from "./project-session";
 import { createProjectSync, type ExternalAssetChange } from "./project-sync";
@@ -18,6 +19,8 @@ export function createWorkspace() {
   const leftSidebarOpen = ref(true);
   const rightSidebarOpen = ref(true);
   const importing = ref(false);
+  const projectImagePath = ref("");
+  const projectImagePreview = ref("");
   const assetModes = new Map<string, WorkspaceMode>();
   const session = createProjectSession({
     selectAsset,
@@ -76,7 +79,21 @@ export function createWorkspace() {
   });
 
   async function selectAsset(id: string) {
+    projectImagePath.value = "";
+    projectImagePreview.value = "";
     await canvasLoading.run("Loading sprite…", () => loadAsset(id));
+  }
+
+  async function selectProjectImage(path: string) {
+    if (!project.value) return;
+    assetId.value = "";
+    view.value = undefined;
+    preview.value = undefined;
+    projectImagePath.value = path;
+    projectImagePreview.value = await api.loadProjectImage(
+      project.value.project_root,
+      path,
+    );
   }
 
   async function loadAsset(id: string) {
@@ -217,6 +234,13 @@ export function createWorkspace() {
     selectAsset,
     notice: showNotice,
   });
+  const catalog = createCatalogActions({
+    project,
+    run,
+    refresh,
+    selectAsset,
+    notice: showNotice,
+  });
 
   return {
     project,
@@ -232,6 +256,8 @@ export function createWorkspace() {
     rightSidebarOpen,
     busy,
     importing,
+    projectImagePath,
+    projectImagePreview,
     previewBusy,
     previewError,
     canvasLoading: canvasLoading.active,
@@ -247,6 +273,7 @@ export function createWorkspace() {
     syncExternalChanges,
     restoreRecentProject: session.restoreRecentProject,
     selectAsset,
+    selectProjectImage,
     updateSettings: conversion.updateSettings,
     setColorCount: conversion.setColorCount,
     setBackgroundAutomatic: conversion.setBackgroundAutomatic,
@@ -267,6 +294,7 @@ export function createWorkspace() {
     replaceSource: assetActions.replaceSource,
     deleteAsset: session.deleteAsset,
     renameAsset: session.renameAsset,
+    catalog,
   };
 }
 type Workspace = ReturnType<typeof createWorkspace>;

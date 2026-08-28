@@ -69,6 +69,16 @@ beforeEach(() => {
   vi.spyOn(api, "importReference").mockResolvedValue({} as never);
   vi.spyOn(api, "deleteAsset").mockResolvedValue();
   vi.spyOn(api, "renameAsset").mockResolvedValue({} as never);
+  vi.spyOn(api, "loadProjectImage").mockResolvedValue(
+    "data:image/png;base64,project-image",
+  );
+  vi.spyOn(api, "adoptProjectImage").mockResolvedValue({} as never);
+  vi.spyOn(api, "createFolder").mockResolvedValue();
+  vi.spyOn(api, "moveFolder").mockResolvedValue([]);
+  vi.spyOn(api, "deleteFolder").mockResolvedValue();
+  vi.spyOn(api, "moveAsset").mockResolvedValue({} as never);
+  vi.spyOn(api, "relinkAsset").mockResolvedValue({} as never);
+  vi.spyOn(api, "updateLinkedSource").mockResolvedValue({} as never);
 });
 
 afterEach(() => {
@@ -568,5 +578,76 @@ describe("deterministic workstation", () => {
     expect(document.querySelector(".conversion-inspector")).not.toHaveAttribute(
       "aria-hidden",
     );
+  });
+
+  it("browses nested real folders, searches paths, and previews unmanaged images before adoption", async () => {
+    const catalogProject = structuredClone(project);
+    catalogProject.assets[0].asset.project_path = "sprites/units/medic.png";
+    catalogProject.catalog = [
+      {
+        path: "sprites/units/medic.png",
+        asset_id: "field-medic",
+        status: "current",
+      },
+      { path: "sprites/props/crate.png", status: "current" },
+    ];
+    vi.mocked(api.openProject).mockResolvedValueOnce(catalogProject);
+    await openWorkstation();
+
+    expect(
+      screen.getByRole("tree", { name: "Project image folders" }),
+    ).toBeVisible();
+    const sprites = screen.getByRole("button", { name: "Collapse sprites" });
+    expect(sprites).toBeVisible();
+    await fireEvent.click(sprites);
+    expect(sprites).toHaveAccessibleName("Expand sprites");
+    await fireEvent.click(sprites);
+    await fireEvent.update(
+      screen.getByRole("searchbox", { name: "Search assets" }),
+      "props/crate",
+    );
+    expect(screen.getByRole("button", { name: /crate/i })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /medic/i }),
+    ).not.toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: /crate/i }));
+    expect(api.loadProjectImage).toHaveBeenCalledWith(
+      "/game",
+      "sprites/props/crate.png",
+    );
+    expect(
+      await screen.findByRole("button", { name: "Edit in Pixelate" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /Remove crate/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Drafts and explicit linked-file status actions", async () => {
+    const catalogProject = structuredClone(project);
+    catalogProject.assets.push({
+      asset: {
+        ...structuredClone(project.assets[0].asset),
+        id: "draft",
+        display_name: "Draft",
+      },
+      revisions: [],
+    });
+    catalogProject.assets[0].asset.project_path = "art/medic.png";
+    catalogProject.catalog = [
+      { path: "art/medic.png", asset_id: "field-medic", status: "missing" },
+    ];
+    vi.mocked(api.openProject).mockResolvedValueOnce(catalogProject);
+    await openWorkstation();
+
+    expect(screen.getByRole("region", { name: "Drafts" })).toHaveTextContent(
+      "Draft",
+    );
+    expect(screen.getByLabelText("Linked file missing")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Relink medic" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Remove medic from Pixelate" }),
+    ).toBeVisible();
   });
 });
