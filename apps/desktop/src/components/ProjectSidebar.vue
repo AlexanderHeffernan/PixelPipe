@@ -20,8 +20,10 @@ const addMenu = ref(false);
 const addingFolder = ref(false);
 const folderPath = ref("");
 const folderInput = ref<HTMLInputElement>();
+const promotedFolders = ref<ReadonlySet<string>>(new Set());
+const revealedFolder = ref("");
 const { managedFolders, unmanagedFolders, managedRootFiles, projectRootFiles } =
-  useAssetTree(workspace.project, search);
+  useAssetTree(workspace.project, search, promotedFolders);
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
 const { width, isResizing, startResize, resizeWithKeyboard } = useSidebarResize(
@@ -34,13 +36,22 @@ const { width, isResizing, startResize, resizeWithKeyboard } = useSidebarResize(
 );
 
 async function createFolder() {
-  if (!folderPath.value.trim()) {
+  const path = folderPath.value.trim();
+  if (!path) {
     addingFolder.value = false;
     return;
   }
-  await workspace.catalog.createFolder(folderPath.value.trim());
+  await workspace.catalog.createFolder(path);
+  if (!workspace.project.value?.folders.includes(path)) return;
+  promotedFolders.value = new Set([...promotedFolders.value, path]);
+  revealedFolder.value = path;
   addingFolder.value = false;
   folderPath.value = "";
+  await nextTick();
+  const row = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-folder-path]"),
+  ).find((entry) => entry.dataset.folderPath === path);
+  row?.scrollIntoView?.({ block: "nearest" });
 }
 
 function beginFolder() {
@@ -152,6 +163,7 @@ function dropAtRoot(event: DragEvent) {
             :key="folder.path"
             :folder="folder"
             :force-open="Boolean(search)"
+            :reveal-path="revealedFolder"
           />
           <AssetBrowserFile
             v-for="file in managedRootFiles"
@@ -164,6 +176,7 @@ function dropAtRoot(event: DragEvent) {
             :key="folder.path"
             :folder="folder"
             :force-open="Boolean(search)"
+            :reveal-path="revealedFolder"
           />
           <AssetBrowserFile
             v-for="file in projectRootFiles"

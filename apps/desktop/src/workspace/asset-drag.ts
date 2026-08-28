@@ -1,39 +1,83 @@
 const FILE = "application/x-pixelate-file";
 const FOLDER = "application/x-pixelate-folder";
+const TEXT = "text/plain";
+const PREFIX = "pixelate-drag:";
+
+type DraggedItem = { path?: string; asset?: string; folder?: string };
+
+function textPayload(item: DraggedItem) {
+  return `${PREFIX}${JSON.stringify(item)}`;
+}
 
 export const beginFileDrag = (
   event: DragEvent,
   path: string,
   asset?: string,
 ) => {
-  event.dataTransfer?.setData(FILE, JSON.stringify({ path, asset }));
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  const transfer = event.dataTransfer;
+  if (!transfer) return;
+  try {
+    transfer.setData(FILE, JSON.stringify({ path, asset }));
+  } catch {
+    // Older WebKit may reject custom MIME types; text/plain remains internal.
+  }
+  transfer.setData(TEXT, textPayload({ path, asset }));
+  transfer.effectAllowed = "move";
 };
 
 export const beginFolderDrag = (event: DragEvent, path: string) => {
-  event.dataTransfer?.setData(FOLDER, path);
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  const transfer = event.dataTransfer;
+  if (!transfer) return;
+  try {
+    transfer.setData(FOLDER, path);
+  } catch {
+    // Older WebKit may reject custom MIME types; text/plain remains internal.
+  }
+  transfer.setData(TEXT, textPayload({ folder: path }));
+  transfer.effectAllowed = "move";
 };
 
-export const acceptsAssetDrop = (event: DragEvent) =>
-  event.dataTransfer?.types.includes(FILE) ||
-  event.dataTransfer?.types.includes(FOLDER);
+export const acceptsAssetDrop = (event: DragEvent) => {
+  const transfer = event.dataTransfer;
+  return (
+    hasType(transfer?.types, FILE) ||
+    hasType(transfer?.types, FOLDER) ||
+    (hasType(transfer?.types, TEXT) &&
+      transfer?.getData(TEXT).startsWith(PREFIX))
+  );
+};
+
+function hasType(types: readonly string[] | undefined, type: string) {
+  const legacy = types as unknown as { contains?: (value: string) => boolean };
+  return Array.from(types ?? []).includes(type) || legacy?.contains?.(type);
+}
 
 export const droppedItem = (event: DragEvent) => {
-  const raw = event.dataTransfer?.getData(FILE);
-  let file: { path?: string; asset?: string } = {};
-  if (raw) {
-    try {
-      file = JSON.parse(raw) as typeof file;
-    } catch {
-      file = {};
-    }
-  }
+  const transfer = event.dataTransfer;
+  const fallback = transfer?.getData(TEXT) || "";
+  const rawFile = transfer?.getData(FILE);
+  const rawFolder = transfer?.getData(FOLDER);
+  const item = parseItem(
+    rawFile ||
+      rawFolder ||
+      (fallback.startsWith(PREFIX) ? fallback.slice(PREFIX.length) : ""),
+    Boolean(rawFolder),
+  );
   return {
-    asset: file.asset || "",
-    image: file.path || "",
-    folder: event.dataTransfer?.getData(FOLDER) || "",
+    asset: item.asset || "",
+    image: item.path || "",
+    folder: item.folder || "",
   };
 };
+
+function parseItem(raw: string, folder: boolean): DraggedItem {
+  if (!raw) return {};
+  if (folder) return { folder: raw };
+  try {
+    return JSON.parse(raw) as DraggedItem;
+  } catch {
+    return {};
+  }
+}
 
 export const basename = (path: string) => path.split("/").at(-1) || path;

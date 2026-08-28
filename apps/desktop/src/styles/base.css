@@ -285,13 +285,48 @@ code {
   left: 50%;
   transform: translateX(-50%);
   max-width: 520px;
-  padding: 8px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 7px 6px 12px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.82);
   background: rgba(25, 18, 30, 0.94);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
   font-size: 11px;
+}
+.toast span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    background 120ms ease;
+}
+.toast:hover button,
+.toast:focus-within button {
+  opacity: 0.72;
+}
+.toast button:hover,
+.toast button:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 1;
+}
+.toast button svg {
+  width: 13px;
 }
 .workspace-toast {
   position: absolute;

@@ -4,12 +4,11 @@ import { nextTick, ref } from "vue";
 import type { AssetTreeFile } from "../workspace/asset-tree";
 import { beginFileDrag } from "../workspace/asset-drag";
 import { useWorkspace } from "../workspace/context";
-import PopupMenu from "./PopupMenu.vue";
+import AssetBrowserFileMenu from "./AssetBrowserFileMenu.vue";
 
 const props = defineProps<{ file: AssetTreeFile; level: number }>();
 const workspace = useWorkspace();
 const menuOpen = ref(false);
-const relinking = ref(false);
 const renaming = ref(false);
 const value = ref("");
 const renameInput = ref<HTMLInputElement>();
@@ -31,7 +30,6 @@ function choose() {
 
 function openMenu() {
   menuOpen.value = true;
-  relinking.value = false;
 }
 
 function beginRename() {
@@ -49,18 +47,6 @@ async function rename() {
   await workspace.renameAsset(props.file.managed.asset.id, value.value.trim());
   renaming.value = false;
 }
-
-async function deleteFile() {
-  menuOpen.value = false;
-  if (
-    !window.confirm(
-      `Permanently delete “${props.file.path}” from the project? Pixelate history is retained. This cannot be undone.`,
-    )
-  )
-    return;
-  await workspace.catalog.deleteProjectImage(props.file.path);
-  if (!props.file.managed) workspace.clearProjectImage();
-}
 </script>
 
 <template>
@@ -70,23 +56,49 @@ async function deleteFile() {
     role="treeitem"
     :aria-current="selected() ? 'page' : undefined"
     :style="{ '--tree-level': level }"
-    draggable="true"
+    :draggable="!renaming"
     @dragstart.stop="beginFileDrag($event, file.path, file.managed?.asset.id)"
     @contextmenu.stop.prevent="openMenu"
     @keydown.shift.f10.stop.prevent="openMenu"
   >
     <form
       v-if="renaming"
-      class="browser-inline-rename"
+      class="browser-file__select browser-file__rename"
+      :title="file.path"
       @submit.prevent="rename"
     >
-      <input
-        ref="renameInput"
-        v-model="value"
-        aria-label="Rename asset"
-        @keydown.escape.prevent="renaming = false"
-        @blur="rename"
-      />
+      <span class="asset-thumbnail checker">
+        <img
+          v-if="workspace.thumbnails.value[file.managed!.asset.id]"
+          :src="workspace.thumbnails.value[file.managed!.asset.id]"
+          alt=""
+        />
+        <PhImageSquare v-else aria-hidden="true" />
+      </span>
+      <span class="browser-file__label">
+        <input
+          ref="renameInput"
+          v-model="value"
+          aria-label="Rename asset"
+          @keydown.escape.prevent="renaming = false"
+          @blur="rename"
+        />
+        <span
+          v-if="
+            file.catalog.status === 'current' ||
+            file.catalog.status === 'modified'
+          "
+          class="asset-path"
+        >
+          {{ file.path }}
+        </span>
+      </span>
+      <span
+        v-if="file.catalog.status === 'modified'"
+        class="asset-status-label"
+      >
+        Changed
+      </span>
     </form>
     <button
       v-else
@@ -105,99 +117,28 @@ async function deleteFile() {
       <span class="browser-file__label">
         <span class="asset-name">{{ file.name }}</span>
         <span
-          v-if="!file.managed || file.catalog.status !== 'unexported'"
+          v-if="
+            file.managed &&
+            (file.catalog.status === 'current' ||
+              file.catalog.status === 'modified')
+          "
           class="asset-path"
         >
           {{ file.path }}
         </span>
       </span>
       <span
-        v-if="
-          file.managed &&
-          (file.catalog.status === 'missing' ||
-            file.catalog.status === 'modified')
-        "
+        v-if="file.managed && file.catalog.status === 'modified'"
         class="asset-status-label"
       >
-        {{ file.catalog.status === "missing" ? "Missing" : "Changed" }}
+        Changed
       </span>
     </button>
-    <PopupMenu
+    <AssetBrowserFileMenu
       v-if="menuOpen"
-      class="asset-context-menu"
+      :file="file"
       @close="menuOpen = false"
-    >
-      <template v-if="file.managed && !relinking">
-        <button role="menuitem" @click="beginRename">Rename</button>
-        <button
-          v-if="file.catalog.status === 'missing'"
-          role="menuitem"
-          @click="
-            relinking = true;
-            value = file.path;
-          "
-        >
-          Relink…
-        </button>
-        <button
-          v-if="file.catalog.status === 'modified'"
-          role="menuitem"
-          @click="
-            workspace.catalog.updateLinkedSource(file.managed.asset.id);
-            menuOpen = false;
-          "
-        >
-          Import external changes
-        </button>
-        <button
-          role="menuitem"
-          class="danger"
-          @click="
-            workspace.deleteAsset(file.managed.asset.id);
-            menuOpen = false;
-          "
-        >
-          Remove from Pixelate…
-        </button>
-        <button
-          v-if="
-            file.catalog.status === 'current' ||
-            file.catalog.status === 'modified'
-          "
-          role="menuitem"
-          class="danger"
-          @click="deleteFile"
-        >
-          Delete file…
-        </button>
-      </template>
-      <template v-else-if="!file.managed">
-        <button
-          role="menuitem"
-          @click="
-            workspace.catalog.setIgnored(file.path, true);
-            menuOpen = false;
-          "
-        >
-          Hide from Assets
-        </button>
-        <button role="menuitem" class="danger" @click="deleteFile">
-          Delete file…
-        </button>
-      </template>
-      <form
-        v-else
-        @submit.prevent="
-          workspace.catalog.relink(file.managed!.asset.id, value.trim());
-          menuOpen = false;
-        "
-      >
-        <label>Project path<input v-model="value" autofocus /></label>
-        <div>
-          <button type="button" @click="relinking = false">Back</button>
-          <button type="submit">Relink</button>
-        </div>
-      </form>
-    </PopupMenu>
+      @rename="beginRename"
+    />
   </div>
 </template>

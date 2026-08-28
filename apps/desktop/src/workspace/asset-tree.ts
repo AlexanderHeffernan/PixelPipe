@@ -14,6 +14,7 @@ export interface AssetTreeFolder {
   path: string;
   name: string;
   hasManagedAssets: boolean;
+  isPriority: boolean;
   folders: AssetTreeFolder[];
   files: AssetTreeFile[];
 }
@@ -21,6 +22,7 @@ export interface AssetTreeFolder {
 export function useAssetTree(
   project: Ref<ProjectBrowser | undefined>,
   query: Ref<string>,
+  promotedFolders?: Ref<ReadonlySet<string>>,
 ) {
   const tree = computed(() => {
     const root: AssetTreeFolder = {
@@ -28,6 +30,7 @@ export function useAssetTree(
       path: "",
       name: "",
       hasManagedAssets: false,
+      isPriority: false,
       folders: [],
       files: [],
     };
@@ -46,8 +49,7 @@ export function useAssetTree(
         : undefined;
       if (catalog.asset_id) catalogedAssets.add(catalog.asset_id);
       const name = catalog.path.split("/").at(-1) || catalog.path;
-      const display =
-        managed?.asset.display_name || name.replace(/\.[^.]+$/, "");
+      const display = managed?.asset.display_name || name;
       if (
         needle &&
         !display.toLowerCase().includes(needle) &&
@@ -83,15 +85,15 @@ export function useAssetTree(
         managed,
       });
     }
-    sortFolder(root);
+    sortFolder(root, promotedFolders?.value ?? new Set());
     return root;
   });
   return {
     managedFolders: computed(() =>
-      tree.value.folders.filter((folder) => folder.hasManagedAssets),
+      tree.value.folders.filter((folder) => folder.isPriority),
     ),
     unmanagedFolders: computed(() =>
-      tree.value.folders.filter((folder) => !folder.hasManagedAssets),
+      tree.value.folders.filter((folder) => !folder.isPriority),
     ),
     managedRootFiles: computed(() =>
       tree.value.files.filter((file) => file.managed),
@@ -113,6 +115,7 @@ function addFolder(root: AssetTreeFolder, path: string) {
         path: childPath,
         name: part,
         hasManagedAssets: false,
+        isPriority: false,
         folders: [],
         files: [],
       };
@@ -126,14 +129,17 @@ function addFolder(root: AssetTreeFolder, path: string) {
 const displayName = (id: string) =>
   id.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-function sortFolder(folder: AssetTreeFolder) {
-  folder.folders.forEach(sortFolder);
+function sortFolder(folder: AssetTreeFolder, promoted: ReadonlySet<string>) {
+  folder.folders.forEach((child) => sortFolder(child, promoted));
   folder.hasManagedAssets =
     folder.files.some((file) => Boolean(file.managed)) ||
     folder.folders.some((child) => child.hasManagedAssets);
+  folder.isPriority =
+    folder.hasManagedAssets ||
+    promoted.has(folder.path) ||
+    folder.folders.some((child) => child.isPriority);
   folder.folders.sort((a, b) => {
-    if (a.hasManagedAssets !== b.hasManagedAssets)
-      return a.hasManagedAssets ? -1 : 1;
+    if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
   folder.files.sort((a, b) => {

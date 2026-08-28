@@ -21,12 +21,18 @@ export function createWorkspace() {
   const importing = ref(false);
   const projectImagePath = ref("");
   const projectImagePreview = ref("");
+  const projectImagePixelArtImportable = ref(false);
+  const artworkError = ref("");
   const assetModes = new Map<string, WorkspaceMode>();
   const session = createProjectSession({
     selectAsset,
     clearSelection() {
       view.value = undefined;
       preview.value = undefined;
+      projectImagePath.value = "";
+      projectImagePreview.value = "";
+      projectImagePixelArtImportable.value = false;
+      artworkError.value = "";
       rightSidebarOpen.value = false;
     },
   });
@@ -40,6 +46,7 @@ export function createWorkspace() {
     selectedAsset,
     run,
     showNotice,
+    dismissMessage,
     refresh,
   } = session;
 
@@ -83,10 +90,33 @@ export function createWorkspace() {
   });
 
   async function selectAsset(id: string) {
+    artworkError.value = "";
     projectImagePath.value = "";
     projectImagePreview.value = "";
-    rightSidebarOpen.value = true;
-    await canvasLoading.run("Loading sprite…", () => loadAsset(id));
+    projectImagePixelArtImportable.value = false;
+    rightSidebarOpen.value = false;
+    await canvasLoading.run("Loading sprite…", async () => {
+      view.value = undefined;
+      preview.value = undefined;
+      try {
+        await loadAsset(id);
+        if (
+          selectedAsset.value?.asset.selected_reference &&
+          !view.value &&
+          !preview.value &&
+          previewError.value
+        ) {
+          throw new Error(previewError.value);
+        }
+        rightSidebarOpen.value = Boolean(view.value || preview.value);
+      } catch (caught) {
+        view.value = undefined;
+        preview.value = undefined;
+        rightSidebarOpen.value = false;
+        artworkError.value =
+          caught instanceof Error ? caught.message : String(caught);
+      }
+    });
   }
 
   async function selectProjectImage(path: string) {
@@ -98,23 +128,39 @@ export function createWorkspace() {
     assetId.value = "";
     view.value = undefined;
     preview.value = undefined;
+    artworkError.value = "";
     rightSidebarOpen.value = false;
     projectImagePath.value = path;
-    projectImagePreview.value = await api.loadProjectImage(
-      project.value.project_root,
-      path,
-    );
+    projectImagePreview.value = "";
+    projectImagePixelArtImportable.value = false;
+    await canvasLoading.run("Loading image…", async () => {
+      try {
+        const image = await api.loadProjectImage(
+          project.value!.project_root,
+          path,
+        );
+        projectImagePreview.value = image.data_url;
+        projectImagePixelArtImportable.value = image.pixel_art_importable;
+      } catch (caught) {
+        projectImagePreview.value = "";
+        artworkError.value =
+          caught instanceof Error ? caught.message : String(caught);
+      }
+    });
   }
 
   function clearProjectImage() {
     projectImagePath.value = "";
     projectImagePreview.value = "";
+    projectImagePixelArtImportable.value = false;
+    artworkError.value = "";
   }
 
   function clearAsset() {
     assetId.value = "";
     view.value = undefined;
     preview.value = undefined;
+    artworkError.value = "";
     rightSidebarOpen.value = false;
   }
 
@@ -280,6 +326,8 @@ export function createWorkspace() {
     importing,
     projectImagePath,
     projectImagePreview,
+    projectImagePixelArtImportable,
+    artworkError,
     previewBusy,
     previewError,
     canvasLoading: canvasLoading.active,
@@ -287,6 +335,7 @@ export function createWorkspace() {
     loadingMessage: canvasLoading.message,
     error,
     notice,
+    dismissMessage,
     selectedAsset,
     inspection,
     inspectorApplicable,

@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.vue";
@@ -70,9 +71,13 @@ beforeEach(() => {
   vi.spyOn(api, "importReference").mockResolvedValue({} as never);
   vi.spyOn(api, "deleteAsset").mockResolvedValue();
   vi.spyOn(api, "renameAsset").mockResolvedValue({} as never);
-  vi.spyOn(api, "loadProjectImage").mockResolvedValue(
-    "data:image/png;base64,project-image",
-  );
+  vi.spyOn(api, "loadProjectImage").mockResolvedValue({
+    data_url: "data:image/png;base64,project-image",
+    width: 64,
+    height: 64,
+    pixel_art_importable: true,
+  });
+  vi.spyOn(api, "revealProjectImage").mockResolvedValue();
   vi.spyOn(api, "adoptProjectImage").mockResolvedValue({} as never);
   vi.spyOn(api, "adoptPixelArt").mockResolvedValue(commit);
   vi.spyOn(api, "setProjectImageIgnored").mockResolvedValue(project.project);
@@ -90,6 +95,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  delete (Element.prototype as Partial<Element>).scrollIntoView;
 });
 
 async function openWorkstation() {
@@ -104,6 +110,35 @@ async function enterCanvas() {
     screen.getByRole("button", { name: /Continue to Canvas/ }),
   );
   await screen.findByText("Canvas & Touch Up");
+}
+
+function dragTransfer(domStringList = false, rejectCustomTypes = false) {
+  const data = new Map<string, string>();
+  return {
+    effectAllowed: "none",
+    dropEffect: "none",
+    get types() {
+      const types = [...data.keys()];
+      if (!domStringList) return types;
+      return Object.assign(
+        {
+          length: types.length,
+          item: (index: number) => types[index] ?? null,
+          contains: (type: string) => types.includes(type),
+        },
+        Object.fromEntries(types.map((type, index) => [index, type])),
+      );
+    },
+    setData(type: string, value: string) {
+      if (rejectCustomTypes && type.startsWith("application/")) {
+        throw new Error("custom drag types are unavailable");
+      }
+      data.set(type, value);
+    },
+    getData(type: string) {
+      return data.get(type) || "";
+    },
+  } as unknown as DataTransfer;
 }
 
 describe("deterministic workstation", () => {
@@ -497,11 +532,17 @@ describe("deterministic workstation", () => {
 
   it("renames an asset without changing its stable identity", async () => {
     await openWorkstation();
+    const row = screen
+      .getByRole("button", { name: /Field Medic/i })
+      .closest('[role="treeitem"]')!;
     await fireEvent.contextMenu(
       screen.getByRole("button", { name: /Field Medic/i }),
     );
     await fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
     const name = screen.getByRole("textbox", { name: "Rename asset" });
+    expect(row).toContainElement(name);
+    expect(row.querySelector(".asset-thumbnail img")).toBeVisible();
+    expect(name.closest(".browser-file__select")).toBeVisible();
     await fireEvent.update(name, "Lead Healer");
     await fireEvent.submit(name.closest("form")!);
     await waitFor(() =>
@@ -635,6 +676,16 @@ describe("deterministic workstation", () => {
     expect(
       screen.getByRole("button", { name: "Hide from Assets" }),
     ).toBeVisible();
+    const stage = document.querySelector<HTMLElement>(".project-image-stage")!;
+    expect(within(stage).getAllByText("crate.png")).toHaveLength(1);
+    expect(within(stage).queryByText("sprites/props/crate.png")).toBeNull();
+    await fireEvent.click(
+      within(stage).getByRole("button", { name: "Show in Finder" }),
+    );
+    expect(api.revealProjectImage).toHaveBeenCalledWith(
+      "/game",
+      "sprites/props/crate.png",
+    );
     expect(document.querySelector(".conversion-inspector")).toBeNull();
     expect(
       screen.queryByRole("button", { name: /inspector/i }),
@@ -677,7 +728,8 @@ describe("deterministic workstation", () => {
     expect(screen.getByRole("button", { name: /Draft/i })).toBeVisible();
     expect(screen.queryByText("Not exported")).not.toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: "Expand art" }));
-    expect(screen.getByText("Missing")).toBeVisible();
+    expect(screen.queryByText("Missing")).not.toBeInTheDocument();
+    expect(screen.queryByText("art/medic.png")).not.toBeInTheDocument();
     await fireEvent.contextMenu(screen.getByRole("button", { name: /medic/i }));
     expect(screen.getByRole("menuitem", { name: "Relink…" })).toBeVisible();
     expect(
@@ -708,6 +760,11 @@ describe("deterministic workstation", () => {
     const catalogProject = structuredClone(project);
     catalogProject.project.ignored_project_images = ["concepts/old.png"];
     vi.mocked(api.openProject).mockResolvedValueOnce(catalogProject);
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
     await openWorkstation();
 
     await fireEvent.click(screen.getByText("Hidden images (1)"));
@@ -737,8 +794,13 @@ describe("deterministic workstation", () => {
       expect(api.createFolder).toHaveBeenCalledWith("/game", "sprites/units"),
     );
     expect(
-      screen.getByRole("button", { name: "Expand sprites" }),
+      await screen.findByRole("button", { name: "Collapse sprites" }),
     ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Expand units" })).toBeVisible();
+    expect(
+      screen.getByRole("tree", { name: "Project image folders" }).children[0],
+    ).toHaveClass("browser-folder");
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
 
   it("unselects an open asset and keeps popup menus open until an outside click", async () => {
@@ -762,22 +824,95 @@ describe("deterministic workstation", () => {
     ).toBeVisible();
   });
 
-  it("disables exact pixel-art import for images over 256 pixels", async () => {
+  it("hides exact pixel-art import when deterministic preflight refuses it", async () => {
     const catalogProject = structuredClone(project);
     catalogProject.catalog = [{ path: "large.png", status: "current" }];
     vi.mocked(api.openProject).mockResolvedValueOnce(catalogProject);
+    vi.mocked(api.loadProjectImage).mockResolvedValueOnce({
+      data_url: "data:image/png;base64,large",
+      width: 128,
+      height: 128,
+      pixel_art_importable: false,
+    });
     await openWorkstation();
     await fireEvent.click(screen.getByRole("button", { name: /large/i }));
-    const image = await screen.findByRole("img", { name: "large.png preview" });
-    Object.defineProperties(image, {
-      naturalWidth: { value: 512 },
-      naturalHeight: { value: 256 },
-    });
-    await fireEvent.load(image);
+    await screen.findByRole("img", { name: "large.png preview" });
     expect(
-      screen.getByRole("button", { name: "Import as Pixel Art" }),
-    ).toBeDisabled();
-    expect(screen.getByText(/512 × 256 is too large/)).toBeVisible();
+      screen.queryByRole("button", { name: "Import as Pixel Art" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/too large/i)).not.toBeInTheDocument();
+  });
+
+  it("clears stale artwork and inspector chrome when a selected file fails to load", async () => {
+    const catalogProject = structuredClone(project);
+    catalogProject.assets[0].asset.head = "r000001";
+    catalogProject.catalog = [{ path: "broken.png", status: "current" }];
+    vi.mocked(api.openProject).mockResolvedValueOnce(catalogProject);
+    await openWorkstation();
+    expect(
+      screen.getByRole("img", { name: "field-medic pixel art" }),
+    ).toBeVisible();
+
+    vi.mocked(api.loadProjectImage).mockRejectedValueOnce(
+      new Error("The image could not be read"),
+    );
+    await fireEvent.click(screen.getByRole("button", { name: "broken.png" }));
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("Couldn’t load this artwork");
+    expect(failure).toHaveTextContent("The image could not be read");
+    expect(
+      screen.queryByRole("img", { name: "field-medic pixel art" }),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector(".conversion-inspector")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /inspector/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the artwork loader when switching from a project image to a managed asset", async () => {
+    const catalogProject = structuredClone(project);
+    catalogProject.assets[0].asset.head = "r000001";
+    catalogProject.catalog = [{ path: "concept.png", status: "current" }];
+    vi.mocked(api.openProject).mockResolvedValueOnce(catalogProject);
+    await openWorkstation();
+    await fireEvent.click(screen.getByRole("button", { name: "concept.png" }));
+    await screen.findByRole("img", { name: "concept.png preview" });
+
+    let finishLoad: ((view: typeof revisionView) => void) | undefined;
+    vi.mocked(api.loadRevision).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishLoad = resolve;
+        }),
+    );
+    await fireEvent.click(screen.getByRole("button", { name: /Field Medic/i }));
+    expect(await screen.findByText("Loading sprite…")).toBeVisible();
+    expect(document.querySelector(".canvas-loading")).toBeVisible();
+    expect(screen.queryByText("Select an asset")).not.toBeInTheDocument();
+    finishLoad?.(revisionView);
+    await screen.findByRole("img", { name: "field-medic pixel art" });
+  });
+
+  it("keeps errors dismissible from a close affordance", async () => {
+    const catalogProject = structuredClone(project);
+    catalogProject.catalog = [{ path: "concept.png", status: "current" }];
+    vi.mocked(api.openProject).mockResolvedValueOnce(catalogProject);
+    vi.mocked(api.revealProjectImage).mockRejectedValueOnce(
+      new Error("Finder is unavailable"),
+    );
+    await openWorkstation();
+    await fireEvent.click(screen.getByRole("button", { name: "concept.png" }));
+    await screen.findByRole("img", { name: "concept.png preview" });
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Show in Finder" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Finder is unavailable",
+    );
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss message" }),
+    );
+    expect(screen.queryByText("Finder is unavailable")).not.toBeInTheDocument();
   });
 
   it("moves managed assets by drag and confirms project-file deletion", async () => {
@@ -796,29 +931,11 @@ describe("deterministic workstation", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     await openWorkstation();
 
-    const transferData = new Map<string, string>();
-    const dataTransfer = {
-      types: [] as string[],
-      effectAllowed: "none",
-      setData(type: string, value: string) {
-        transferData.set(type, value);
-        this.types = [...transferData.keys()];
-      },
-      getData: (type: string) => transferData.get(type) || "",
-    };
+    const dataTransfer = dragTransfer(true, true);
     const projectFile = screen
       .getByTitle("sprites/guide.png")
       .closest('[role="treeitem"]')!;
-    const projectTransferData = new Map<string, string>();
-    const projectDataTransfer = {
-      ...dataTransfer,
-      types: [] as string[],
-      setData(type: string, value: string) {
-        projectTransferData.set(type, value);
-        this.types = [...projectTransferData.keys()];
-      },
-      getData: (type: string) => projectTransferData.get(type) || "",
-    };
+    const projectDataTransfer = dragTransfer(true);
     await fireEvent.dragStart(projectFile, {
       dataTransfer: projectDataTransfer,
     });
@@ -853,6 +970,8 @@ describe("deterministic workstation", () => {
     await fireEvent.dragStart(asset, { dataTransfer });
     await fireEvent.dragEnter(folder, { dataTransfer });
     expect(folder).toHaveClass("is-drop-target");
+    await fireEvent.dragOver(folder, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("move");
     await fireEvent.drop(folder, { dataTransfer });
     expect(folder).not.toHaveClass("is-drop-target");
     await waitFor(() =>
@@ -867,6 +986,9 @@ describe("deterministic workstation", () => {
       screen.getByRole("button", { name: "Expand sprites" }),
     );
     await fireEvent.contextMenu(screen.getByTitle("sprites/hero.png"));
+    expect(
+      screen.getByRole("menuitem", { name: "Show in Finder" }),
+    ).toBeVisible();
     await fireEvent.click(
       screen.getByRole("menuitem", { name: "Delete file…" }),
     );

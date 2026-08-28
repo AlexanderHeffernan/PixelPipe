@@ -1,26 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { PhFolderOpen } from "@phosphor-icons/vue";
+import { computed } from "vue";
 import { suggestedAssetId } from "../workspace/catalog-actions";
 import { useWorkspace } from "../workspace/context";
 import AppButton from "./AppButton.vue";
 
 const workspace = useWorkspace();
 const path = computed(() => workspace.projectImagePath.value);
-const dimensions = ref<{ width: number; height: number }>();
-const tooLargeForPixelArt = computed(
-  () =>
-    !dimensions.value ||
-    dimensions.value.width > 256 ||
-    dimensions.value.height > 256,
-);
-
-watch(
-  path,
-  () => {
-    dimensions.value = undefined;
-  },
-  { immediate: true },
-);
 
 async function hide() {
   const selected = path.value;
@@ -59,14 +45,9 @@ async function adoptReference() {
 }
 
 async function adoptPixelArt() {
-  if (tooLargeForPixelArt.value) return;
+  if (!workspace.projectImagePixelArtImportable.value) return;
   const selected = identity();
   await workspace.catalog.adoptPixelArt(path.value, selected.id, selected.name);
-}
-
-function readDimensions(event: Event) {
-  const image = event.currentTarget as HTMLImageElement;
-  dimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
 }
 </script>
 
@@ -76,13 +57,21 @@ function readDimensions(event: Event) {
       <img
         :src="workspace.projectImagePreview.value"
         :alt="`${path} preview`"
-        @load="readDimensions"
       />
     </div>
     <div class="project-image-stage__details">
-      <h1 id="project-image-title">{{ path.split("/").at(-1) }}</h1>
-      <p>{{ path }}</p>
+      <h1 id="project-image-title" :title="path.split('/').at(-1)">
+        {{ path.split("/").at(-1) }}
+      </h1>
       <div class="project-image-stage__actions">
+        <AppButton
+          variant="quiet"
+          :disabled="workspace.busy.value"
+          @click="workspace.catalog.revealProjectImage(path)"
+        >
+          <PhFolderOpen aria-hidden="true" />
+          Show in Finder
+        </AppButton>
         <AppButton
           variant="quiet"
           :disabled="workspace.busy.value"
@@ -98,22 +87,14 @@ function readDimensions(event: Event) {
           Use as Reference
         </AppButton>
         <AppButton
+          v-if="workspace.projectImagePixelArtImportable.value"
           variant="primary"
-          :disabled="tooLargeForPixelArt || workspace.busy.value"
-          :title="
-            tooLargeForPixelArt
-              ? 'Exact pixel art import supports images up to 256 × 256 pixels'
-              : undefined
-          "
+          :disabled="workspace.busy.value"
           @click="adoptPixelArt"
         >
           Import as Pixel Art
         </AppButton>
       </div>
-      <p v-if="tooLargeForPixelArt && dimensions" class="pixel-art-limit">
-        {{ dimensions.width }} × {{ dimensions.height }} is too large for exact
-        pixel-art editing. The limit is 256 × 256.
-      </p>
     </div>
   </section>
 </template>

@@ -33,6 +33,12 @@ export function createProjectSession(context: ProjectSessionContext) {
     }, 2400);
   }
 
+  function dismissMessage() {
+    error.value = "";
+    notice.value = "";
+    if (noticeTimer) clearTimeout(noticeTimer);
+  }
+
   async function run(action: () => Promise<void>) {
     busy.value = true;
     error.value = "";
@@ -148,6 +154,7 @@ export function createProjectSession(context: ProjectSessionContext) {
     selectedAsset,
     run,
     showNotice,
+    dismissMessage,
     refresh,
     restoreRecentProject,
     chooseProject,

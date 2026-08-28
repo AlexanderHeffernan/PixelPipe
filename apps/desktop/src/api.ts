@@ -124,8 +124,20 @@ export const moveAsset = (start: string, asset: string, destination: string) =>
     request: { start, asset, destination },
   });
 
+export interface ProjectImageResponse {
+  data_url: string;
+  width: number;
+  height: number;
+  pixel_art_importable: boolean;
+}
+
 export const loadProjectImage = (start: string, path: string) =>
-  invoke<string>("load_project_image", { request: { start, path } });
+  invoke<ProjectImageResponse>("load_project_image", {
+    request: { start, path },
+  });
+
+export const revealProjectImage = (start: string, path: string) =>
+  invoke<void>("reveal_project_image", { request: { start, path } });
 
 export const importReference = (start: string, asset: string, file: string) =>
   invoke<ReferenceSelection>("import_reference", {

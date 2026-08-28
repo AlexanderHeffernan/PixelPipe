@@ -71,6 +71,12 @@ export function createCatalogActions(context: CatalogContext) {
       act("Project image moved", (root) =>
         api.moveProjectImage(root, source, destination),
       ),
+    revealProjectImage: async (path: string) => {
+      if (!context.project.value) return;
+      await context.run(() =>
+        api.revealProjectImage(context.project.value!.project_root, path),
+      );
+    },
     moveAsset: (id: string, destination: string) =>
       act("Asset moved", (root) => api.moveAsset(root, id, destination)),
   };

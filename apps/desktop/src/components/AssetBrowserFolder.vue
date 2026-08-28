@@ -16,6 +16,7 @@ const props = defineProps<{
   folder: AssetTreeFolder;
   level?: number;
   forceOpen?: boolean;
+  revealPath?: string;
 }>();
 const workspace = useWorkspace();
 const open = ref(false);
@@ -25,7 +26,13 @@ const dropActive = ref(false);
 const value = ref("");
 const renameInput = ref<HTMLInputElement>();
 let dragDepth = 0;
-const expanded = computed(() => props.forceOpen || open.value);
+const expanded = computed(() =>
+  Boolean(
+    props.forceOpen ||
+      open.value ||
+      props.revealPath?.startsWith(`${props.folder.path}/`),
+  ),
+);
 
 function beginRename() {
   menuOpen.value = false;
@@ -108,6 +115,7 @@ function dragOver(event: DragEvent) {
     class="browser-folder"
     :class="{ 'is-drop-target': dropActive }"
     role="treeitem"
+    :data-folder-path="folder.path"
     :aria-expanded="expanded"
     @dragenter.stop="dragEnter"
     @dragleave.stop="dragLeave"
@@ -119,14 +127,16 @@ function dragOver(event: DragEvent) {
     <div
       class="browser-folder__heading"
       :style="{ '--tree-level': level || 0 }"
-      draggable="true"
+      :draggable="!renaming"
       @dragstart.stop="beginFolderDrag($event, folder.path)"
     >
       <form
         v-if="renaming"
-        class="browser-inline-rename"
+        class="folder-toggle browser-folder__rename"
         @submit.prevent="rename"
       >
+        <PhCaretRight :class="{ 'is-open': expanded }" aria-hidden="true" />
+        <PhFolder aria-hidden="true" />
         <input
           ref="renameInput"
           v-model="value"
@@ -158,13 +168,12 @@ function dragOver(event: DragEvent) {
     </div>
     <div v-show="expanded" role="group">
       <AssetBrowserFolder
-        v-for="child in folder.folders.filter(
-          (entry) => entry.hasManagedAssets,
-        )"
+        v-for="child in folder.folders.filter((entry) => entry.isPriority)"
         :key="child.path"
         :folder="child"
         :level="(level || 0) + 1"
         :force-open="forceOpen"
+        :reveal-path="revealPath"
       />
       <AssetBrowserFile
         v-for="file in folder.files.filter((entry) => entry.managed)"
@@ -173,13 +182,12 @@ function dragOver(event: DragEvent) {
         :level="(level || 0) + 1"
       />
       <AssetBrowserFolder
-        v-for="child in folder.folders.filter(
-          (entry) => !entry.hasManagedAssets,
-        )"
+        v-for="child in folder.folders.filter((entry) => !entry.isPriority)"
         :key="child.path"
         :folder="child"
         :level="(level || 0) + 1"
         :force-open="forceOpen"
+        :reveal-path="revealPath"
       />
       <AssetBrowserFile
         v-for="file in folder.files.filter((entry) => !entry.managed)"
