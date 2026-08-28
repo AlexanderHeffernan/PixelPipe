@@ -5,6 +5,10 @@ deterministic, game-ready pixel art. It keeps briefs, references, conversion
 settings, indexed pixels, immutable revisions, and exports together in a
 game repository.
 
+Every asset is one ordered clip containing one or more frames. Frames share one
+canvas, indexed palette, transparent index, and pivot; each has a stable ID and
+duration. A static sprite is the same model with one frame.
+
 The product has one workflow:
 
 ```text
@@ -89,6 +93,31 @@ pixelate asset export --root /path/to/game --asset signal-flare \
 pixelate asset export-file --root /path/to/game --asset signal-flare \
   --destination /path/to/game/assets/signal-flare.webp --overwrite
 ```
+
+Turn that sprite into an animation without changing asset identity:
+
+```sh
+pixelate frame duplicate --root /path/to/game --asset signal-flare \
+  --frame frame-0001
+pixelate frame duration --root /path/to/game --asset signal-flare \
+  --frame frame-0002 --duration 140
+pixelate revision draw --root /path/to/game --asset signal-flare \
+  --frame frame-0002 --pixel '12,8=3' --actor agent
+pixelate revision inspect --root /path/to/game --asset signal-flare
+```
+
+`frame import-sequence` consumes repeated `--file` arguments in their explicit
+order and derives one palette across the complete batch. `frame import-sheet`
+requires explicit frame dimensions and repeated zero-based `--cell` values in
+the intended order; Pixelate never guesses grids or directory order. Blank and
+duplicate frames require no reference.
+
+For multiple frames, `asset export` writes a deterministic horizontal PNG
+spritesheet and companion JSON with stable IDs, order, rectangles, durations,
+shared canvas, and pivot. One-frame PNG, lossless WebP, and indexed JSON exports
+retain their existing behavior. `revision preview` produces an enlarged contact
+sheet when no `--frame` is supplied; use `revision inspect` alongside it for
+timing, and pass `--frame <stable-id>` to inspect one pose.
 
 ### Visual verification
 

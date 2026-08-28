@@ -6,10 +6,13 @@ Pixelate owns one opinionated workflow:
 brief → reference → pixelize → inspect → refine → export
 ```
 
-Indexed pixels and their ordered palette are the editable source of truth. Every
-mutation creates an immutable parent-linked revision. Visual judgement remains
-an explicit human or agent action; Pixelate has no durable review or approval
-state and never launches an agent.
+Every asset is one ordered sequence with at least one indexed frame. The shared
+canvas, ordered palette, transparent index, and pivot plus stable frame IDs,
+durations, and frame pixels are the editable source of truth. A static sprite is
+simply a one-frame sequence; there are no separate sprite and animation kinds.
+Every mutation creates an immutable parent-linked revision of the entire
+sequence. Visual judgement remains an explicit human or agent action; Pixelate
+has no durable review or approval state and never launches an agent.
 
 ## Boundaries
 
@@ -50,14 +53,25 @@ game-root/
         validation.json
 ```
 
-Assets currently have one universal form. Project palettes, configurable
-conversion recipes, asset kinds, sheets, durable reviews, approvals, and stored
-preview images are intentionally absent. A revision's `recipe.json` is retained
+Assets have one universal one-or-more-frame form and represent one animation
+clip each. Named clips, state machines, direction models, project palettes,
+configurable conversion recipes, asset kinds, durable reviews, approvals, and
+stored preview images are intentionally absent. A revision's `recipe.json` is retained
 only as immutable provenance describing the operations that produced it.
 
 Selected references and revision payloads are content-verified. Enlarged preview
 PNGs are rendered on demand with exact nearest-neighbour scaling, never persisted
-inside revisions.
+inside revisions. Existing `pixelate.raster/v1` revision payloads are hash-verified
+unchanged and normalized in memory as one `pixelate.sequence/v1` frame, preserving
+their pixels, palette order, native PNG, hashes, and ancestry. New revisions store
+the complete sequence payload; unchanged frame content is not speculatively split.
+
+Multi-reference conversion derives one shared palette across the explicitly
+ordered batch before converting any frame. Multi-frame canonical export is an
+indexed horizontal PNG sheet (fixed shared cells in frame order) plus
+`pixelate.spritesheet/v1` JSON containing source identity, rectangles, timing,
+canvas, and pivot. One-frame PNG, lossless WebP, and indexed JSON export remain
+compatible with the original contracts.
 
 ## CLI parity
 
@@ -71,6 +85,7 @@ Every desktop capability must use the same application use case as a CLI route.
 | Pixelization and canvas placement | `revision pixelize`, `compose` |
 | Inspection and vision-friendly preview | `revision inspect`, `preview` |
 | Pixel and palette editing | `revision draw`, `fill`, `recolor`, `remap` |
+| Frame editing and ordered import | `frame add`, `duplicate`, `import`, `import-sequence`, `import-sheet`, `delete`, `reorder`, `duration` |
 | History navigation | `revision set-head` |
 | Bundle or named image export | `asset export`, `export-file` |
 | Installed version | `version` |
@@ -89,5 +104,5 @@ signed `.app` in place.
 
 - Agent launchers, provider SDKs, or repository-selected commands.
 - A generic image pipeline, resource/profile system, or plugin marketplace.
-- Asset-kind-specific sheet, tile, or UI behavior before those products exist.
+- Named clips, animation graphs, directions, skeletal animation, tweening, or video import.
 - Automatic source selection, conversion commit, visual acceptance, or export.
