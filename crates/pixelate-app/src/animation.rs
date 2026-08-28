@@ -46,6 +46,10 @@ pub enum FrameMutationAction {
         frame_id: String,
         duration_ms: u32,
     },
+    Rename {
+        frame_id: String,
+        name: String,
+    },
     ImportFrame {
         file: PathBuf,
         position: Option<usize>,
@@ -122,6 +126,11 @@ pub fn mutate_frames(request: FrameMutation) -> Result<RevisionResult, AppError>
                 frame_id,
                 duration_ms,
             }
+        }
+        FrameMutationAction::Rename { frame_id, name } => {
+            let name = name.trim().to_owned();
+            find_frame_mut(&mut sequence, &frame_id)?.name = Some(name.clone());
+            FrameOperation::Rename { frame_id, name }
         }
         FrameMutationAction::ImportFrame {
             file,
@@ -292,6 +301,7 @@ fn add_blank(
         position,
         IndexedFrame {
             id: id.clone(),
+            name: None,
             duration_ms: duration_ms.unwrap_or(DEFAULT_FRAME_DURATION_MS),
             pixels,
         },
@@ -314,6 +324,7 @@ fn duplicate_frame(
         position,
         IndexedFrame {
             id: id.clone(),
+            name: source.name,
             duration_ms: source.duration_ms,
             pixels: source.pixels,
         },
@@ -342,6 +353,7 @@ fn import_frame(
         position,
         IndexedFrame {
             id: id.clone(),
+            name: None,
             duration_ms: duration_ms.unwrap_or(DEFAULT_FRAME_DURATION_MS),
             pixels: raster.pixels,
         },
@@ -405,6 +417,7 @@ fn convert_sources(
         .map(|(index, source)| {
             Ok(IndexedFrame {
                 id: format!("frame-{:04}", index + 1),
+                name: None,
                 duration_ms,
                 pixels: convert_reference(source, palette, settings)?.raster.pixels,
             })

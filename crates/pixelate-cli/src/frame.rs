@@ -16,6 +16,9 @@ pub(crate) fn run_frame(
         command @ (FrameCommand::Import { .. }
         | FrameCommand::ImportSequence { .. }
         | FrameCommand::ImportSheet { .. }) => run_import(command)?,
+        command @ (FrameCommand::Duration { .. } | FrameCommand::Rename { .. }) => {
+            run_metadata_mutation(command)?
+        }
         command => run_mutation(command)?,
     };
     Ok(json!({ "ok": true, "revision": revision }))
@@ -89,6 +92,21 @@ fn run_mutation(
             },
             actor,
         ),
+        FrameCommand::Duration { .. } | FrameCommand::Rename { .. } => {
+            unreachable!("metadata commands are routed separately")
+        }
+        FrameCommand::Import { .. }
+        | FrameCommand::ImportSequence { .. }
+        | FrameCommand::ImportSheet { .. } => {
+            unreachable!("import commands are routed separately")
+        }
+    }
+}
+
+fn run_metadata_mutation(
+    command: FrameCommand,
+) -> Result<pixelate_app::RevisionResult, Box<dyn std::error::Error>> {
+    let (root, asset, parent, action, actor) = match command {
         FrameCommand::Duration {
             root,
             asset,
@@ -96,7 +114,7 @@ fn run_mutation(
             frame,
             duration,
             actor,
-        } => mutation(
+        } => (
             root,
             asset,
             parent,
@@ -106,12 +124,26 @@ fn run_mutation(
             },
             actor,
         ),
-        FrameCommand::Import { .. }
-        | FrameCommand::ImportSequence { .. }
-        | FrameCommand::ImportSheet { .. } => {
-            unreachable!("import commands are routed separately")
-        }
-    }
+        FrameCommand::Rename {
+            root,
+            asset,
+            parent,
+            frame,
+            name,
+            actor,
+        } => (
+            root,
+            asset,
+            parent,
+            FrameMutationAction::Rename {
+                frame_id: frame,
+                name,
+            },
+            actor,
+        ),
+        _ => unreachable!("only frame metadata commands are routed here"),
+    };
+    mutation(root, asset, parent, action, actor)
 }
 
 fn run_import(

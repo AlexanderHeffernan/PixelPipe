@@ -5,7 +5,8 @@ use pixelate_app::{
     ImportReference, ImportSpritesheet, InitializeAsset, InspectRevision, OpenProject,
     PatchRevisionDocument, SetAssetHead, convert_selected_reference, export_asset,
     import_image_sequence, import_reference, import_spritesheet, initialize_asset,
-    load_revision_view, mutate_frames, open_project, patch_revision_document, set_asset_head,
+    inspect_revision, load_revision_view, mutate_frames, open_project, patch_revision_document,
+    set_asset_head,
 };
 use pixelate_core::{PATCH_SCHEMA, PixelPatch, PixelPatchSet, sha256_hex, stable_json};
 use pixelate_project::ProjectStore;
@@ -55,10 +56,21 @@ fn frame_mutations_are_parent_linked_and_restore_as_a_whole() {
         actor: "test".into(),
     })
     .unwrap();
-    let reordered = mutate_frames(FrameMutation {
+    let renamed = mutate_frames(FrameMutation {
         start: root.clone(),
         asset: "hero".into(),
         parent: duration.revision.clone(),
+        action: FrameMutationAction::Rename {
+            frame_id: "frame-0002".into(),
+            name: "Passing pose".into(),
+        },
+        actor: "test".into(),
+    })
+    .unwrap();
+    let reordered = mutate_frames(FrameMutation {
+        start: root.clone(),
+        asset: "hero".into(),
+        parent: renamed.revision.clone(),
         action: FrameMutationAction::Reorder {
             frame_id: "frame-0002".into(),
             position: 0,
@@ -86,6 +98,7 @@ fn frame_mutations_are_parent_linked_and_restore_as_a_whole() {
     );
     assert_eq!(snapshot.sequence.frames[0].duration_ms, 175);
     assert_eq!(snapshot.sequence.frames[1].duration_ms, 110);
+    verify_named_motion(&root, &snapshot, &deleted_revision);
     verify_targeted_edit_and_undo(&root, &store, &snapshot, &deleted_revision);
 
     let single_delete = mutate_frames(FrameMutation {
@@ -103,6 +116,21 @@ fn frame_mutations_are_parent_linked_and_restore_as_a_whole() {
             .to_string()
             .contains("final remaining frame")
     );
+}
+
+fn verify_named_motion(root: &Path, snapshot: &pixelate_project::RevisionSnapshot, revision: &str) {
+    assert_eq!(
+        snapshot.sequence.frames[0].name.as_deref(),
+        Some("Passing pose")
+    );
+    let inspection = inspect_revision(InspectRevision {
+        start: root.to_path_buf(),
+        asset: "hero".into(),
+        revision: Some(revision.to_owned()),
+        frame_id: None,
+    })
+    .unwrap();
+    assert_eq!(inspection.motion.transitions.len(), 3);
 }
 
 fn import_then_delete(root: &Path, parent: String) -> (String, String) {

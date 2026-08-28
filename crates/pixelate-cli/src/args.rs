@@ -353,6 +353,20 @@ pub(crate) enum FrameCommand {
         #[arg(long, default_value = "agent")]
         actor: String,
     },
+    Rename {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        frame: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
     Import {
         #[arg(long, default_value = ".")]
         root: PathBuf,

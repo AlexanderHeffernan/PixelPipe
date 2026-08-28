@@ -10,6 +10,7 @@ mod composition;
 mod conversion;
 mod editing;
 mod inspection;
+mod motion;
 mod palette_derivation;
 mod sequence;
 
@@ -25,6 +26,7 @@ pub use editing::{
     apply_palette_remap, apply_pixel_patch, flood_fill_patch,
 };
 pub use inspection::{PaletteUsage, RasterBounds, RasterInspection, inspect_raster};
+pub use motion::{FrameTransition, SequenceMotion, inspect_sequence_motion};
 pub use palette_derivation::{derive_source_palette, derive_source_palette_batch};
 pub use sequence::{
     DEFAULT_FRAME_DURATION_MS, IndexedFrame, IndexedSequence, SEQUENCE_SCHEMA, render_sequence,
@@ -113,6 +115,10 @@ pub enum FrameOperation {
         frame_id: String,
         duration_ms: u32,
     },
+    Rename {
+        frame_id: String,
+        name: String,
+    },
     ImportFrame {
         frame_id: String,
         position: usize,
@@ -172,6 +178,8 @@ pub enum CoreError {
     DuplicateFrameId(String),
     #[error("frame '{frame}' duration must be greater than zero milliseconds")]
     InvalidFrameDuration { frame: String },
+    #[error("frame '{frame}' name must not be empty")]
+    InvalidFrameName { frame: String },
     #[error("frame '{0}' does not exist")]
     FrameNotFound(String),
     #[error("spritesheet dimensions {width}x{height} exceed the supported 8192px edge")]

@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use pixelate_core::{Palette, RasterInspection, inspect_raster, render};
+use pixelate_core::{
+    Palette, RasterInspection, SequenceMotion, inspect_raster, inspect_sequence_motion, render,
+};
 use pixelate_project::{
     AssetManifest, ProjectError, ProjectManifest, ProjectStore, RevisionManifest,
 };
@@ -46,12 +48,14 @@ pub struct RevisionInspectionResult {
     pub parent: Option<String>,
     pub inspection: RasterInspection,
     pub frames: Vec<FrameMetadata>,
+    pub motion: SequenceMotion,
     pub selected_frame_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FrameMetadata {
     pub id: String,
+    pub name: Option<String>,
     pub duration_ms: u32,
 }
 
@@ -121,6 +125,7 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
         .iter()
         .map(|frame| FrameMetadata {
             id: frame.id.clone(),
+            name: frame.name.clone(),
             duration_ms: frame.duration_ms,
         })
         .collect();
@@ -148,6 +153,9 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
 ///
 /// Returns an [`AppError`] when project, revision, review, or raster validation fails.
 pub fn inspect_revision(request: InspectRevision) -> Result<RevisionInspectionResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let revision = resolve_revision(&store, &request.asset, request.revision.clone())?;
+    let motion = inspect_sequence_motion(&store.revision(&request.asset, &revision)?.sequence)?;
     let view = load_revision_view(request)?;
     Ok(RevisionInspectionResult {
         project_root: view.metadata.project_root,
@@ -156,6 +164,7 @@ pub fn inspect_revision(request: InspectRevision) -> Result<RevisionInspectionRe
         parent: view.metadata.parent,
         inspection: view.metadata.inspection,
         frames: view.metadata.frames,
+        motion,
         selected_frame_id: view.metadata.selected_frame_id,
     })
 }

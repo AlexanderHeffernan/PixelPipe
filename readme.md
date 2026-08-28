@@ -101,6 +101,8 @@ pixelate frame duplicate --root /path/to/game --asset signal-flare \
   --frame frame-0001
 pixelate frame duration --root /path/to/game --asset signal-flare \
   --frame frame-0002 --duration 140
+pixelate frame rename --root /path/to/game --asset signal-flare \
+  --frame frame-0002 --name 'Passing pose'
 pixelate revision draw --root /path/to/game --asset signal-flare \
   --frame frame-0002 --pixel '12,8=3' --actor agent
 pixelate revision inspect --root /path/to/game --asset signal-flare
@@ -110,7 +112,10 @@ pixelate revision inspect --root /path/to/game --asset signal-flare
 order and derives one palette across the complete batch. `frame import-sheet`
 requires explicit frame dimensions and repeated zero-based `--cell` values in
 the intended order; Pixelate never guesses grids or directory order. Blank and
-duplicate frames require no reference.
+duplicate frames require no reference. For generated animation, create and
+review one still pose at a time, then use `frame import` so each accepted pose
+keeps the established canvas and palette. Do not ask an image generator for a
+spritesheet; sheet import is only for explicitly reviewed existing artwork.
 
 For multiple frames, `asset export` writes a deterministic horizontal PNG
 spritesheet and companion JSON with stable IDs, order, rectangles, durations,
@@ -118,6 +123,10 @@ shared canvas, and pivot. One-frame PNG, lossless WebP, and indexed JSON exports
 retain their existing behavior. `revision preview` produces an enlarged contact
 sheet when no `--frame` is supplied; use `revision inspect` alongside it for
 timing, and pass `--frame <stable-id>` to inspect one pose.
+Inspection also reports exact adjacent and loop-closing pixel transitions,
+separating silhouette changes from palette-index changes over opaque overlap.
+Large opaque-colour change with little silhouette motion is a prompt to fix the
+source pose, not to blur or automatically smooth the indexed result.
 
 ### Visual verification
 

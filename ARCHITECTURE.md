@@ -65,6 +65,8 @@ inside revisions. Existing `pixelate.raster/v1` revision payloads are hash-verif
 unchanged and normalized in memory as one `pixelate.sequence/v1` frame, preserving
 their pixels, palette order, native PNG, hashes, and ancestry. New revisions store
 the complete sequence payload; unchanged frame content is not speculatively split.
+Optional human-readable frame names travel with stable IDs and are stored by the
+same whole-sequence immutable revision operations.
 
 Multi-reference conversion derives one shared palette across the explicitly
 ordered batch before converting any frame. Multi-frame canonical export is an
@@ -72,6 +74,10 @@ indexed horizontal PNG sheet (fixed shared cells in frame order) plus
 `pixelate.spritesheet/v1` JSON containing source identity, rectangles, timing,
 canvas, and pivot. One-frame PNG, lossless WebP, and indexed JSON export remain
 compatible with the original contracts.
+Deterministic motion inspection counts exact adjacent-frame and loop-closing
+changes, distinguishing silhouette movement from opaque palette-index churn.
+It diagnoses inconsistent inputs without mutating or temporally smoothing the
+indexed source of truth.
 
 ## CLI parity
 
@@ -85,7 +91,7 @@ Every desktop capability must use the same application use case as a CLI route.
 | Pixelization and canvas placement | `revision pixelize`, `compose` |
 | Inspection and vision-friendly preview | `revision inspect`, `preview` |
 | Pixel and palette editing | `revision draw`, `fill`, `recolor`, `remap` |
-| Frame editing and ordered import | `frame add`, `duplicate`, `import`, `import-sequence`, `import-sheet`, `delete`, `reorder`, `duration` |
+| Frame editing and ordered import | `frame add`, `duplicate`, `import`, `import-sequence`, `import-sheet`, `delete`, `reorder`, `duration`, `rename` |
 | History navigation | `revision set-head` |
 | Bundle or named image export | `asset export`, `export-file` |
 | Installed version | `version` |

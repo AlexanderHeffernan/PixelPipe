@@ -14,6 +14,8 @@ pub const DEFAULT_FRAME_DURATION_MS: u32 = 100;
 #[serde(deny_unknown_fields)]
 pub struct IndexedFrame {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub duration_ms: u32,
     pub pixels: Vec<u8>,
 }
@@ -42,6 +44,7 @@ impl IndexedSequence {
             palette: raster.palette,
             frames: vec![IndexedFrame {
                 id: "frame-0001".to_owned(),
+                name: None,
                 duration_ms: DEFAULT_FRAME_DURATION_MS,
                 pixels: raster.pixels,
             }],
@@ -72,6 +75,15 @@ impl IndexedSequence {
             }
             if !ids.insert(frame.id.clone()) {
                 return Err(CoreError::DuplicateFrameId(frame.id.clone()));
+            }
+            if frame
+                .name
+                .as_ref()
+                .is_some_and(|name| name.trim().is_empty())
+            {
+                return Err(CoreError::InvalidFrameName {
+                    frame: frame.id.clone(),
+                });
             }
             if frame.duration_ms == 0 {
                 return Err(CoreError::InvalidFrameDuration {
@@ -265,11 +277,13 @@ mod tests {
             frames: vec![
                 IndexedFrame {
                     id: "a".into(),
+                    name: None,
                     duration_ms: 80,
                     pixels: vec![0, 1],
                 },
                 IndexedFrame {
                     id: "b".into(),
+                    name: None,
                     duration_ms: 120,
                     pixels: vec![1, 0],
                 },
@@ -316,6 +330,13 @@ mod tests {
         assert!(matches!(
             value.validate(),
             Err(CoreError::InvalidFrameDuration { .. })
+        ));
+
+        let mut value = sequence();
+        value.frames[1].name = Some("  ".into());
+        assert!(matches!(
+            value.validate(),
+            Err(CoreError::InvalidFrameName { .. })
         ));
 
         let mut value = sequence();

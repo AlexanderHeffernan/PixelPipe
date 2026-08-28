@@ -70,6 +70,8 @@ struct CanvasDimensions {
 #[derive(Debug, Serialize)]
 struct ExportFrame<'a> {
     id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<&'a str>,
     order: usize,
     x: u32,
     y: u32,
@@ -224,6 +226,7 @@ fn spritesheet_metadata<'a>(
             .enumerate()
             .map(|(order, frame)| ExportFrame {
                 id: &frame.id,
+                name: frame.name.as_deref(),
                 order,
                 x: sequence.width * u32::try_from(order).expect("validated frame count fits u32"),
                 y: 0,

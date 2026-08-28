@@ -16,7 +16,9 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             "If the image has no alpha, keep one simple connected flat background and use '--background auto'. Do not remove that background yourself.",
             "Use only Pixelate CLI commands to mutate .pixelate project state; never edit manifests or revisions directly.",
             "Every asset is one ordered clip with one or more stable-ID frames sharing a canvas, palette, transparency index, and pivot. A static sprite is a one-frame clip.",
-            "Supply image-sequence --file arguments and spritesheet --cell arguments in explicit playback order. Never infer directory order or guess a spritesheet grid.",
+            "Generate animation references as one still image per pose. Never ask an image generator for a spritesheet, multi-panel image, or complete animation in one image.",
+            "Plan the complete ordered motion cycle and loop closure before generation. Generate each pose using the first accepted frame as the identity anchor and the immediately previous frame as the motion anchor.",
+            "Import each accepted pose with 'pixelate frame import' in reviewed playback order. This keeps the established canvas and palette fixed. Batch and explicit-grid imports are ingestion tools for existing files, not source-generation workflows.",
             "For multi-frame drawing and fill, pass the stable --frame ID reported by revision inspect. Shared recolour and canvas placement intentionally affect every frame.",
             "Do not inspect internal project files or guess commands. Use 'pixelate asset list --root .' for discovery and 'pixelate --help' only if a listed command fails.",
             "When downloading a generated image, always choose a new descriptive filename. 'amp files get' intentionally refuses to overwrite an existing destination.",
@@ -42,12 +44,13 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             { "action": "preview_result", "command": "pixelate revision preview --root . --asset <asset-id> --output /tmp/<asset-id>-preview.png", "success": "Visually inspect the enlarged PNG before completing the task." }
         ],
         "animation_workflow": [
-            { "action": "inspect_frames", "command": "pixelate revision inspect --root . --asset <asset-id>", "success": "frames lists stable IDs and durations in playback order." },
-            { "action": "add_without_reference", "command": "pixelate frame add --root . --asset <asset-id> --duration 100" },
-            { "action": "duplicate_pose", "command": "pixelate frame duplicate --root . --asset <asset-id> --frame <frame-id>" },
-            { "action": "import_ordered_images", "instruction": "Repeat --file in the exact reviewed playback order. One shared palette is derived across the complete batch.", "command": "pixelate frame import-sequence --root . --asset <asset-id> --file <first.png> --file <second.png> --duration 100" },
-            { "action": "import_explicit_sheet_grid", "instruction": "Cell indices are zero-based row-major positions and are consumed in supplied order.", "command": "pixelate frame import-sheet --root . --asset <asset-id> --file <sheet.png> --frame-width 32 --frame-height 32 --cell 0 --cell 1 --duration 100" },
-            { "action": "inspect_motion", "instruction": "Without --frame this writes a nearest-neighbour horizontal contact sheet; timing remains in revision inspect JSON.", "command": "pixelate revision preview --root . --asset <asset-id> --output /tmp/<asset-id>-frames.png" },
+            { "action": "plan_motion", "instruction": "Write the complete ordered pose list before generating anything: contact, down, passing, up, opposite contact, and the matching return phases as appropriate. Include the final-to-first transition." },
+            { "action": "create_first_pose", "instruction": "Generate one smooth still image, convert it through the normal static workflow, and accept it as the permanent identity, scale, lighting, camera, and ground-line anchor." },
+            { "action": "create_next_pose", "instruction": "Generate exactly one smooth still. Reference both the first accepted pose for identity and the immediately previous pose for a small intentional motion step. Keep non-moving details, lighting, camera, scale, pivot, and ground line unchanged." },
+            { "action": "import_next_pose", "command": "pixelate frame import --root . --asset <asset-id> --file <next-pose.png> --position <zero-based-position> --duration 100" },
+            { "action": "inspect_frames", "command": "pixelate revision inspect --root . --asset <asset-id>", "success": "frames lists stable IDs, names, and durations in playback order; motion.transitions reports exact changed, silhouette, opaque-colour, and overlap pixel counts." },
+            { "action": "reject_inconsistent_pose", "instruction": "Compare each motion transition. If opaque_color_changes is large relative to opaque_overlap_pixels while silhouette_changes is small, stationary details are boiling. Regenerate that source pose with stronger identity constraints instead of smoothing pixels or continuing the sequence." },
+            { "action": "inspect_motion", "instruction": "The preview is a nearest-neighbour horizontal contact sheet; inspect it and use desktop playback to judge cadence and final-to-first closure. A contact sheet alone does not prove smooth timing.", "command": "pixelate revision preview --root . --asset <asset-id> --output /tmp/<asset-id>-frames.png" },
             { "action": "export_animation", "instruction": "Multi-frame export writes the canonical horizontal PNG sheet and companion timing/rectangle JSON.", "command": "pixelate asset export --root . --asset <asset-id> --destination <folder> --overwrite" }
         ],
         "capabilities": {
@@ -75,6 +78,7 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             "delete_frame": "pixelate frame delete --root . --asset <asset-id> --frame <frame-id>",
             "reorder_frame": "pixelate frame reorder --root . --asset <asset-id> --frame <frame-id> --position <zero-based-position>",
             "set_frame_duration": "pixelate frame duration --root . --asset <asset-id> --frame <frame-id> --duration <ms>",
+            "rename_frame": "pixelate frame rename --root . --asset <asset-id> --frame <frame-id> --name '<pose-name>'",
             "undo_redo": "pixelate revision set-head --root . --asset <asset-id> --revision <revision-id>",
             "export_bundle": "pixelate asset export --root . --asset <asset-id> --destination <folder> --overwrite",
             "export_image": "pixelate asset export-file --root . --asset <asset-id> --destination <name.png|name.webp> --overwrite"
