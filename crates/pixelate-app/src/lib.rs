@@ -1,3 +1,4 @@
+mod animation;
 mod composition;
 mod conversion_preview;
 mod error;
@@ -42,4 +43,5 @@ pub use revision_preview::{PreviewRevision, RevisionPreview, preview_revision};
 pub use pixelate_core::{Palette, RasterInspection};
 pub use pixelate_project::{AssetManifest, ReferenceSelection};
 
-pub(crate) use revision_commit::{CommitRaster, commit_raster, resolve_revision};
+pub use animation::*;
+pub(crate) use revision_commit::{CommitSequence, commit_sequence, resolve_revision};

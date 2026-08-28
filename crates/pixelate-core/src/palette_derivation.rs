@@ -25,13 +25,39 @@ pub fn derive_source_palette(
     treatment: ColorTreatment,
     adjustments: ColorAdjustments,
 ) -> Result<Palette, CoreError> {
+    derive_source_palette_batch(
+        std::slice::from_ref(source),
+        backdrop,
+        color_count,
+        treatment,
+        adjustments,
+    )
+}
+
+/// Derives one deterministic palette from all visible colours in an ordered batch.
+///
+/// # Errors
+/// Returns [`CoreError`] when the batch is empty or a source, backdrop, or colour
+/// count is invalid.
+pub fn derive_source_palette_batch(
+    sources: &[RgbaImage],
+    backdrop: &BackdropPolicy,
+    color_count: u8,
+    treatment: ColorTreatment,
+    adjustments: ColorAdjustments,
+) -> Result<Palette, CoreError> {
     if !(2..=64).contains(&color_count) {
         return Err(CoreError::InvalidDerivedColorCount);
     }
+    if sources.is_empty() {
+        return Err(CoreError::EmptySource);
+    }
     let mut counts = BTreeMap::<[u8; 3], u32>::new();
-    for pixel in cleaned_visible_pixels(source, backdrop)? {
-        let pixel = adjustments.apply(treatment.apply(pixel));
-        *counts.entry([pixel[0], pixel[1], pixel[2]]).or_default() += 1;
+    for source in sources {
+        for pixel in cleaned_visible_pixels(source, backdrop)? {
+            let pixel = adjustments.apply(treatment.apply(pixel));
+            *counts.entry([pixel[0], pixel[1], pixel[2]]).or_default() += 1;
+        }
     }
     if counts.is_empty() {
         return Err(CoreError::EmptySource);

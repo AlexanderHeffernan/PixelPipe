@@ -95,6 +95,48 @@ fn agent_workflow_pixelizes_previews_and_exports() {
     ]);
     assert_eq!(exported["export"]["format"], "webp");
     assert!(export_path.is_file());
+
+    verify_animation_cli(root, project.path());
+}
+
+fn verify_animation_cli(root: &str, project: &Path) {
+    let animated = run(&[
+        "frame",
+        "add",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--duration",
+        "90",
+    ]);
+    assert_eq!(animated["revision"]["parent"], "r000001");
+    let inspected = run(&[
+        "revision",
+        "inspect",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+    ]);
+    assert_eq!(inspected["revision"]["frames"].as_array().unwrap().len(), 2);
+    let bundle = project.join("bundle");
+    fs::create_dir(&bundle).unwrap();
+    let exported = run(&[
+        "asset",
+        "export",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--destination",
+        bundle.to_str().unwrap(),
+    ]);
+    let metadata: Value = serde_json::from_slice(
+        &fs::read(exported["export"]["metadata"].as_str().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(metadata["schema"], "pixelate.spritesheet/v1");
 }
 
 #[test]
@@ -120,6 +162,14 @@ fn guide_documents_every_agent_workflow_family() {
         "recolor",
         "pencil_or_eraser",
         "fill",
+        "add_blank_frame",
+        "duplicate_frame",
+        "import_frame",
+        "import_image_sequence",
+        "import_spritesheet",
+        "delete_frame",
+        "reorder_frame",
+        "set_frame_duration",
         "undo_redo",
         "export_bundle",
         "export_image",

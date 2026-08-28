@@ -64,6 +64,9 @@ fn folder_to_export_uses_builtin_pixelization_defaults() {
     assert_eq!(exported.revision, converted.revision);
     assert!(exported.png.is_file());
     assert!(exported.metadata.is_file());
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&fs::read(&exported.metadata).expect("metadata")).expect("JSON");
+    assert_eq!(metadata["schema"], "pixelate.raster/v1");
     assert_eq!(&fs::read(&exported.png).unwrap()[..8], b"\x89PNG\r\n\x1a\n");
 
     let named_png = export_asset_file(ExportAssetFile {

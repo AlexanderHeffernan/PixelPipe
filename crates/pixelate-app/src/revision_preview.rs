@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use pixelate_core::{render, sha256_hex};
+use pixelate_core::{render, render_sequence_preview, sha256_hex};
 use pixelate_project::ProjectStore;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,8 @@ pub struct PreviewRevision {
     pub asset: String,
     #[serde(default)]
     pub revision: Option<String>,
+    #[serde(default)]
+    pub frame_id: Option<String>,
     #[serde(default)]
     pub scale: Option<u16>,
 }
@@ -47,14 +49,33 @@ pub fn preview_revision(request: PreviewRevision) -> Result<RevisionPreview, App
     let store = ProjectStore::discover(&request.start)?;
     let revision = resolve_revision(&store, &request.asset, request.revision)?;
     let snapshot = store.revision(&request.asset, &revision)?;
-    let native_width = snapshot.raster.width;
-    let native_height = snapshot.raster.height;
+    let selected = request
+        .frame_id
+        .map(|frame_id| snapshot.sequence.raster(&frame_id))
+        .transpose()?;
+    let sheet_width = snapshot
+        .sequence
+        .width
+        .checked_mul(
+            u32::try_from(snapshot.sequence.frames.len())
+                .map_err(|_| pixelate_core::CoreError::DimensionOverflow)?,
+        )
+        .ok_or(pixelate_core::CoreError::DimensionOverflow)?;
+    let native_width = selected
+        .as_ref()
+        .map_or_else(|| sheet_width, |raster| raster.width);
+    let native_height = selected
+        .as_ref()
+        .map_or(snapshot.sequence.height, |raster| raster.height);
     let scale = request.scale.unwrap_or_else(|| {
         let longest_edge = native_width.max(native_height);
         u16::try_from((TARGET_LONG_EDGE / longest_edge).clamp(1, u32::from(MAX_PREVIEW_SCALE)))
             .unwrap_or(MAX_PREVIEW_SCALE)
     });
-    let png = render(&snapshot.raster, scale)?.preview_png;
+    let png = match selected {
+        Some(raster) => render(&raster, scale)?.preview_png,
+        None => render_sequence_preview(&snapshot.sequence, scale)?,
+    };
     Ok(RevisionPreview {
         project_root: store.root().to_path_buf(),
         asset: request.asset,

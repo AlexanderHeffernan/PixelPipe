@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use pixelate_core::{
-    IndexedRaster, RECIPE_SCHEMA, Recipe, VALIDATION_SCHEMA, ValidationReport, sha256_hex,
-    stable_json,
+    IndexedRaster, IndexedSequence, RASTER_SCHEMA, RECIPE_SCHEMA, Recipe, SEQUENCE_SCHEMA,
+    VALIDATION_SCHEMA, ValidationReport, sha256_hex, stable_json,
 };
 
 use crate::{
@@ -122,8 +122,9 @@ impl ProjectStore {
                 return Err(ProjectError::RevisionHashMismatch { name: name.clone() });
             }
         }
-        let raster: IndexedRaster = read_json(&path.join("pixels.json"))?;
-        raster.validate()?;
+        let sequence = read_sequence(&path.join("pixels.json"))?;
+        sequence.validate()?;
+        let raster = sequence.first_raster()?;
         let recipe = read_recipe(&path.join("recipe.json"))?;
         ensure_schema(&recipe.schema, RECIPE_SCHEMA)?;
         let validation: ValidationReport = read_json(&path.join("validation.json"))?;
@@ -143,6 +144,7 @@ impl ProjectStore {
         Ok(RevisionSnapshot {
             path,
             manifest,
+            sequence,
             raster,
             recipe,
             validation,
@@ -189,7 +191,7 @@ impl ProjectStore {
         files: RevisionFiles,
     ) -> Result<StoredRevision, ProjectError> {
         validate_asset_id(asset_id)?;
-        files.raster.validate()?;
+        files.sequence.validate()?;
         ensure_schema(&files.recipe.schema, RECIPE_SCHEMA)?;
         ensure_schema(&files.validation.schema, VALIDATION_SCHEMA)?;
         let lock = self.lock()?;
@@ -272,7 +274,7 @@ fn prepare_revision(
         outputs: files.output_hashes.clone(),
     };
     let brief = files.brief.into_bytes();
-    let raster = stable_json(&files.raster)?;
+    let raster = stable_json(&files.sequence)?;
     let recipe = stable_json(&files.recipe)?;
     let validation = stable_json(&files.validation)?;
     let provenance = stable_json(&provenance)?;
@@ -355,4 +357,24 @@ fn read_recipe(path: &Path) -> Result<Recipe, ProjectError> {
         });
     }
     Ok(serde_json::from_value(value)?)
+}
+
+fn read_sequence(path: &Path) -> Result<IndexedSequence, ProjectError> {
+    let value: serde_json::Value = read_json(path)?;
+    match value.get("schema").and_then(serde_json::Value::as_str) {
+        Some(SEQUENCE_SCHEMA) => Ok(serde_json::from_value(value)?),
+        Some(RASTER_SCHEMA) => {
+            let raster: IndexedRaster = serde_json::from_value(value)?;
+            raster.validate()?;
+            Ok(IndexedSequence::from_raster(raster))
+        }
+        Some(actual) => Err(ProjectError::Schema {
+            expected: SEQUENCE_SCHEMA,
+            actual: actual.to_owned(),
+        }),
+        None => Err(ProjectError::Schema {
+            expected: SEQUENCE_SCHEMA,
+            actual: "missing".to_owned(),
+        }),
+    }
 }

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use pixelate_core::{Palette, RasterInspection, inspect_raster};
+use pixelate_core::{Palette, RasterInspection, inspect_raster, render};
 use pixelate_project::{
     AssetManifest, ProjectError, ProjectManifest, ProjectStore, RevisionManifest,
 };
@@ -15,6 +15,8 @@ pub struct InspectRevision {
     pub start: PathBuf,
     pub asset: String,
     pub revision: Option<String>,
+    #[serde(default)]
+    pub frame_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,6 +45,14 @@ pub struct RevisionInspectionResult {
     pub revision: String,
     pub parent: Option<String>,
     pub inspection: RasterInspection,
+    pub frames: Vec<FrameMetadata>,
+    pub selected_frame_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FrameMetadata {
+    pub id: String,
+    pub duration_ms: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -55,6 +65,8 @@ pub struct RevisionViewMetadata {
     pub palette: Palette,
     pub transparent_index: u8,
     pub validation: pixelate_core::ValidationReport,
+    pub frames: Vec<FrameMetadata>,
+    pub selected_frame_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,9 +108,23 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
     let store = ProjectStore::discover(&request.start)?;
     let revision = resolve_revision(&store, &request.asset, request.revision)?;
     let snapshot = store.revision(&request.asset, &revision)?;
-    let inspection = inspect_raster(&snapshot.raster)?;
-    let palette = snapshot.raster.palette.clone();
-    let transparent_index = snapshot.raster.palette.transparent_index;
+    let selected_frame_id = request
+        .frame_id
+        .unwrap_or_else(|| snapshot.sequence.frames[0].id.clone());
+    let raster = snapshot.sequence.raster(&selected_frame_id)?;
+    let inspection = inspect_raster(&raster)?;
+    let palette = snapshot.sequence.palette.clone();
+    let transparent_index = snapshot.sequence.palette.transparent_index;
+    let frames = snapshot
+        .sequence
+        .frames
+        .iter()
+        .map(|frame| FrameMetadata {
+            id: frame.id.clone(),
+            duration_ms: frame.duration_ms,
+        })
+        .collect();
+    let native_png = render(&raster, 1)?.native_png;
     Ok(RevisionView {
         metadata: RevisionViewMetadata {
             project_root: store.root().to_path_buf(),
@@ -109,8 +135,10 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
             palette,
             transparent_index,
             validation: snapshot.validation,
+            frames,
+            selected_frame_id,
         },
-        native_png: snapshot.native_png,
+        native_png,
     })
 }
 
@@ -127,5 +155,7 @@ pub fn inspect_revision(request: InspectRevision) -> Result<RevisionInspectionRe
         revision: view.metadata.revision,
         parent: view.metadata.parent,
         inspection: view.metadata.inspection,
+        frames: view.metadata.frames,
+        selected_frame_id: view.metadata.selected_frame_id,
     })
 }

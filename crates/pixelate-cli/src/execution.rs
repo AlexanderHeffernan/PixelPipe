@@ -11,6 +11,7 @@ use serde_json::json;
 
 use crate::args::{AssetCommand, Cli, Command, ProjectCommand, ReferenceCommand, RevisionCommand};
 use crate::edit::run_edit_revision;
+use crate::frame::run_frame;
 use crate::guide::agent_guide;
 use crate::pixelize::pixelize_command;
 use crate::update::update_cli;
@@ -40,6 +41,7 @@ pub(crate) fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Err
         Command::Revision { command } => run_revision(command),
         Command::Asset { command } => run_asset(command),
         Command::Reference { command } => run_reference(command),
+        Command::Frame { command } => run_frame(command),
     }
 }
 
@@ -151,8 +153,9 @@ fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn s
             root,
             asset,
             revision,
+            frame,
         } => Ok(
-            json!({ "ok": true, "revision": inspect_revision(InspectRevision { start: root, asset, revision })? }),
+            json!({ "ok": true, "revision": inspect_revision(InspectRevision { start: root, asset, revision, frame_id: frame })? }),
         ),
     }
 }
@@ -164,6 +167,7 @@ fn preview_command(
         root,
         asset,
         revision,
+        frame,
         scale,
         output,
     } = command
@@ -174,6 +178,7 @@ fn preview_command(
         start: root,
         asset,
         revision,
+        frame_id: frame,
         scale,
     })?;
     fs::write(&output, &preview.png)?;

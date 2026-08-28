@@ -10,7 +10,7 @@ use serde::Deserialize;
 use crate::{
     AppError,
     revision_commit::{
-        CommitRaster, RevisionResult, commit_raster, component_rule, inherit_structure, read,
+        CommitSequence, RevisionResult, commit_sequence, component_rule, inherit_structure, read,
         read_optional_brief,
     },
 };
@@ -91,11 +91,16 @@ pub fn remap_revision_document(request: RemapRevisionDocument) -> Result<Revisio
     let parent = store.revision(&request.asset, &request.parent)?;
     let mut remap = request.remap;
     inherit_structure(&mut remap.structure, component_rule(&parent.recipe))?;
-    let raster = apply_palette_remap(&parent.raster, &remap)?;
+    let mut sequence = parent.sequence.clone();
+    for frame in &mut sequence.frames {
+        let raster = apply_palette_remap(&parent.sequence.raster(&frame.id)?, &remap)?;
+        frame.pixels = raster.pixels;
+    }
+    sequence.palette = remap.palette.clone();
     let recipe = Recipe {
         schema: RECIPE_SCHEMA.to_owned(),
-        input_sha256: sha256_hex(&stable_json(&parent.raster)?),
-        palette_sha256: sha256_hex(&stable_json(&raster.palette)?),
+        input_sha256: sha256_hex(&stable_json(&parent.sequence)?),
+        palette_sha256: sha256_hex(&stable_json(&sequence.palette)?),
         operations: vec![Operation::RemapPalette {
             remap: remap.clone(),
         }],
@@ -105,11 +110,11 @@ pub fn remap_revision_document(request: RemapRevisionDocument) -> Result<Revisio
         ("palette".to_owned(), recipe.palette_sha256.clone()),
         ("parent_pixels".to_owned(), recipe.input_sha256.clone()),
     ]);
-    commit_raster(
+    commit_sequence(
         &store,
-        CommitRaster {
+        CommitSequence {
             asset: request.asset,
-            raster,
+            sequence,
             recipe,
             brief,
             actor: request.actor,

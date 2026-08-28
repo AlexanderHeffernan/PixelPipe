@@ -1,7 +1,7 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use pixelate_app::{
-    FillRevisionDocument, InspectRevision, PatchRevisionDocument, RemapRevisionDocument,
-    RevisionResult, RevisionViewMetadata, SetAssetHead,
+    FillRevisionDocument, FrameMutation, InspectRevision, PatchRevisionDocument,
+    RemapRevisionDocument, RevisionResult, RevisionViewMetadata, SetAssetHead,
 };
 use serde::Serialize;
 
@@ -47,4 +47,9 @@ pub(crate) async fn remap_revision(
     request: RemapRevisionDocument,
 ) -> CommandResult<RevisionResult> {
     blocking(move || pixelate_app::remap_revision_document(request)).await
+}
+
+#[tauri::command]
+pub(crate) async fn mutate_frames(request: FrameMutation) -> CommandResult<RevisionResult> {
+    blocking(move || pixelate_app::mutate_frames(request)).await
 }

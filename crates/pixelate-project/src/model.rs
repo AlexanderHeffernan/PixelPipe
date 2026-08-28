@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, io, path::PathBuf};
 
-use pixelate_core::{ConversionSettings, IndexedRaster, Recipe, ValidationReport};
+use pixelate_core::{ConversionSettings, IndexedRaster, IndexedSequence, Recipe, ValidationReport};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -88,7 +88,7 @@ pub struct Provenance {
 
 #[derive(Debug)]
 pub struct RevisionFiles {
-    pub raster: IndexedRaster,
+    pub sequence: IndexedSequence,
     pub recipe: Recipe,
     pub validation: ValidationReport,
     pub native_png: Vec<u8>,
@@ -118,6 +118,8 @@ pub struct StoredReference {
 pub struct RevisionSnapshot {
     pub path: PathBuf,
     pub manifest: RevisionManifest,
+    pub sequence: IndexedSequence,
+    /// First frame compatibility view for established single-frame use cases.
     pub raster: IndexedRaster,
     pub recipe: Recipe,
     pub validation: ValidationReport,

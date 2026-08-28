@@ -2,6 +2,7 @@ mod args;
 mod draw;
 mod edit;
 mod execution;
+mod frame;
 mod guide;
 mod pixelize;
 mod recolor;
