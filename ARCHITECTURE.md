@@ -73,13 +73,14 @@ pixel-art adoption commits a lossless indexed revision and begins at editing.
 Discovery honors project ignore rules, excludes
 internal/dependency/output folders, and does not follow symlink escapes.
 
-Real folder creation, rename/move, linked-image moves, and empty-folder deletion
-are explicit contained operations. Collisions are refused. A folder move updates
-every affected asset manifest with rollback on failure. Removing a linked asset
-from Pixelate retains the project image. A separate confirmed operation may
-delete one supported project image without deleting its Pixelate identity or
-history; recursive deletion remains absent. Empty folders receive no `.gitkeep`
-and therefore are not retained by Git.
+Real folder creation, rename/move, managed and unmanaged image moves, and
+empty-folder deletion are explicit contained operations. Collisions are refused.
+A folder move updates every affected asset manifest with rollback on failure;
+unmanaged image moves cannot bypass that manifest update for managed files.
+Removing a linked asset from Pixelate retains the project image. A separate
+confirmed operation may delete one supported project image without deleting its
+Pixelate identity or history; recursive deletion remains absent. Empty folders
+receive no `.gitkeep` and therefore are not retained by Git.
 
 ## CLI parity
 
@@ -88,7 +89,7 @@ Every desktop capability must use the same application use case as a CLI route.
 | Capability | CLI |
 | --- | --- |
 | Project discovery | `init`, `project show` |
-| Project image catalog, visibility, deletion, and real folders | `project catalog`, `hide-image`, `show-image`, `delete-image`, `create-folder`, `move-folder`, `delete-folder` |
+| Project image catalog, visibility, move, deletion, and real folders | `project catalog`, `hide-image`, `show-image`, `move-image`, `delete-image`, `create-folder`, `move-folder`, `delete-folder` |
 | Asset lifecycle and brief | `asset list`, `init`, `inspect`, `set-brief`, `rename`, `delete` |
 | Reference/exact-pixel adoption, relink, move, external update | `asset adopt`, `adopt-pixel-art`, `relink`, `move`, `update-linked-source` |
 | Source import/replacement | `reference import`, `asset update-source` |

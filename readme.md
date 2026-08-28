@@ -39,12 +39,16 @@ adopted and can be restored from Hidden images. Managed assets keep stable IDs
 and immutable history when images or containing folders move. Legacy pathless
 assets appear at the project root as unexported assets; new assets default to
 `<asset-id>.png` unless an explicit project-relative output path is supplied.
+Folders start collapsed; folders containing managed assets and managed files are
+ordered ahead of folders that contain only unmanaged images. Export defaults to
+the asset's linked project path, including the project root for legacy assets.
 
 Pixelate can explicitly create, rename/move, and delete empty real folders, and
-move linked images without overwriting collisions. It never recursively deletes
-folders or creates `.gitkeep`; empty folders are not retained by Git. A separate,
-confirmed action can delete one supported project image while retaining Pixelate
-history. Removing a linked asset from Pixelate still leaves its image intact.
+move managed or unmanaged images without overwriting collisions. It never
+recursively deletes folders or creates `.gitkeep`; empty folders are not retained
+by Git. A separate, confirmed action can delete one supported project image while
+retaining Pixelate history. Removing a linked asset from Pixelate still leaves
+its image intact.
 
 The macOS app and Linux AppImage check for signed updates when they open and
 every six hours. An available update is always shown before anything is
@@ -85,9 +89,9 @@ internal `.pixelate` files.
 Use `pixelate project catalog --root .` to inspect discovered and managed project
 images, including missing or externally modified links. Folder operations and
 visibility, and adoption are available through
-`project hide-image|show-image|create-folder|move-folder|delete-folder` and
-`asset adopt|adopt-pixel-art|relink|move|update-linked-source`; all refuse unsafe paths and
-silent overwrites.
+`project hide-image|show-image|move-image|create-folder|move-folder|delete-folder`
+and `asset adopt|adopt-pixel-art|relink|move|update-linked-source`; all refuse
+unsafe paths and silent overwrites.
 
 The CLI never prints unsolicited update notices. Use `pixelate version` for
 machine-readable version information and explicitly run `pixelate update` to
