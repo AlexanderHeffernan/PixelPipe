@@ -1,6 +1,10 @@
 import type { ComputedRef, Ref } from "vue";
 import * as api from "../api";
-import { chooseExportFile, chooseReferenceImage } from "../services/dialogs";
+import {
+  chooseExportFile,
+  chooseReferenceImage,
+  confirmReplaceAnimationWithPixelization,
+} from "../services/dialogs";
 import type {
   AssetBrowser,
   ConversionPreviewResponse,
@@ -10,6 +14,7 @@ import type { createCanvasLoading } from "./canvas-loading";
 import type { createCompositionPreview } from "./composition-preview";
 import type { createConversionPreview } from "./conversion-preview";
 import type { createPixelEditor, PixelTool } from "./pixel-editor";
+import type { createAnimation } from "./animation";
 
 interface AssetActionContext {
   project: Ref<ProjectBrowser | undefined>;
@@ -22,6 +27,7 @@ interface AssetActionContext {
   conversion: ReturnType<typeof createConversionPreview>;
   composition: ReturnType<typeof createCompositionPreview>;
   editor: ReturnType<typeof createPixelEditor>;
+  animation: ReturnType<typeof createAnimation>;
   canvasLoading: ReturnType<typeof createCanvasLoading>;
   run: (action: () => Promise<void>) => Promise<void>;
   refresh: () => Promise<void>;
@@ -50,6 +56,7 @@ export function createAssetActions(context: AssetActionContext) {
   }
 
   async function beginTool(tool: PixelTool) {
+    context.animation.pause();
     if (context.mode.value === "convert") await context.commitConversion();
     if (context.mode.value === "edit") {
       if (!(await context.composition.commitIfDirty())) return;
@@ -87,6 +94,13 @@ export function createAssetActions(context: AssetActionContext) {
 
   async function reconvert() {
     if (!context.canConvert.value) return;
+    if (
+      context.animation.frames.value.length > 1 &&
+      !(await confirmReplaceAnimationWithPixelization(
+        context.animation.frames.value.length,
+      ))
+    )
+      return;
     await context.canvasLoading.run("Pixelizing source…", async () => {
       context.editor.resetHistory();
       if (!context.conversion.settings.value)

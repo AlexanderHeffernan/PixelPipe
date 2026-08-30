@@ -10,7 +10,14 @@ mod composition;
 mod conversion;
 mod editing;
 mod inspection;
+mod motion;
 mod palette_derivation;
+mod part_detection;
+mod rig;
+mod rig_render;
+#[cfg(test)]
+mod rig_tests;
+mod sequence;
 
 pub use color_treatment::{ColorAdjustments, ColorTreatment};
 pub use composition::{CanvasSettings, compose_canvas};
@@ -24,7 +31,16 @@ pub use editing::{
     apply_palette_remap, apply_pixel_patch, flood_fill_patch,
 };
 pub use inspection::{PaletteUsage, RasterBounds, RasterInspection, inspect_raster};
-pub use palette_derivation::derive_source_palette;
+pub use motion::{
+    FrameTransition, MotionWarning, MotionWarningKind, SequenceMotion, inspect_sequence_motion,
+};
+pub use palette_derivation::{derive_source_palette, derive_source_palette_batch};
+pub use part_detection::{DetectedPart, detect_parts};
+pub use rig::{PixelRig, RIG_SCHEMA, RigInterpolation, RigNode, RigNodePose, RigPart, RigPose};
+pub use sequence::{
+    DEFAULT_FRAME_DURATION_MS, IndexedFrame, IndexedSequence, SEQUENCE_SCHEMA, render_sequence,
+    render_sequence_preview,
+};
 
 pub const PALETTE_SCHEMA: &str = "pixelate.palette/v1";
 pub const RASTER_SCHEMA: &str = "pixelate.raster/v1";
@@ -66,10 +82,108 @@ pub struct Recipe {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
-    ConvertReference { settings: ConversionSettings },
-    PatchPixels { patch: PixelPatchSet },
-    RemapPalette { remap: PaletteRemap },
-    ComposeCanvas { settings: CanvasSettings },
+    ConvertReference {
+        settings: ConversionSettings,
+    },
+    PatchPixels {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        frame_id: Option<String>,
+        patch: PixelPatchSet,
+    },
+    RemapPalette {
+        remap: PaletteRemap,
+    },
+    ComposeCanvas {
+        settings: CanvasSettings,
+    },
+    EditFrames {
+        action: FrameOperation,
+    },
+    EditRig {
+        action: RigOperation,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RigOperation {
+    Create,
+    UpdateNode {
+        pose_id: String,
+        node_id: String,
+    },
+    SwapParts {
+        first_node_id: String,
+        second_node_id: String,
+    },
+    SetInterpolation {
+        inbetweens: u16,
+        looped: bool,
+    },
+    SetDuration {
+        duration_ms: u32,
+    },
+    DuplicatePose {
+        pose_id: String,
+        new_pose_id: String,
+    },
+    DeletePose {
+        pose_id: String,
+    },
+    ReorderPose {
+        pose_id: String,
+        position: usize,
+    },
+    RenamePose {
+        pose_id: String,
+        name: String,
+    },
+    Bake,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FrameOperation {
+    AddBlank {
+        frame_id: String,
+        position: usize,
+    },
+    Duplicate {
+        source_frame_id: String,
+        frame_id: String,
+        position: usize,
+    },
+    Delete {
+        frame_id: String,
+    },
+    Reorder {
+        frame_id: String,
+        position: usize,
+    },
+    SetDuration {
+        frame_id: String,
+        duration_ms: u32,
+    },
+    SetAllDurations {
+        duration_ms: u32,
+    },
+    Rename {
+        frame_id: String,
+        name: String,
+    },
+    ImportFrame {
+        frame_id: String,
+        position: usize,
+    },
+    ReplaceFrame {
+        frame_id: String,
+    },
+    ImportSequence {
+        frame_ids: Vec<String>,
+    },
+    ImportSpritesheet {
+        frame_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,6 +225,22 @@ pub enum CoreError {
     InvalidTransparentIndex { index: u8 },
     #[error("pixel index {index} at offset {offset} is outside the palette")]
     InvalidPixelIndex { index: u8, offset: usize },
+    #[error("an indexed sequence must contain at least one frame")]
+    EmptySequence,
+    #[error("frame IDs must not be empty")]
+    InvalidFrameId,
+    #[error("frame ID '{0}' is duplicated")]
+    DuplicateFrameId(String),
+    #[error("frame '{frame}' duration must be greater than zero milliseconds")]
+    InvalidFrameDuration { frame: String },
+    #[error("frame '{frame}' name must not be empty")]
+    InvalidFrameName { frame: String },
+    #[error("frame '{0}' does not exist")]
+    FrameNotFound(String),
+    #[error("invalid pixel rig: {0}")]
+    InvalidRig(String),
+    #[error("spritesheet dimensions {width}x{height} exceed the supported 8192px edge")]
+    SheetDimensionOverflow { width: u32, height: u32 },
     #[error("preview scale must be between 1 and 64")]
     InvalidPreviewScale,
     #[error("image dimensions overflow the supported range")]
@@ -348,7 +478,7 @@ fn nearest_pixels(raster: &IndexedRaster, scale: u16) -> Result<(u32, u32, Vec<u
     Ok((width, height, pixels))
 }
 
-fn encode_indexed_png(
+pub(crate) fn encode_indexed_png(
     width: u32,
     height: u32,
     palette: &Palette,

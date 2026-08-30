@@ -21,12 +21,13 @@ pub(crate) fn run_edit_revision(
             x,
             y,
             index,
+            frame,
             actor,
         } => {
             let parent = resolve_parent(&root, &asset, parent)?;
             Ok(
                 json!({ "ok": true, "revision": fill_revision_document(FillRevisionDocument {
-            start: root, asset, parent, x, y, index, actor
+            start: root, asset, parent, x, y, index, frame_id: frame, actor
         })? }),
             )
         }
@@ -87,8 +88,9 @@ pub(crate) fn run_edit_revision(
             asset,
             parent,
             pixels,
+            frame,
             actor,
-        } => draw_command(root, asset, parent, &pixels, actor),
+        } => draw_command(root, asset, parent, &pixels, frame, actor),
         _ => unreachable!("editing revision command is filtered by run_revision"),
     }
 }

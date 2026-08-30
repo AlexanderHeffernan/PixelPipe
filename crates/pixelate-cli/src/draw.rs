@@ -11,12 +11,14 @@ pub(crate) fn draw_command(
     asset: String,
     parent: Option<String>,
     pixels: &[String],
+    frame: Option<String>,
     actor: String,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let parent = load_revision_view(InspectRevision {
         start: root.clone(),
         asset: asset.clone(),
         revision: parent,
+        frame_id: frame.clone(),
     })?
     .metadata
     .revision;
@@ -33,6 +35,7 @@ pub(crate) fn draw_command(
             edits,
             structure: None,
         },
+        frame_id: frame,
         brief: None,
         actor,
     })?;

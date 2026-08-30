@@ -7,7 +7,7 @@ use pixelate_core::{
 use pixelate_project::ProjectStore;
 use serde::Deserialize;
 
-use crate::{AppError, CommitRaster, RevisionResult, commit_raster};
+use crate::{AppError, CommitSequence, RevisionResult, commit_sequence};
 
 #[derive(Debug, Deserialize)]
 pub struct PreviewComposition {
@@ -63,9 +63,20 @@ pub fn preview_composition(request: PreviewComposition) -> Result<CompositionPre
 pub fn commit_composition(request: CommitComposition) -> Result<RevisionResult, AppError> {
     let store = ProjectStore::discover(&request.start)?;
     let parent = store.revision(&request.asset, &request.parent)?;
-    let raster = compose_canvas(&parent.raster, request.settings)?;
-    let input_hash = sha256_hex(&stable_json(&parent.raster)?);
-    let palette_hash = sha256_hex(&stable_json(&raster.palette)?);
+    let mut sequence = parent.sequence.clone();
+    let mut shared = None;
+    for frame in &mut sequence.frames {
+        let raster = compose_canvas(&parent.sequence.raster(&frame.id)?, request.settings)?;
+        frame.pixels = raster.pixels;
+        shared.get_or_insert((raster.width, raster.height, raster.pivot, raster.metadata));
+    }
+    let (width, height, pivot, metadata) = shared.ok_or(pixelate_core::CoreError::EmptySequence)?;
+    sequence.width = width;
+    sequence.height = height;
+    sequence.pivot = pivot;
+    sequence.metadata = metadata;
+    let input_hash = sha256_hex(&stable_json(&parent.sequence)?);
+    let palette_hash = sha256_hex(&stable_json(&sequence.palette)?);
     let recipe = Recipe {
         schema: RECIPE_SCHEMA.to_owned(),
         input_sha256: input_hash.clone(),
@@ -74,11 +85,12 @@ pub fn commit_composition(request: CommitComposition) -> Result<RevisionResult, 
             settings: request.settings,
         }],
     };
-    commit_raster(
+    commit_sequence(
         &store,
-        CommitRaster {
+        CommitSequence {
             asset: request.asset,
-            raster,
+            sequence,
+            rig: None,
             recipe,
             brief: parent.brief,
             actor: request.actor,

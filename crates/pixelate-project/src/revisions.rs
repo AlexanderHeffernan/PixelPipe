@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use pixelate_core::{
-    IndexedRaster, RECIPE_SCHEMA, Recipe, VALIDATION_SCHEMA, ValidationReport, sha256_hex,
-    stable_json,
+    IndexedRaster, IndexedSequence, PixelRig, RASTER_SCHEMA, RECIPE_SCHEMA, RIG_SCHEMA, Recipe,
+    SEQUENCE_SCHEMA, VALIDATION_SCHEMA, ValidationReport, sha256_hex, stable_json,
 };
 
 use crate::{
@@ -21,6 +21,7 @@ struct PreparedRevision {
     provenance: Vec<u8>,
     manifest: Vec<u8>,
     native_png: Vec<u8>,
+    rig: Option<Vec<u8>>,
 }
 
 impl ProjectStore {
@@ -105,10 +106,11 @@ impl ProjectStore {
         if !REVISION_PAYLOADS
             .iter()
             .all(|name| manifest.files.contains_key(*name))
-            || manifest
-                .files
-                .keys()
-                .any(|name| name != "preview.png" && !REVISION_PAYLOADS.contains(&name.as_str()))
+            || manifest.files.keys().any(|name| {
+                name != "preview.png"
+                    && name != "rig.json"
+                    && !REVISION_PAYLOADS.contains(&name.as_str())
+            })
         {
             return Err(ProjectError::InvalidRevisionFiles);
         }
@@ -122,8 +124,20 @@ impl ProjectStore {
                 return Err(ProjectError::RevisionHashMismatch { name: name.clone() });
             }
         }
-        let raster: IndexedRaster = read_json(&path.join("pixels.json"))?;
-        raster.validate()?;
+        let sequence = read_sequence(&path.join("pixels.json"))?;
+        sequence.validate()?;
+        let rig = if manifest.files.contains_key("rig.json") {
+            let rig: PixelRig = read_json(&path.join("rig.json"))?;
+            ensure_schema(&rig.schema, RIG_SCHEMA)?;
+            rig.validate()?;
+            if rig.render_sequence()? != sequence {
+                return Err(ProjectError::RigSequenceMismatch);
+            }
+            Some(rig)
+        } else {
+            None
+        };
+        let raster = sequence.first_raster()?;
         let recipe = read_recipe(&path.join("recipe.json"))?;
         ensure_schema(&recipe.schema, RECIPE_SCHEMA)?;
         let validation: ValidationReport = read_json(&path.join("validation.json"))?;
@@ -143,6 +157,8 @@ impl ProjectStore {
         Ok(RevisionSnapshot {
             path,
             manifest,
+            sequence,
+            rig,
             raster,
             recipe,
             validation,
@@ -189,7 +205,13 @@ impl ProjectStore {
         files: RevisionFiles,
     ) -> Result<StoredRevision, ProjectError> {
         validate_asset_id(asset_id)?;
-        files.raster.validate()?;
+        files.sequence.validate()?;
+        if let Some(rig) = &files.rig {
+            rig.validate()?;
+            if rig.render_sequence()? != files.sequence {
+                return Err(ProjectError::RigSequenceMismatch);
+            }
+        }
         ensure_schema(&files.recipe.schema, RECIPE_SCHEMA)?;
         ensure_schema(&files.validation.schema, VALIDATION_SCHEMA)?;
         let lock = self.lock()?;
@@ -272,11 +294,12 @@ fn prepare_revision(
         outputs: files.output_hashes.clone(),
     };
     let brief = files.brief.into_bytes();
-    let raster = stable_json(&files.raster)?;
+    let raster = stable_json(&files.sequence)?;
+    let rig = files.rig.map(|rig| stable_json(&rig)).transpose()?;
     let recipe = stable_json(&files.recipe)?;
     let validation = stable_json(&files.validation)?;
     let provenance = stable_json(&provenance)?;
-    let persisted_hashes = BTreeMap::from([
+    let mut persisted_hashes = BTreeMap::from([
         ("brief.md".to_owned(), sha256_hex(&brief)),
         ("native.png".to_owned(), sha256_hex(&files.native_png)),
         ("pixels.json".to_owned(), sha256_hex(&raster)),
@@ -284,6 +307,9 @@ fn prepare_revision(
         ("recipe.json".to_owned(), sha256_hex(&recipe)),
         ("validation.json".to_owned(), sha256_hex(&validation)),
     ]);
+    if let Some(rig) = &rig {
+        persisted_hashes.insert("rig.json".to_owned(), sha256_hex(rig));
+    }
     for (name, expected) in &files.output_hashes {
         if persisted_hashes.get(name) != Some(expected) {
             return Err(ProjectError::OutputHashMismatch { name: name.clone() });
@@ -306,6 +332,7 @@ fn prepare_revision(
         provenance,
         manifest,
         native_png: files.native_png,
+        rig,
     })
 }
 
@@ -316,6 +343,9 @@ fn write_prepared_revision(path: &Path, files: &PreparedRevision) -> Result<(), 
     write_file(&path.join("validation.json"), &files.validation)?;
     write_file(&path.join("provenance.json"), &files.provenance)?;
     write_file(&path.join("revision.json"), &files.manifest)?;
+    if let Some(rig) = &files.rig {
+        write_file(&path.join("rig.json"), rig)?;
+    }
     write_file(&path.join("native.png"), &files.native_png)
 }
 
@@ -355,4 +385,24 @@ fn read_recipe(path: &Path) -> Result<Recipe, ProjectError> {
         });
     }
     Ok(serde_json::from_value(value)?)
+}
+
+fn read_sequence(path: &Path) -> Result<IndexedSequence, ProjectError> {
+    let value: serde_json::Value = read_json(path)?;
+    match value.get("schema").and_then(serde_json::Value::as_str) {
+        Some(SEQUENCE_SCHEMA) => Ok(serde_json::from_value(value)?),
+        Some(RASTER_SCHEMA) => {
+            let raster: IndexedRaster = serde_json::from_value(value)?;
+            raster.validate()?;
+            Ok(IndexedSequence::from_raster(raster))
+        }
+        Some(actual) => Err(ProjectError::Schema {
+            expected: SEQUENCE_SCHEMA,
+            actual: actual.to_owned(),
+        }),
+        None => Err(ProjectError::Schema {
+            expected: SEQUENCE_SCHEMA,
+            actual: "missing".to_owned(),
+        }),
+    }
 }

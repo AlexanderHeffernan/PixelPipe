@@ -17,6 +17,7 @@ pub(crate) fn recolor_command(
         start: root.clone(),
         asset: asset.clone(),
         revision: parent,
+        frame_id: None,
     })?;
     let parent = view.metadata.revision;
     let mut palette = view.metadata.palette;

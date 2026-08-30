@@ -5,6 +5,10 @@ deterministic, game-ready pixel art. It keeps briefs, references, conversion
 settings, indexed pixels, immutable revisions, and exports together in a
 game repository.
 
+Every asset is one ordered clip containing one or more frames. Frames share one
+canvas, indexed palette, transparent index, and pivot; each has a stable ID and
+duration. A static sprite is the same model with one frame.
+
 The product has one workflow:
 
 ```text
@@ -89,6 +93,64 @@ pixelate asset export --root /path/to/game --asset signal-flare \
 pixelate asset export-file --root /path/to/game --asset signal-flare \
   --destination /path/to/game/assets/signal-flare.webp --overwrite
 ```
+
+Turn that sprite into an animation without changing asset identity:
+
+```sh
+pixelate frame duplicate --root /path/to/game --asset signal-flare \
+  --frame frame-0001
+pixelate frame duration --root /path/to/game --asset signal-flare \
+  --duration 140
+pixelate frame rename --root /path/to/game --asset signal-flare \
+  --frame frame-0002 --name 'Passing pose'
+pixelate revision draw --root /path/to/game --asset signal-flare \
+  --frame frame-0002 --pixel '12,8=3' --actor agent
+pixelate revision inspect --root /path/to/game --asset signal-flare
+```
+
+`frame import-sequence` consumes repeated `--file` arguments in their explicit
+order and derives one palette across the complete batch. `frame import-sheet`
+requires explicit frame dimensions and repeated zero-based `--cell` values in
+the intended order; Pixelate never guesses grids or directory order. Blank and
+duplicate frames require no reference. For generated animation, create and
+review one still pose at a time, then use `frame import` so each accepted pose
+keeps the established canvas and palette. Do not ask an image generator for a
+spritesheet; sheet import is only for explicitly reviewed existing artwork.
+
+For multiple frames, `asset export` writes a deterministic horizontal PNG
+spritesheet and companion JSON with stable IDs, order, rectangles, durations,
+shared canvas, and pivot. One-frame PNG, lossless WebP, and indexed JSON exports
+retain their existing behavior. `revision preview` produces an enlarged contact
+sheet when no `--frame` is supplied; use `revision inspect` alongside it for
+timing, and pass `--frame <stable-id>` to inspect one pose.
+Inspection also reports exact adjacent and loop-closing pixel transitions,
+separating silhouette changes from palette-index changes over opaque overlap.
+Large opaque-colour change with little silhouette motion is a prompt to fix the
+source pose, not to blur or automatically smooth the indexed result. Structured
+motion warnings flag ≥40% opaque-colour churn or ≥20% silhouette replacement;
+replace the warning's destination frame with `frame replace`, inspect again, and
+do not call the animation complete until warnings are cleared or reviewed by the
+human as intentional broad motion.
+
+For motion that can reuse separated pixel-art parts, Pixelate also supports a
+generic rigging route. Ask the image model for one source sheet of separated
+parts—not a temporal animation spritesheet—then pixelize it. An agent can crop
+explicit rectangles into reusable parts and define arbitrary parent-linked nodes
+and manual poses with `rig create`. Use `rig mutate` to position, rotate, scale,
+reorder by depth, hide, or reassign parts; swap assignments; adjust manual poses;
+and choose a shared duration plus optional deterministic in-between frames. The
+model is deliberately generic: it has no humanoid anatomy, IK, weapons, or named
+attachments.
+
+The desktop overlays the rig handles directly on the indexed sprite. Select a
+manual pose in the timeline, drag a node to reposition it, use the rig controls
+for rotation, scale, depth, visibility, part assignment, interpolation, and
+timing, then play the complete rendered sequence. Automatic frames are derived
+from adjacent manual poses and do not appear as editable timeline cards. Use
+`rig bake` only when the motion is ready for ordinary frame-by-frame pixel touch
+up; baking preserves the rendered sequence exactly and ends rig editing for that
+revision. Run `pixelate guide --root .` for the versioned definition and mutation
+JSON examples intended for agents.
 
 ### Visual verification
 

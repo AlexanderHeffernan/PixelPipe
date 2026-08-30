@@ -255,7 +255,10 @@ pub(super) fn visible_bounds(image: &RgbaImage) -> Option<Bounds> {
             }
         }
     }
-    found.then_some(Bounds {
+    if !found {
+        return None;
+    }
+    Some(Bounds {
         x: min_x,
         y: min_y,
         width: max_x - min_x + 1,

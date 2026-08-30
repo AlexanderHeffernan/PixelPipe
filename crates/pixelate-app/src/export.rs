@@ -44,6 +44,42 @@ pub struct ExportFileResult {
     pub height: u32,
 }
 
+const SPRITESHEET_SCHEMA: &str = "pixelate.spritesheet/v1";
+
+#[derive(Debug, Serialize)]
+struct SpritesheetMetadata<'a> {
+    schema: &'static str,
+    asset: &'a str,
+    revision: &'a str,
+    sheet: SheetDimensions,
+    canvas: CanvasDimensions,
+    pivot: Option<[i32; 2]>,
+    frames: Vec<ExportFrame<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct SheetDimensions {
+    width: u32,
+    height: u32,
+}
+#[derive(Debug, Serialize)]
+struct CanvasDimensions {
+    width: u32,
+    height: u32,
+}
+#[derive(Debug, Serialize)]
+struct ExportFrame<'a> {
+    id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<&'a str>,
+    order: usize,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    duration_ms: u32,
+}
+
 /// Exports the verified head raster and canonical indexed data to an existing folder.
 ///
 /// # Errors
@@ -72,7 +108,16 @@ pub fn export_asset(request: ExportAsset) -> Result<ExportResult, AppError> {
         }
     }
     atomic_write(&png, &snapshot.native_png)?;
-    atomic_write(&metadata, &stable_json(&snapshot.raster)?)?;
+    let metadata_bytes = if snapshot.sequence.frames.len() == 1 {
+        stable_json(&snapshot.raster)?
+    } else {
+        stable_json(&spritesheet_metadata(
+            &request.asset,
+            &revision,
+            &snapshot.sequence,
+        )?)?
+    };
+    atomic_write(&metadata, &metadata_bytes)?;
     Ok(ExportResult {
         asset: request.asset,
         revision,
@@ -105,6 +150,12 @@ pub fn export_asset_file(request: ExportAssetFile) -> Result<ExportFileResult, A
         .head
         .ok_or_else(|| AppError::NoHead(request.asset.clone()))?;
     let snapshot = store.revision(&request.asset, &revision)?;
+    if snapshot.sequence.frames.len() > 1 {
+        return Err(AppError::UnsupportedExportFormat(
+            "multi-frame assets export as a PNG spritesheet plus JSON; choose asset export"
+                .to_owned(),
+        ));
+    }
     let extension = request
         .destination
         .extension()
@@ -142,6 +193,48 @@ pub fn export_asset_file(request: ExportAssetFile) -> Result<ExportFileResult, A
         format: format.to_owned(),
         width: snapshot.raster.width,
         height: snapshot.raster.height,
+    })
+}
+
+fn spritesheet_metadata<'a>(
+    asset: &'a str,
+    revision: &'a str,
+    sequence: &'a pixelate_core::IndexedSequence,
+) -> Result<SpritesheetMetadata<'a>, AppError> {
+    let frame_count = u32::try_from(sequence.frames.len())
+        .map_err(|_| pixelate_core::CoreError::DimensionOverflow)?;
+    let width = sequence
+        .width
+        .checked_mul(frame_count)
+        .ok_or(pixelate_core::CoreError::DimensionOverflow)?;
+    Ok(SpritesheetMetadata {
+        schema: SPRITESHEET_SCHEMA,
+        asset,
+        revision,
+        sheet: SheetDimensions {
+            width,
+            height: sequence.height,
+        },
+        canvas: CanvasDimensions {
+            width: sequence.width,
+            height: sequence.height,
+        },
+        pivot: sequence.pivot,
+        frames: sequence
+            .frames
+            .iter()
+            .enumerate()
+            .map(|(order, frame)| ExportFrame {
+                id: &frame.id,
+                name: frame.name.as_deref(),
+                order,
+                x: sequence.width * u32::try_from(order).expect("validated frame count fits u32"),
+                y: 0,
+                width: sequence.width,
+                height: sequence.height,
+                duration_ms: frame.duration_ms,
+            })
+            .collect(),
     })
 }
 

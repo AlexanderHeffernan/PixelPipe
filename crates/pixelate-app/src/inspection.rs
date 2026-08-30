@@ -1,6 +1,9 @@
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
-use pixelate_core::{Palette, RasterInspection, inspect_raster};
+use pixelate_core::{
+    IndexedRaster, Palette, RASTER_SCHEMA, RasterInspection, RigInterpolation, RigNode, RigPose,
+    SequenceMotion, inspect_raster, inspect_sequence_motion, render,
+};
 use pixelate_project::{
     AssetManifest, ProjectError, ProjectManifest, ProjectStore, RevisionManifest,
 };
@@ -15,6 +18,8 @@ pub struct InspectRevision {
     pub start: PathBuf,
     pub asset: String,
     pub revision: Option<String>,
+    #[serde(default)]
+    pub frame_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,6 +48,16 @@ pub struct RevisionInspectionResult {
     pub revision: String,
     pub parent: Option<String>,
     pub inspection: RasterInspection,
+    pub frames: Vec<FrameMetadata>,
+    pub motion: SequenceMotion,
+    pub selected_frame_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FrameMetadata {
+    pub id: String,
+    pub name: Option<String>,
+    pub duration_ms: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -55,11 +70,41 @@ pub struct RevisionViewMetadata {
     pub palette: Palette,
     pub transparent_index: u8,
     pub validation: pixelate_core::ValidationReport,
+    pub frames: Vec<FrameMetadata>,
+    pub selected_frame_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rig_ancestor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rig: Option<RigView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RigView {
+    pub parts: Vec<RigPartMetadata>,
+    pub nodes: Vec<RigNode>,
+    pub poses: Vec<RigPose>,
+    pub frame_duration_ms: u32,
+    pub interpolation: RigInterpolation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RigPartMetadata {
+    pub id: String,
+    pub width: u32,
+    pub height: u32,
+    pub pivot: [i32; 2],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevisionView {
     pub metadata: RevisionViewMetadata,
+    pub native_png: Vec<u8>,
+    pub rig_part_pngs: Vec<RigPartPng>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RigPartPng {
+    pub id: String,
     pub native_png: Vec<u8>,
 }
 
@@ -96,9 +141,67 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
     let store = ProjectStore::discover(&request.start)?;
     let revision = resolve_revision(&store, &request.asset, request.revision)?;
     let snapshot = store.revision(&request.asset, &revision)?;
-    let inspection = inspect_raster(&snapshot.raster)?;
-    let palette = snapshot.raster.palette.clone();
-    let transparent_index = snapshot.raster.palette.transparent_index;
+    let rig_ancestor =
+        find_rig_ancestor(&store, &request.asset, snapshot.manifest.parent.as_deref())?;
+    let selected_frame_id = request
+        .frame_id
+        .unwrap_or_else(|| snapshot.sequence.frames[0].id.clone());
+    let raster = snapshot.sequence.raster(&selected_frame_id)?;
+    let inspection = inspect_raster(&raster)?;
+    let palette = snapshot.sequence.palette.clone();
+    let transparent_index = snapshot.sequence.palette.transparent_index;
+    let frames = snapshot
+        .sequence
+        .frames
+        .iter()
+        .map(|frame| FrameMetadata {
+            id: frame.id.clone(),
+            name: frame.name.clone(),
+            duration_ms: frame.duration_ms,
+        })
+        .collect();
+    let native_png = render(&raster, 1)?.native_png;
+    let rig_part_pngs = snapshot
+        .rig
+        .as_ref()
+        .map(|rig| {
+            rig.parts
+                .iter()
+                .map(|part| {
+                    let raster = IndexedRaster {
+                        schema: RASTER_SCHEMA.to_owned(),
+                        width: part.width,
+                        height: part.height,
+                        palette: rig.palette.clone(),
+                        pixels: part.pixels.clone(),
+                        pivot: Some(part.pivot),
+                        metadata: BTreeMap::new(),
+                    };
+                    Ok(RigPartPng {
+                        id: part.id.clone(),
+                        native_png: render(&raster, 1)?.native_png,
+                    })
+                })
+                .collect::<Result<Vec<_>, pixelate_core::CoreError>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let rig = snapshot.rig.map(|rig| RigView {
+        parts: rig
+            .parts
+            .into_iter()
+            .map(|part| RigPartMetadata {
+                id: part.id,
+                width: part.width,
+                height: part.height,
+                pivot: part.pivot,
+            })
+            .collect(),
+        nodes: rig.nodes,
+        poses: rig.poses,
+        frame_duration_ms: rig.frame_duration_ms,
+        interpolation: rig.interpolation,
+    });
     Ok(RevisionView {
         metadata: RevisionViewMetadata {
             project_root: store.root().to_path_buf(),
@@ -109,9 +212,30 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
             palette,
             transparent_index,
             validation: snapshot.validation,
+            frames,
+            selected_frame_id,
+            rig_ancestor,
+            rig,
         },
-        native_png: snapshot.native_png,
+        native_png,
+        rig_part_pngs,
     })
+}
+
+fn find_rig_ancestor(
+    store: &ProjectStore,
+    asset: &str,
+    parent: Option<&str>,
+) -> Result<Option<String>, ProjectError> {
+    let mut revision = parent.map(str::to_owned);
+    while let Some(id) = revision {
+        let snapshot = store.revision(asset, &id)?;
+        if snapshot.rig.is_some() {
+            return Ok(Some(id));
+        }
+        revision = snapshot.manifest.parent;
+    }
+    Ok(None)
 }
 
 /// Loads a revision inspection and its separate durable review history.
@@ -120,6 +244,9 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
 ///
 /// Returns an [`AppError`] when project, revision, review, or raster validation fails.
 pub fn inspect_revision(request: InspectRevision) -> Result<RevisionInspectionResult, AppError> {
+    let store = ProjectStore::discover(&request.start)?;
+    let revision = resolve_revision(&store, &request.asset, request.revision.clone())?;
+    let motion = inspect_sequence_motion(&store.revision(&request.asset, &revision)?.sequence)?;
     let view = load_revision_view(request)?;
     Ok(RevisionInspectionResult {
         project_root: view.metadata.project_root,
@@ -127,5 +254,8 @@ pub fn inspect_revision(request: InspectRevision) -> Result<RevisionInspectionRe
         revision: view.metadata.revision,
         parent: view.metadata.parent,
         inspection: view.metadata.inspection,
+        frames: view.metadata.frames,
+        motion,
+        selected_frame_id: view.metadata.selected_frame_id,
     })
 }

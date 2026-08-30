@@ -81,6 +81,22 @@ fn agent_workflow_pixelizes_previews_and_exports() {
         &fs::read(&preview_path).expect("preview")[..8],
         b"\x89PNG\r\n\x1a\n"
     );
+    let parts = run(&[
+        "rig",
+        "parts",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--min-pixels",
+        "2",
+    ]);
+    assert!(
+        !parts["discovery"]["parts"]
+            .as_array()
+            .expect("detected parts")
+            .is_empty()
+    );
 
     let export_path = project.path().join("Signal Flare.webp");
     let exported = run(&[
@@ -95,6 +111,121 @@ fn agent_workflow_pixelizes_previews_and_exports() {
     ]);
     assert_eq!(exported["export"]["format"], "webp");
     assert!(export_path.is_file());
+
+    verify_animation_cli(root, project.path());
+}
+
+fn verify_animation_cli(root: &str, project: &Path) {
+    let animated = run(&[
+        "frame",
+        "add",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--duration",
+        "90",
+    ]);
+    assert_eq!(animated["revision"]["parent"], "r000001");
+    let inspected = run(&[
+        "revision",
+        "inspect",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+    ]);
+    assert_eq!(inspected["revision"]["frames"].as_array().unwrap().len(), 2);
+    let gif = project.join("motion.gif");
+    let motion = run(&[
+        "revision",
+        "preview-animation",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--scale",
+        "2",
+        "--output",
+        gif.to_str().unwrap(),
+    ]);
+    assert_eq!(motion["preview"]["frame_count"], 2);
+    assert_eq!(&fs::read(gif).unwrap()[..6], b"GIF89a");
+    let bundle = project.join("bundle");
+    fs::create_dir(&bundle).unwrap();
+    let exported = run(&[
+        "asset",
+        "export",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--destination",
+        bundle.to_str().unwrap(),
+    ]);
+    let metadata: Value = serde_json::from_slice(
+        &fs::read(exported["export"]["metadata"].as_str().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(metadata["schema"], "pixelate.spritesheet/v1");
+
+    verify_rig_cli(root, &inspected);
+}
+
+fn verify_rig_cli(root: &str, inspected: &Value) {
+    let discovery = run(&[
+        "rig",
+        "parts",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--frame",
+        "frame-0001",
+    ]);
+    let component = &discovery["discovery"]["parts"][0];
+    let source = component["source"].as_array().unwrap();
+    let pivot = component["suggested_pivot"].as_array().unwrap();
+    let part = format!(
+        "body,{},{},{},{},{},{}",
+        source[0], source[1], source[2], source[3], pivot[0], pivot[1]
+    );
+    let assembled = run_owned(&[
+        "rig".into(),
+        "assemble".into(),
+        "--root".into(),
+        root.into(),
+        "--asset".into(),
+        "signal-flare".into(),
+        "--parent".into(),
+        inspected["revision"]["revision"].as_str().unwrap().into(),
+        "--source-frame".into(),
+        "frame-0001".into(),
+        "--width".into(),
+        "32".into(),
+        "--height".into(),
+        "32".into(),
+        "--part".into(),
+        part,
+        "--node".into(),
+        "body-joint,none,body,16,16,0".into(),
+    ]);
+    let rig_revision = assembled["revision"]["revision"].as_str().unwrap();
+    let duplicated = run(&[
+        "rig",
+        "duplicate-pose",
+        "--root",
+        root,
+        "--asset",
+        "signal-flare",
+        "--parent",
+        rig_revision,
+        "--pose",
+        "pose-0001",
+        "--new-pose",
+        "pose-0002",
+    ]);
+    assert_eq!(duplicated["revision"]["parent"], rig_revision);
 }
 
 #[test]
@@ -117,9 +248,28 @@ fn guide_documents_every_agent_workflow_family() {
         "canvas_placement",
         "inspect_colours",
         "visual_preview",
+        "animation_preview",
         "recolor",
         "pencil_or_eraser",
         "fill",
+        "add_blank_frame",
+        "duplicate_frame",
+        "import_frame",
+        "replace_frame",
+        "import_image_sequence",
+        "import_spritesheet",
+        "delete_frame",
+        "reorder_frame",
+        "set_animation_duration",
+        "discover_rig_parts",
+        "create_generic_rig",
+        "adjust_rig_node",
+        "swap_rig_parts",
+        "configure_rig_interpolation",
+        "duplicate_rig_pose",
+        "rename_rig_pose",
+        "reorder_rig_pose",
+        "delete_rig_pose",
         "undo_redo",
         "export_bundle",
         "export_image",
@@ -198,6 +348,19 @@ fn write_json(path: &Path, value: &Value) -> String {
 }
 
 fn run(arguments: &[&str]) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_pixelate"))
+        .args(arguments)
+        .output()
+        .expect("run pixelate");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).expect("CLI JSON")
+}
+
+fn run_owned(arguments: &[String]) -> Value {
     let output = Command::new(env!("CARGO_BIN_EXE_pixelate"))
         .args(arguments)
         .output()

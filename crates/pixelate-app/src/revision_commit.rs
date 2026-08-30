@@ -1,7 +1,8 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use pixelate_core::{
-    ComponentRule, IndexedRaster, Operation, Recipe, ValidationCheck, render, sha256_hex,
+    ComponentRule, IndexedRaster, IndexedSequence, Operation, PixelRig, Recipe, ValidationCheck,
+    render_sequence, sha256_hex,
 };
 use pixelate_project::{AssetStyle, ProjectStore, RevisionFiles, StoredRevision};
 use serde::Serialize;
@@ -11,6 +12,19 @@ use crate::AppError;
 pub(crate) struct CommitRaster {
     pub(crate) asset: String,
     pub(crate) raster: IndexedRaster,
+    pub(crate) recipe: Recipe,
+    pub(crate) brief: String,
+    pub(crate) actor: String,
+    pub(crate) input_hashes: BTreeMap<String, String>,
+    pub(crate) additional_checks: Vec<ValidationCheck>,
+    pub(crate) parent: Option<String>,
+    pub(crate) style: Option<AssetStyle>,
+}
+
+pub(crate) struct CommitSequence {
+    pub(crate) asset: String,
+    pub(crate) sequence: IndexedSequence,
+    pub(crate) rig: Option<PixelRig>,
     pub(crate) recipe: Recipe,
     pub(crate) brief: String,
     pub(crate) actor: String,
@@ -53,9 +67,11 @@ pub(crate) fn component_rule(recipe: &Recipe) -> Option<ComponentRule> {
             Operation::ConvertReference { settings } => Some(ComponentRule::Raster {
                 expectation: settings.components,
             }),
-            Operation::PatchPixels { patch } => patch.structure,
+            Operation::PatchPixels { patch, .. } => patch.structure,
             Operation::RemapPalette { remap } => remap.structure,
-            Operation::ComposeCanvas { .. } => None,
+            Operation::ComposeCanvas { .. }
+            | Operation::EditFrames { .. }
+            | Operation::EditRig { .. } => None,
         })
 }
 
@@ -88,12 +104,34 @@ pub(crate) fn commit_raster(
     store: &ProjectStore,
     commit: CommitRaster,
 ) -> Result<RevisionResult, AppError> {
-    let mut rendered = render(&commit.raster, 1)?;
+    commit_sequence(
+        store,
+        CommitSequence {
+            asset: commit.asset,
+            sequence: IndexedSequence::from_raster(commit.raster),
+            rig: None,
+            recipe: commit.recipe,
+            brief: commit.brief,
+            actor: commit.actor,
+            input_hashes: commit.input_hashes,
+            additional_checks: commit.additional_checks,
+            parent: commit.parent,
+            style: commit.style,
+        },
+    )
+}
+
+pub(crate) fn commit_sequence(
+    store: &ProjectStore,
+    commit: CommitSequence,
+) -> Result<RevisionResult, AppError> {
+    let mut rendered = render_sequence(&commit.sequence)?;
     rendered.validation.checks.extend(commit.additional_checks);
     let native_sha256 = sha256_hex(&rendered.native_png);
     let output_hashes = BTreeMap::from([("native.png".to_owned(), native_sha256.clone())]);
     let files = RevisionFiles {
-        raster: commit.raster,
+        sequence: commit.sequence,
+        rig: commit.rig,
         recipe: commit.recipe,
         validation: rendered.validation,
         native_png: rendered.native_png,

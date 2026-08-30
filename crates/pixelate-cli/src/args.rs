@@ -4,6 +4,9 @@ use clap::{Parser, Subcommand};
 
 use crate::pixelize::PixelizeArgs;
 
+mod rig;
+pub(crate) use rig::RigCommand;
+
 #[derive(Debug, Parser)]
 #[command(
     name = "pixelate",
@@ -48,6 +51,16 @@ pub(crate) enum Command {
         #[command(subcommand)]
         command: ReferenceCommand,
     },
+    /// Mutate or import the ordered frames of one asset clip.
+    Frame {
+        #[command(subcommand)]
+        command: FrameCommand,
+    },
+    /// Create, adjust, or bake a generic indexed-pixel part rig.
+    Rig {
+        #[command(subcommand)]
+        command: RigCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -74,7 +87,22 @@ pub(crate) enum RevisionCommand {
         /// Revision to preview; defaults to the current head.
         #[arg(long)]
         revision: Option<String>,
+        #[arg(long)]
+        frame: Option<String>,
         /// Integer nearest-neighbour scale; defaults toward a 512px longest edge.
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..=64))]
+        scale: Option<u16>,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Render stored frame timing as a looping nearest-neighbour GIF.
+    PreviewAnimation {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        revision: Option<String>,
         #[arg(long, value_parser = clap::value_parser!(u16).range(1..=64))]
         scale: Option<u16>,
         #[arg(long)]
@@ -93,6 +121,9 @@ pub(crate) enum RevisionCommand {
         y: u32,
         #[arg(long)]
         index: u8,
+        /// Stable frame ID; required when the revision has multiple frames.
+        #[arg(long)]
+        frame: Option<String>,
         #[arg(long, default_value = "cli")]
         actor: String,
     },
@@ -165,6 +196,9 @@ pub(crate) enum RevisionCommand {
         /// Pixel edit in `X,Y=PALETTE_INDEX` form. Repeat to draw a stroke.
         #[arg(long = "pixel", required = true)]
         pixels: Vec<String>,
+        /// Stable frame ID; required when the revision has multiple frames.
+        #[arg(long)]
+        frame: Option<String>,
         #[arg(long, default_value = "agent")]
         actor: String,
     },
@@ -175,6 +209,8 @@ pub(crate) enum RevisionCommand {
         asset: String,
         #[arg(long)]
         revision: Option<String>,
+        #[arg(long)]
+        frame: Option<String>,
     },
 }
 
@@ -264,5 +300,159 @@ pub(crate) enum ReferenceCommand {
         asset: String,
         #[arg(long)]
         file: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum FrameCommand {
+    Add {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        position: Option<usize>,
+        #[arg(long)]
+        duration: Option<u32>,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Duplicate {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        frame: String,
+        #[arg(long)]
+        position: Option<usize>,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Delete {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        frame: String,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Reorder {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        frame: String,
+        /// Zero-based destination position.
+        #[arg(long)]
+        position: usize,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Duration {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        /// Stable frame ID. Omit to set every frame to the same duration.
+        #[arg(long)]
+        frame: Option<String>,
+        #[arg(long)]
+        duration: u32,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Rename {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        frame: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Import {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long)]
+        position: Option<usize>,
+        #[arg(long)]
+        duration: Option<u32>,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    Replace {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        frame: String,
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    ImportSequence {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        /// Ordered image path; repeat in the intended playback order.
+        #[arg(long = "file", required = true)]
+        files: Vec<PathBuf>,
+        #[arg(long, default_value_t = 100)]
+        duration: u32,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    ImportSheet {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long)]
+        frame_width: u32,
+        #[arg(long)]
+        frame_height: u32,
+        /// Zero-based cell index; repeat in the intended playback order.
+        #[arg(long = "cell", required = true)]
+        order: Vec<usize>,
+        #[arg(long, default_value_t = 100)]
+        duration: u32,
+        #[arg(long, default_value = "agent")]
+        actor: String,
     },
 }

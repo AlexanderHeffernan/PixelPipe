@@ -49,4 +49,16 @@ pub enum AppError {
     ExportExists(PathBuf),
     #[error("unsupported export format: {0}")]
     UnsupportedExportFormat(String),
+    #[error("cannot delete the final remaining frame")]
+    CannotDeleteFinalFrame,
+    #[error("frame position {0} is outside the sequence")]
+    InvalidFramePosition(usize),
+    #[error("an image-sequence import requires at least one explicitly ordered image")]
+    EmptyFrameImport,
+    #[error("spritesheet dimensions must divide exactly by the explicit nonzero frame size")]
+    InvalidSpritesheetGrid,
+    #[error("spritesheet frame index {0} is outside the explicit grid")]
+    SpritesheetFrameOutOfBounds(usize),
+    #[error("multi-frame edits require an explicit frame ID")]
+    AmbiguousFrameTarget,
 }

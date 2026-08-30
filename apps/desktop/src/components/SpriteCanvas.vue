@@ -4,12 +4,17 @@ import {
   PhArrowClockwise,
   PhArrowCounterClockwise,
   PhEraser,
+  PhEye,
+  PhEyeSlash,
   PhEyedropper,
+  PhFilmStrip,
   PhPaintBucket,
   PhPencilSimple,
 } from "@phosphor-icons/vue";
 import { useWorkspace } from "../workspace/context";
 import type { PixelTool } from "../workspace/pixel-editor";
+import RigArtwork from "./RigArtwork.vue";
+import RigOverlay from "./RigOverlay.vue";
 
 const workspace = useWorkspace();
 const zoom = ref(1);
@@ -22,10 +27,14 @@ const editable = computed(
   () =>
     !workspace.canvasLoading.value &&
     workspace.mode.value === "edit" &&
+    !workspace.rig.rig.value &&
     workspace.view.value,
 );
 const displayedImage = computed(
-  () => workspace.canvasImage.value || workspace.loadingArtwork.value,
+  () =>
+    workspace.animation.playbackImage.value ||
+    workspace.canvasImage.value ||
+    workspace.loadingArtwork.value,
 );
 const dimensions = computed(() => workspace.inspection.value);
 const canvasStyle = computed(() => ({
@@ -83,6 +92,9 @@ async function pointerDown(event: PointerEvent) {
     return;
   const onCanvas = pixelCanvas.value?.contains(event.target as Node);
   if (!editable.value || !onCanvas || event.button === 1) {
+    if (workspace.rig.active.value && onCanvas) {
+      workspace.rig.selectedNodeId.value = "";
+    }
     panning.value = true;
     panStart.value = {
       x: event.clientX,
@@ -95,6 +107,7 @@ async function pointerDown(event: PointerEvent) {
   }
   (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
   const point = coordinate(event);
+  workspace.animation.pause();
   if (!(await workspace.prepareEditing())) return;
   workspace.editor.point(point.x, point.y);
 }
@@ -159,6 +172,7 @@ function keyDown(event: KeyboardEvent) {
     const { x, y } = workspace.editor.cursor.value;
     void workspace.prepareEditing().then((ready) => {
       if (!ready) return;
+      workspace.animation.pause();
       workspace.editor.point(x, y);
       void workspace.editor.finishStroke();
     });
@@ -245,6 +259,17 @@ function keyDown(event: KeyboardEvent) {
           "
         />
       </label>
+      <template v-if="workspace.animation.frames.value.length === 1">
+        <span class="toolbar-divider"></span>
+        <button
+          aria-label="Add frame to create animation"
+          title="Add a reference image or pixel art frame"
+          @click="workspace.animation.addFrameFromImage"
+        >
+          <PhFilmStrip weight="regular" />
+          <span>Add frame</span>
+        </button>
+      </template>
     </div>
     <div class="preview-navigation" aria-label="Preview zoom">
       <button aria-label="Zoom out" @click="adjustZoom(zoom - 0.25)">−</button>
@@ -252,6 +277,21 @@ function keyDown(event: KeyboardEvent) {
         {{ Math.round(zoom * 100) }}%
       </button>
       <button aria-label="Zoom in" @click="adjustZoom(zoom + 0.25)">+</button>
+      <button
+        v-if="workspace.rig.rig.value"
+        :aria-label="
+          workspace.rig.guidesVisible.value
+            ? 'Hide rig guides'
+            : 'Show rig guides'
+        "
+        :aria-pressed="workspace.rig.guidesVisible.value"
+        @click="
+          workspace.rig.guidesVisible.value = !workspace.rig.guidesVisible.value
+        "
+      >
+        <PhEye v-if="workspace.rig.guidesVisible.value" />
+        <PhEyeSlash v-else />
+      </button>
     </div>
     <div
       ref="pixelCanvas"
@@ -265,10 +305,13 @@ function keyDown(event: KeyboardEvent) {
       @keydown="keyDown"
     >
       <img
+        v-if="!workspace.rig.rig.value || workspace.animation.playing.value"
         :src="displayedImage"
         :alt="`${workspace.selectedAsset.value?.asset.id} pixel art`"
         draggable="false"
       />
+      <RigArtwork v-else />
+      <RigOverlay />
       <span
         v-for="edit in workspace.editor.pendingEdits.value"
         :key="`${edit.x}:${edit.y}`"

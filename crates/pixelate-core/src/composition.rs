@@ -34,42 +34,44 @@ pub fn compose_canvas(
     {
         return Err(CoreError::InvalidDimensions);
     }
-    let bounds = visible_bounds(source).ok_or(CoreError::EmptySource)?;
-    let scaled_width = scaled_dimension(bounds.width, settings.scale_percent)?;
-    let scaled_height = scaled_dimension(bounds.height, settings.scale_percent)?;
-    let origin_x = (i64::from(settings.width) - i64::from(scaled_width)).div_euclid(2)
-        + i64::from(settings.offset_x);
-    let origin_y = (i64::from(settings.height) - i64::from(scaled_height)).div_euclid(2)
-        - i64::from(settings.offset_y);
     let length = usize::try_from(u64::from(settings.width) * u64::from(settings.height))
         .map_err(|_| CoreError::DimensionOverflow)?;
     let mut pixels = vec![source.palette.transparent_index; length];
 
-    for y in 0..scaled_height {
-        for x in 0..scaled_width {
-            let target_x = origin_x + i64::from(x);
-            let target_y = origin_y + i64::from(y);
-            if target_x < 0
-                || target_y < 0
-                || target_x >= i64::from(settings.width)
-                || target_y >= i64::from(settings.height)
-            {
-                continue;
+    if let Some(bounds) = visible_bounds(source) {
+        let scaled_width = scaled_dimension(bounds.width, settings.scale_percent)?;
+        let scaled_height = scaled_dimension(bounds.height, settings.scale_percent)?;
+        let origin_x = (i64::from(settings.width) - i64::from(scaled_width)).div_euclid(2)
+            + i64::from(settings.offset_x);
+        let origin_y = (i64::from(settings.height) - i64::from(scaled_height)).div_euclid(2)
+            - i64::from(settings.offset_y);
+        for y in 0..scaled_height {
+            for x in 0..scaled_width {
+                let target_x = origin_x + i64::from(x);
+                let target_y = origin_y + i64::from(y);
+                if target_x < 0
+                    || target_y < 0
+                    || target_x >= i64::from(settings.width)
+                    || target_y >= i64::from(settings.height)
+                {
+                    continue;
+                }
+                let source_x =
+                    u32::try_from(u64::from(x) * u64::from(bounds.width) / u64::from(scaled_width))
+                        .map_err(|_| CoreError::DimensionOverflow)?;
+                let source_y = u32::try_from(
+                    u64::from(y) * u64::from(bounds.height) / u64::from(scaled_height),
+                )
+                .map_err(|_| CoreError::DimensionOverflow)?;
+                let source_index =
+                    pixel_offset(source.width, bounds.x + source_x, bounds.y + source_y)?;
+                let target_index = pixel_offset(
+                    settings.width,
+                    u32::try_from(target_x).map_err(|_| CoreError::DimensionOverflow)?,
+                    u32::try_from(target_y).map_err(|_| CoreError::DimensionOverflow)?,
+                )?;
+                pixels[target_index] = source.pixels[source_index];
             }
-            let source_x =
-                u32::try_from(u64::from(x) * u64::from(bounds.width) / u64::from(scaled_width))
-                    .map_err(|_| CoreError::DimensionOverflow)?;
-            let source_y =
-                u32::try_from(u64::from(y) * u64::from(bounds.height) / u64::from(scaled_height))
-                    .map_err(|_| CoreError::DimensionOverflow)?;
-            let source_index =
-                pixel_offset(source.width, bounds.x + source_x, bounds.y + source_y)?;
-            let target_index = pixel_offset(
-                settings.width,
-                u32::try_from(target_x).map_err(|_| CoreError::DimensionOverflow)?,
-                u32::try_from(target_y).map_err(|_| CoreError::DimensionOverflow)?,
-            )?;
-            pixels[target_index] = source.pixels[source_index];
         }
     }
 
@@ -132,7 +134,10 @@ fn visible_bounds(raster: &IndexedRaster) -> Option<Bounds> {
             }
         }
     }
-    found.then_some(Bounds {
+    if !found {
+        return None;
+    }
+    Some(Bounds {
         x: left,
         y: top,
         width: right - left + 1,
@@ -181,5 +186,24 @@ mod tests {
         assert_eq!(result.pixels, vec![0, 0, 1, 0, 0, 0, 0, 0, 0]);
         assert_eq!(result.metadata["canvas_composition"], "3x3:100%@2,1");
         assert_eq!(PALETTE_SCHEMA, result.palette.schema);
+    }
+
+    #[test]
+    fn composes_a_fully_transparent_frame_without_panicking() {
+        let mut source = raster();
+        source.pixels.fill(source.palette.transparent_index);
+        let result = compose_canvas(
+            &source,
+            CanvasSettings {
+                width: 3,
+                height: 2,
+                scale_percent: 100,
+                offset_x: 0,
+                offset_y: 0,
+            },
+        )
+        .expect("compose blank frame");
+        assert_eq!(result.pixels, vec![source.palette.transparent_index; 6]);
+        assert_eq!(result.pivot, Some([1, 1]));
     }
 }

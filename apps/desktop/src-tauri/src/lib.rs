@@ -8,7 +8,10 @@ use commands::{
         export_asset_file, import_reference, initialize_asset, open_project, preview_composition,
         preview_selected_reference, rename_asset, update_asset_brief,
     },
-    revisions::{fill_revision, load_revision, patch_revision, remap_revision, set_asset_head},
+    revisions::{
+        bake_rig, create_rig, fill_revision, load_revision, mutate_frames, mutate_rig,
+        patch_revision, remap_revision, set_asset_head,
+    },
     terminal::{TerminalSessions, close_terminal, resize_terminal, start_terminal, write_terminal},
 };
 
@@ -43,6 +46,10 @@ pub fn run() {
             fill_revision,
             set_asset_head,
             remap_revision,
+            mutate_frames,
+            create_rig,
+            mutate_rig,
+            bake_rig,
             cli_installation_status,
             install_cli,
             uninstall_cli,

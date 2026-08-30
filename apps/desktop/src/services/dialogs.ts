@@ -28,6 +28,20 @@ export async function chooseReferenceImage(): Promise<string | undefined> {
   return (await chooseReferenceImages())[0];
 }
 
+export async function chooseFrameImage(): Promise<string | undefined> {
+  const selected = await open({
+    multiple: false,
+    title: "Add a reference image or pixel art frame",
+    filters: [
+      {
+        name: "Reference or pixel art image",
+        extensions: ["png", "jpg", "jpeg", "webp"],
+      },
+    ],
+  });
+  return typeof selected === "string" ? selected : undefined;
+}
+
 export async function chooseExportFile(
   asset: string,
 ): Promise<string | undefined> {
@@ -50,5 +64,16 @@ export const confirmDeleteAsset = (asset: string) =>
       kind: "warning",
       okLabel: "Delete",
       cancelLabel: "Cancel",
+    },
+  );
+
+export const confirmReplaceAnimationWithPixelization = (frames: number) =>
+  confirm(
+    `Re-pixelizing starts a new one-frame version and replaces the current ${frames}-frame animation as the active revision. The animation remains in revision history, but it will no longer be the version shown or exported. Continue?`,
+    {
+      title: "Return to Pixelize?",
+      kind: "warning",
+      okLabel: "Return to Pixelize",
+      cancelLabel: "Keep Animation",
     },
   );

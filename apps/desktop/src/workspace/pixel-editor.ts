@@ -133,7 +133,14 @@ export function createPixelEditor(context: EditorContext) {
     if (!edits.length) return;
     try {
       await mutate((root, asset, parent) =>
-        api.patchRevision(root, asset, parent, edits, "user"),
+        api.patchRevision(
+          root,
+          asset,
+          parent,
+          edits,
+          context.view.value!.metadata.selected_frame_id,
+          "user",
+        ),
       );
     } finally {
       pendingEdits.value = [];
@@ -142,7 +149,16 @@ export function createPixelEditor(context: EditorContext) {
 
   async function fill(x: number, y: number) {
     await mutate((root, asset, parent) =>
-      api.fillRevision(root, asset, parent, x, y, selectedIndex.value, "user"),
+      api.fillRevision(
+        root,
+        asset,
+        parent,
+        x,
+        y,
+        selectedIndex.value,
+        context.view.value!.metadata.selected_frame_id,
+        "user",
+      ),
     );
   }
 
@@ -286,6 +302,10 @@ export function createPixelEditor(context: EditorContext) {
     pendingEdits.value = [];
   }
 
+  function clearRedo() {
+    redoStack.value = [];
+  }
+
   return {
     tool,
     selectedIndex,
@@ -304,6 +324,7 @@ export function createPixelEditor(context: EditorContext) {
     undo,
     redo,
     resetHistory,
+    clearRedo,
     moveCursor,
   };
 }

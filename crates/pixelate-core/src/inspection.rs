@@ -113,7 +113,10 @@ impl BoundsAccumulator {
     }
 
     fn finish(self) -> Option<RasterBounds> {
-        self.found.then_some(RasterBounds {
+        if !self.found {
+            return None;
+        }
+        Some(RasterBounds {
             x: self.min_x,
             y: self.min_y,
             width: self.max_x - self.min_x + 1,
@@ -166,5 +169,13 @@ mod tests {
             })
         );
         assert_eq!(inspection.palette[1].count, 2);
+    }
+
+    #[test]
+    fn fully_transparent_raster_has_no_visible_bounds() {
+        let inspection = inspect_raster(&raster(vec![0; 4])).expect("inspect blank frame");
+        assert_eq!(inspection.visible_bounds, None);
+        assert_eq!(inspection.visible_pixels, 0);
+        assert_eq!(inspection.text_rows, vec!["-- --", "-- --"]);
     }
 }

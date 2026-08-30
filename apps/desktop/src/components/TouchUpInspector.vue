@@ -31,7 +31,12 @@ function canvasNumber(
 
 <template>
   <header class="inspector-heading">
-    <div><span>Step 2</span><strong>Canvas &amp; Touch Up</strong></div>
+    <div>
+      <span
+        >Step {{ workspace.view.value?.metadata.rig_ancestor ? 3 : 2 }}</span
+      >
+      <strong>Canvas &amp; Touch Up</strong>
+    </div>
   </header>
 
   <p
@@ -131,7 +136,16 @@ function canvasNumber(
   <div class="inspector-spacer"></div>
   <footer class="phase-action canvas-actions">
     <button
-      v-if="workspace.canConvert.value"
+      v-if="workspace.view.value?.metadata.rig_ancestor"
+      class="back-button continue-button"
+      :disabled="workspace.busy.value"
+      @click="workspace.rig.returnToRig"
+    >
+      <PhArrowLeft aria-hidden="true" />
+      <span>Back to Rigging</span>
+    </button>
+    <button
+      v-else-if="workspace.canConvert.value"
       class="back-button continue-button"
       :disabled="workspace.busy.value"
       @click="workspace.reconvert"
