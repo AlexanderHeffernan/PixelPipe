@@ -5,6 +5,7 @@ import type {
   RevisionViewResponse,
   RigNodePose,
 } from "../types";
+import { apply, invert, worldMatrices } from "./rig-geometry";
 
 interface RigContext {
   project: Ref<ProjectBrowser | undefined>;
@@ -16,18 +17,11 @@ interface RigContext {
   onMutation: () => void;
 }
 
-interface Matrix {
-  a: number;
-  b: number;
-  c: number;
-  d: number;
-  tx: number;
-  ty: number;
-}
-
 export function createRigEditor(context: RigContext) {
   const active = ref(false);
+  const bakedFromRig = ref(false);
   const selectedNodeId = ref("");
+  const draftNodes = ref<RigNodePose[]>();
   const rig = computed(() => context.view.value?.metadata.rig);
   const currentPose = computed(() =>
     rig.value?.poses.find(
@@ -35,9 +29,10 @@ export function createRigEditor(context: RigContext) {
     ),
   );
   const selectedNode = computed(() =>
-    currentPose.value?.nodes.find(
-      (node) => node.node_id === selectedNodeId.value,
-    ),
+    renderedNodes.value.find((node) => node.node_id === selectedNodeId.value),
+  );
+  const renderedNodes = computed(
+    () => draftNodes.value ?? currentPose.value?.nodes ?? [],
   );
   const manualFrames = computed(() => {
     const metadata = context.view.value?.metadata;
@@ -49,8 +44,8 @@ export function createRigEditor(context: RigContext) {
   });
   const handles = computed(() => {
     if (!active.value || !currentPose.value || !rig.value) return [];
-    const matrices = worldMatrices(rig.value.nodes, currentPose.value.nodes);
-    return currentPose.value.nodes.map((node) => {
+    const matrices = worldMatrices(rig.value.nodes, renderedNodes.value);
+    return renderedNodes.value.map((node) => {
       const point = apply(matrices.get(node.node_id)!, 0, 0);
       const parentId = rig.value!.nodes.find(
         (candidate) => candidate.id === node.node_id,
@@ -58,15 +53,50 @@ export function createRigEditor(context: RigContext) {
       const parent = parentId
         ? apply(matrices.get(parentId)!, 0, 0)
         : undefined;
-      return { ...node, x: point.x, y: point.y, parent };
+      const part = rig.value!.parts.find((part) => part.id === node.part_id)!;
+      const matrix = matrices.get(node.node_id)!;
+      const corners = [
+        apply(matrix, -part.pivot[0], -part.pivot[1]),
+        apply(matrix, part.width - part.pivot[0], -part.pivot[1]),
+        apply(matrix, part.width - part.pivot[0], part.height - part.pivot[1]),
+        apply(matrix, -part.pivot[0], part.height - part.pivot[1]),
+      ];
+      return { ...node, x: point.x, y: point.y, parent, corners };
     });
+  });
+  const artwork = computed(() => {
+    if (!rig.value) return [];
+    const matrices = worldMatrices(rig.value.nodes, renderedNodes.value);
+    return renderedNodes.value
+      .filter((node) => node.visible)
+      .map((node) => {
+        const part = rig.value!.parts.find(
+          (candidate) => candidate.id === node.part_id,
+        )!;
+        return {
+          nodeId: node.node_id,
+          part,
+          matrix: matrices.get(node.node_id)!,
+          href: context.view.value?.rig_part_pngs?.[part.id]
+            ? api.pngDataUrl(context.view.value.rig_part_pngs[part.id])
+            : "",
+          depth: node.depth,
+        };
+      })
+      .sort((left, right) =>
+        left.depth === right.depth
+          ? left.nodeId.localeCompare(right.nodeId)
+          : left.depth - right.depth,
+      );
   });
 
   watch(
     () => `${context.assetId.value}:${Boolean(rig.value)}`,
     () => {
       active.value = Boolean(rig.value);
-      selectedNodeId.value = rig.value?.nodes[0]?.id ?? "";
+      bakedFromRig.value = false;
+      selectedNodeId.value = "";
+      draftNodes.value = undefined;
     },
     { immediate: true },
   );
@@ -121,20 +151,58 @@ export function createRigEditor(context: RigContext) {
   }
 
   function moveNode(nodeId: string, worldX: number, worldY: number) {
-    const pose = currentPose.value;
-    const metadata = rig.value;
-    if (!pose || !metadata) return;
+    beginNodeDrag(nodeId);
+    previewNodeDrag(nodeId, worldX, worldY);
+    return finishNodeDrag(nodeId);
+  }
+
+  function beginNodeDrag(nodeId: string) {
+    if (!currentPose.value) return;
     selectedNodeId.value = nodeId;
-    const definition = metadata.nodes.find((node) => node.id === nodeId);
+    draftNodes.value = currentPose.value.nodes.map((node) => ({ ...node }));
+  }
+
+  function previewNodeDrag(nodeId: string, worldX: number, worldY: number) {
+    const metadata = rig.value;
+    const nodes = draftNodes.value;
+    if (!metadata || !nodes) return;
+    const node = nodes.find((candidate) => candidate.node_id === nodeId);
+    const definition = metadata.nodes.find(
+      (candidate) => candidate.id === nodeId,
+    );
+    if (!node || !definition) return;
     let point = { x: worldX, y: worldY };
-    if (definition?.parent_id) {
-      const matrices = worldMatrices(metadata.nodes, pose.nodes);
+    if (definition.parent_id) {
+      const matrices = worldMatrices(metadata.nodes, nodes);
       point = invert(matrices.get(definition.parent_id)!, worldX, worldY);
+      const currentX = node.x_millis / 1000;
+      const currentY = node.y_millis / 1000;
+      const reach = Math.hypot(currentX, currentY);
+      const requested = Math.hypot(point.x, point.y);
+      if (reach > 0 && requested > 0) {
+        point.x = (point.x / requested) * reach;
+        point.y = (point.y / requested) * reach;
+      }
     }
+    node.x_millis = Math.round(point.x * 1000);
+    node.y_millis = Math.round(point.y * 1000);
+    draftNodes.value = [...nodes];
+  }
+
+  function finishNodeDrag(nodeId: string) {
+    const node = draftNodes.value?.find(
+      (candidate) => candidate.node_id === nodeId,
+    );
+    draftNodes.value = undefined;
+    if (!node) return Promise.resolve();
     return updateSelected({
-      x_millis: Math.round(point.x * 1000),
-      y_millis: Math.round(point.y * 1000),
+      x_millis: node.x_millis,
+      y_millis: node.y_millis,
     });
+  }
+
+  function cancelNodeDrag() {
+    draftNodes.value = undefined;
   }
 
   function duplicatePose(poseId: string) {
@@ -166,81 +234,29 @@ export function createRigEditor(context: RigContext) {
         result.revision,
       );
       active.value = false;
+      bakedFromRig.value = true;
       context.notice("Rig baked; frames are ready for pixel refinement");
     });
   }
 
   return {
     active,
+    bakedFromRig,
     rig,
     currentPose,
     selectedNodeId,
     selectedNode,
     manualFrames,
     handles,
+    artwork,
     mutate,
     updateSelected,
     moveNode,
+    beginNodeDrag,
+    previewNodeDrag,
+    finishNodeDrag,
+    cancelNodeDrag,
     duplicatePose,
     bake,
-  };
-}
-
-function worldMatrices(
-  nodes: { id: string; parent_id?: string }[],
-  poses: RigNodePose[],
-) {
-  const result = new Map<string, Matrix>();
-  const resolve = (id: string): Matrix => {
-    const existing = result.get(id);
-    if (existing) return existing;
-    const definition = nodes.find((node) => node.id === id)!;
-    const pose = poses.find((node) => node.node_id === id)!;
-    const angle = (pose.rotation_millidegrees * Math.PI) / 180_000;
-    const cosine = Math.cos(angle);
-    const sine = Math.sin(angle);
-    const local: Matrix = {
-      a: (cosine * pose.scale_x_millis) / 1000,
-      b: (sine * pose.scale_x_millis) / 1000,
-      c: (-sine * pose.scale_y_millis) / 1000,
-      d: (cosine * pose.scale_y_millis) / 1000,
-      tx: pose.x_millis / 1000,
-      ty: pose.y_millis / 1000,
-    };
-    const matrix = definition.parent_id
-      ? multiply(resolve(definition.parent_id), local)
-      : local;
-    result.set(id, matrix);
-    return matrix;
-  };
-  nodes.forEach((node) => resolve(node.id));
-  return result;
-}
-
-function multiply(parent: Matrix, child: Matrix): Matrix {
-  return {
-    a: parent.a * child.a + parent.c * child.b,
-    b: parent.b * child.a + parent.d * child.b,
-    c: parent.a * child.c + parent.c * child.d,
-    d: parent.b * child.c + parent.d * child.d,
-    tx: parent.a * child.tx + parent.c * child.ty + parent.tx,
-    ty: parent.b * child.tx + parent.d * child.ty + parent.ty,
-  };
-}
-
-function apply(matrix: Matrix, x: number, y: number) {
-  return {
-    x: matrix.a * x + matrix.c * y + matrix.tx,
-    y: matrix.b * x + matrix.d * y + matrix.ty,
-  };
-}
-
-function invert(matrix: Matrix, x: number, y: number) {
-  const determinant = matrix.a * matrix.d - matrix.b * matrix.c;
-  const offsetX = x - matrix.tx;
-  const offsetY = y - matrix.ty;
-  return {
-    x: (matrix.d * offsetX - matrix.c * offsetY) / determinant,
-    y: (-matrix.b * offsetX + matrix.a * offsetY) / determinant,
   };
 }

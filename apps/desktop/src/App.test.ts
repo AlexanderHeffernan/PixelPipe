@@ -17,6 +17,7 @@ const workspaceCss = readFileSync("src/styles/workspace.css", "utf8");
 const dialogs = vi.hoisted(() => ({
   project: "/game",
   references: ["/tmp/New Hero.jpg"],
+  confirmAnimationReplacement: vi.fn(async () => true),
 }));
 const tauriWindow = vi.hoisted(() => ({
   isFullscreen: vi.fn(async () => false),
@@ -29,6 +30,7 @@ vi.mock("./services/dialogs", () => ({
   chooseReferenceImages: vi.fn(async () => dialogs.references),
   chooseExportFile: vi.fn(async () => "/exports/custom-medic.webp"),
   confirmDeleteAsset: vi.fn(async () => true),
+  confirmReplaceAnimationWithPixelization: dialogs.confirmAnimationReplacement,
 }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => tauriWindow,
@@ -58,6 +60,8 @@ const localStorageDescriptor = Object.getOwnPropertyDescriptor(
 );
 
 beforeEach(() => {
+  dialogs.confirmAnimationReplacement.mockReset();
+  dialogs.confirmAnimationReplacement.mockResolvedValue(true);
   tauriWindow.isFullscreen.mockClear();
   tauriWindow.onResized.mockClear();
   vi.spyOn(api, "recentProject").mockResolvedValue(null);
@@ -102,7 +106,7 @@ async function enterCanvas() {
   await fireEvent.click(
     screen.getByRole("button", { name: /Continue to Canvas/ }),
   );
-  await screen.findByText("Canvas & Touch Up");
+  await screen.findByText(/Canvas & Touch Up|Rig Motion/);
 }
 
 describe("deterministic workstation", () => {
@@ -365,6 +369,10 @@ describe("deterministic workstation", () => {
       frame_duration_ms: 80,
       interpolation: { inbetweens: 1, looped: false },
     };
+    rigged.rig_part_pngs = {
+      "left-part": "left-png",
+      "right-part": "right-png",
+    };
     vi.mocked(api.bakeRig).mockImplementation(async () => {
       baked = true;
       return commit;
@@ -383,13 +391,29 @@ describe("deterministic workstation", () => {
     await enterCanvas();
     expect(screen.getByLabelText("Editable pixel rig")).toBeVisible();
     expect(
-      screen.getAllByRole("button", { name: /Move rig node/ }),
+      screen.getAllByRole("button", { name: /Adjust rig joint/ }),
     ).toHaveLength(2);
+    expect(document.querySelectorAll(".rig-overlay line")).toHaveLength(1);
+    expect(document.querySelectorAll(".rig-artwork image")).toHaveLength(2);
     expect(
       screen.queryByRole("button", { name: "Pencil" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Select a joint on the canvas to edit its sprite."),
+    ).toBeVisible();
 
-    const rotation = screen.getByLabelText("Node rotation in degrees");
+    await fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Adjust rig joint left" }),
+      { button: 0, pointerId: 1 },
+    );
+    expect(document.querySelector(".rig-selection")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Sprite assigned to selected joint"),
+    ).toHaveValue("left-part");
+    await fireEvent.pointerCancel(screen.getByLabelText("Editable pixel rig"));
+    const rotation = screen.getByLabelText(
+      "Selected sprite rotation in degrees",
+    );
     await fireEvent.update(rotation, "25");
     await fireEvent.change(rotation);
     await waitFor(() =>
@@ -407,7 +431,7 @@ describe("deterministic workstation", () => {
       ),
     );
     await fireEvent.keyDown(
-      screen.getByRole("button", { name: "Move rig node left" }),
+      screen.getByRole("button", { name: "Adjust rig joint left" }),
       { key: "ArrowRight" },
     );
     await waitFor(() =>
@@ -426,6 +450,46 @@ describe("deterministic workstation", () => {
       ),
     );
 
+    vi.mocked(api.mutateRig).mockClear();
+    const overlay = screen.getByLabelText("Editable pixel rig");
+    vi.spyOn(overlay, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 100,
+      width: 100,
+      height: 100,
+      toJSON: () => ({}),
+    });
+    await fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Adjust rig joint right" }),
+      { button: 0, pointerId: 2, clientX: 40, clientY: 40 },
+    );
+    await fireEvent.pointerMove(overlay, {
+      pointerId: 2,
+      clientX: 50,
+      clientY: 50,
+    });
+    expect(api.mutateRig).not.toHaveBeenCalled();
+    expect(document.querySelector(".rig-reach")).toBeInTheDocument();
+    await fireEvent.pointerUp(overlay, {
+      pointerId: 2,
+      clientX: 50,
+      clientY: 50,
+    });
+    await waitFor(() => expect(api.mutateRig).toHaveBeenCalledTimes(1));
+    await fireEvent.pointerDown(overlay, {
+      button: 0,
+      pointerId: 3,
+      clientX: 2,
+      clientY: 2,
+    });
+    expect(
+      screen.getByText("Select a joint on the canvas to edit its sprite."),
+    ).toBeVisible();
+
     await fireEvent.click(
       screen.getByRole("button", { name: "Open frame timeline" }),
     );
@@ -434,7 +498,7 @@ describe("deterministic workstation", () => {
     expect(screen.queryByText("__generated-0001")).not.toBeInTheDocument();
 
     await fireEvent.click(
-      screen.getByRole("button", { name: "Bake rig for pixel editing" }),
+      screen.getByRole("button", { name: "Proceed to Touch Ups" }),
     );
     await waitFor(() =>
       expect(api.bakeRig).toHaveBeenCalledWith(
@@ -619,6 +683,16 @@ describe("deterministic workstation", () => {
     await enterCanvas();
     await fireEvent.click(
       screen.getByRole("button", { name: "Open frame timeline" }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    vi.mocked(api.loadRevision).mockClear();
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Play animation" }),
+    );
+    await vi.advanceTimersByTimeAsync(25);
+    expect(api.loadRevision).not.toHaveBeenCalled();
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Pause animation" }),
     );
     await fireEvent.click(screen.getByRole("button", { name: "Loop" }));
     await fireEvent.click(
@@ -918,6 +992,23 @@ describe("deterministic workstation", () => {
       screen.getByRole("button", { name: /Back to Pixelize/ }),
     );
     await screen.findByText("Pixelize");
+  });
+
+  it("does not silently replace an animation when returning to Pixelize", async () => {
+    const animated = structuredClone(revisionView);
+    animated.metadata.frames.push({ id: "pose-b", duration_ms: 120 });
+    vi.mocked(api.loadRevision).mockResolvedValue(animated);
+    dialogs.confirmAnimationReplacement.mockResolvedValue(false);
+
+    await openWorkstation();
+    await enterCanvas();
+    await fireEvent.click(
+      screen.getByRole("button", { name: /Back to Pixelize/ }),
+    );
+
+    expect(dialogs.confirmAnimationReplacement).toHaveBeenCalledWith(2);
+    expect(screen.getByText("Canvas & Touch Up")).toBeVisible();
+    expect(screen.queryByText("Pixelize")).not.toBeInTheDocument();
   });
 
   it("restores the recent project on launch", async () => {

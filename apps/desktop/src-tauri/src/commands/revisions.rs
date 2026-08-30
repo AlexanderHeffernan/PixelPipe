@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use pixelate_app::{
     BakeRig, CreateRig, FillRevisionDocument, FrameMutation, InspectRevision, MutateRig,
@@ -12,6 +14,7 @@ use super::{CommandResult, blocking, command_error};
 pub(crate) struct RevisionViewResponse {
     metadata: RevisionViewMetadata,
     native_png_base64: String,
+    rig_part_pngs: BTreeMap<String, String>,
 }
 
 #[tauri::command]
@@ -21,6 +24,11 @@ pub(crate) async fn load_revision(request: InspectRevision) -> CommandResult<Rev
         Ok(RevisionViewResponse {
             metadata: view.metadata,
             native_png_base64: STANDARD.encode(view.native_png),
+            rig_part_pngs: view
+                .rig_part_pngs
+                .into_iter()
+                .map(|part| (part.id, STANDARD.encode(part.native_png)))
+                .collect(),
         })
     })
     .await

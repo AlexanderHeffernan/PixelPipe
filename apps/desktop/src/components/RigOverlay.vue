@@ -4,7 +4,7 @@ import { useWorkspace } from "../workspace/context";
 
 const workspace = useWorkspace();
 const dragging = ref("");
-const dragPoint = ref({ x: 0, y: 0 });
+const dragMoved = ref(false);
 const overlay = ref<SVGSVGElement>();
 
 function point(event: PointerEvent) {
@@ -22,32 +22,42 @@ function pointerDown(event: PointerEvent, nodeId: string) {
   event.stopPropagation();
   workspace.animation.pause();
   dragging.value = nodeId;
-  dragPoint.value = point(event);
-  workspace.rig.selectedNodeId.value = nodeId;
+  dragMoved.value = false;
+  workspace.rig.beginNodeDrag(nodeId);
   overlay.value?.setPointerCapture?.(event.pointerId);
 }
 
 function pointerMove(event: PointerEvent) {
   if (!dragging.value) return;
   event.stopPropagation();
-  dragPoint.value = point(event);
+  dragMoved.value = true;
+  const position = point(event);
+  workspace.rig.previewNodeDrag(dragging.value, position.x, position.y);
 }
 
 function pointerUp(event: PointerEvent) {
   if (!dragging.value) return;
   event.stopPropagation();
-  const position = point(event);
   const node = dragging.value;
   dragging.value = "";
-  void workspace.rig.moveNode(node, position.x, position.y);
+  if (dragMoved.value) void workspace.rig.finishNodeDrag(node);
+  else workspace.rig.cancelNodeDrag();
 }
 
-function x(handle: { node_id: string; x: number }) {
-  return dragging.value === handle.node_id ? dragPoint.value.x : handle.x;
+function cancelDrag() {
+  dragging.value = "";
+  dragMoved.value = false;
+  workspace.rig.cancelNodeDrag();
 }
 
-function y(handle: { node_id: string; y: number }) {
-  return dragging.value === handle.node_id ? dragPoint.value.y : handle.y;
+function deselect(event: PointerEvent) {
+  if (event.target !== event.currentTarget) return;
+  event.stopPropagation();
+  workspace.rig.selectedNodeId.value = "";
+}
+
+function points(corners: { x: number; y: number }[]) {
+  return corners.map((corner) => `${corner.x},${corner.y}`).join(" ");
 }
 
 function moveWithKeyboard(event: KeyboardEvent, nodeId: string) {
@@ -81,7 +91,8 @@ function moveWithKeyboard(event: KeyboardEvent, nodeId: string) {
     aria-label="Editable pixel rig"
     @pointermove="pointerMove"
     @pointerup="pointerUp"
-    @pointercancel="dragging = ''"
+    @pointercancel="cancelDrag"
+    @pointerdown="deselect"
   >
     <template
       v-for="handle in workspace.rig.handles.value"
@@ -91,13 +102,27 @@ function moveWithKeyboard(event: KeyboardEvent, nodeId: string) {
         v-if="handle.parent"
         :x1="handle.parent.x"
         :y1="handle.parent.y"
-        :x2="x(handle)"
-        :y2="y(handle)"
+        :x2="handle.x"
+        :y2="handle.y"
+      />
+      <circle
+        v-if="
+          handle.parent && workspace.rig.selectedNodeId.value === handle.node_id
+        "
+        class="rig-reach"
+        :cx="handle.parent.x"
+        :cy="handle.parent.y"
+        :r="Math.hypot(handle.x - handle.parent.x, handle.y - handle.parent.y)"
+      />
+      <polygon
+        v-if="workspace.rig.selectedNodeId.value === handle.node_id"
+        class="rig-selection"
+        :points="points(handle.corners)"
       />
       <g
         role="button"
         tabindex="0"
-        :aria-label="`Move rig node ${handle.node_id}`"
+        :aria-label="`Adjust rig joint ${handle.node_id}`"
         :class="{
           selected: workspace.rig.selectedNodeId.value === handle.node_id,
           hidden: !handle.visible,
@@ -105,8 +130,8 @@ function moveWithKeyboard(event: KeyboardEvent, nodeId: string) {
         @pointerdown="pointerDown($event, handle.node_id)"
         @keydown="moveWithKeyboard($event, handle.node_id)"
       >
-        <circle :cx="x(handle)" :cy="y(handle)" r="1.35" />
-        <circle :cx="x(handle)" :cy="y(handle)" r="0.42" class="rig-pivot" />
+        <circle :cx="handle.x" :cy="handle.y" r="1.35" />
+        <circle :cx="handle.x" :cy="handle.y" r="0.42" class="rig-pivot" />
       </g>
     </template>
   </svg>

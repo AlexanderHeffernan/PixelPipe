@@ -11,8 +11,8 @@ import {
 } from "@phosphor-icons/vue";
 import { useWorkspace } from "../workspace/context";
 import type { PixelTool } from "../workspace/pixel-editor";
+import RigArtwork from "./RigArtwork.vue";
 import RigOverlay from "./RigOverlay.vue";
-import RigToolbar from "./RigToolbar.vue";
 
 const workspace = useWorkspace();
 const zoom = ref(1);
@@ -29,7 +29,10 @@ const editable = computed(
     workspace.view.value,
 );
 const displayedImage = computed(
-  () => workspace.canvasImage.value || workspace.loadingArtwork.value,
+  () =>
+    workspace.animation.playbackImage.value ||
+    workspace.canvasImage.value ||
+    workspace.loadingArtwork.value,
 );
 const dimensions = computed(() => workspace.inspection.value);
 const canvasStyle = computed(() => ({
@@ -263,7 +266,6 @@ function keyDown(event: KeyboardEvent) {
         </button>
       </template>
     </div>
-    <RigToolbar v-if="workspace.rig.rig.value" />
     <div class="preview-navigation" aria-label="Preview zoom">
       <button aria-label="Zoom out" @click="adjustZoom(zoom - 0.25)">−</button>
       <button aria-label="Reset preview view" @click="resetView">
@@ -283,10 +285,12 @@ function keyDown(event: KeyboardEvent) {
       @keydown="keyDown"
     >
       <img
+        v-if="!workspace.rig.rig.value || workspace.animation.playing.value"
         :src="displayedImage"
         :alt="`${workspace.selectedAsset.value?.asset.id} pixel art`"
         draggable="false"
       />
+      <RigArtwork v-else />
       <RigOverlay />
       <span
         v-for="edit in workspace.editor.pendingEdits.value"

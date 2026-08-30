@@ -420,6 +420,19 @@ fn generic_rig_is_hash_verified_parent_linked_interpolated_and_explicitly_baked(
     assert!(created_snapshot.path.join("rig.json").is_file());
     assert_eq!(created_snapshot.sequence.frames.len(), 4);
     assert_eq!(created_snapshot.sequence.frames[1].id, "__generated-0001");
+    let view = load_revision_view(InspectRevision {
+        start: root.clone(),
+        asset: "hero".to_owned(),
+        revision: Some(created.revision.clone()),
+        frame_id: Some("pose-a".to_owned()),
+    })
+    .unwrap();
+    assert_eq!(view.rig_part_pngs.len(), 2);
+    assert!(
+        view.rig_part_pngs
+            .iter()
+            .all(|part| part.native_png.starts_with(b"\x89PNG"))
+    );
 
     let moved = mutate_rig(MutateRig {
         start: root.clone(),

@@ -2,6 +2,7 @@
 import { useWorkspace } from "../workspace/context";
 import { useSidebarResize } from "../workspace/sidebar-resize";
 import PixelizeInspector from "./PixelizeInspector.vue";
+import RigInspector from "./RigInspector.vue";
 import TouchUpInspector from "./TouchUpInspector.vue";
 
 const workspace = useWorkspace();
@@ -25,6 +26,7 @@ const { width, isResizing, startResize, resizeWithKeyboard } = useSidebarResize(
   >
     <div class="conversion-inspector__body">
       <PixelizeInspector v-if="workspace.mode.value === 'convert'" />
+      <RigInspector v-else-if="workspace.rig.rig.value" />
       <TouchUpInspector v-else />
     </div>
     <div

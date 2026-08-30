@@ -66,3 +66,14 @@ export const confirmDeleteAsset = (asset: string) =>
       cancelLabel: "Cancel",
     },
   );
+
+export const confirmReplaceAnimationWithPixelization = (frames: number) =>
+  confirm(
+    `Re-pixelizing starts a new one-frame version and replaces the current ${frames}-frame animation as the active revision. The animation remains in revision history, but it will no longer be the version shown or exported. Continue?`,
+    {
+      title: "Return to Pixelize?",
+      kind: "warning",
+      okLabel: "Return to Pixelize",
+      cancelLabel: "Keep Animation",
+    },
+  );

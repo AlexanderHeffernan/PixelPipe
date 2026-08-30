@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use pixelate_core::{
-    Palette, RasterInspection, RigInterpolation, RigNode, RigPose, SequenceMotion, inspect_raster,
-    inspect_sequence_motion, render,
+    IndexedRaster, Palette, RASTER_SCHEMA, RasterInspection, RigInterpolation, RigNode, RigPose,
+    SequenceMotion, inspect_raster, inspect_sequence_motion, render,
 };
 use pixelate_project::{
     AssetManifest, ProjectError, ProjectManifest, ProjectStore, RevisionManifest,
@@ -97,6 +97,13 @@ pub struct RigPartMetadata {
 pub struct RevisionView {
     pub metadata: RevisionViewMetadata,
     pub native_png: Vec<u8>,
+    pub rig_part_pngs: Vec<RigPartPng>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RigPartPng {
+    pub id: String,
+    pub native_png: Vec<u8>,
 }
 
 /// Lists the discovered project, assets, and immutable revision history.
@@ -150,6 +157,31 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
         })
         .collect();
     let native_png = render(&raster, 1)?.native_png;
+    let rig_part_pngs = snapshot
+        .rig
+        .as_ref()
+        .map(|rig| {
+            rig.parts
+                .iter()
+                .map(|part| {
+                    let raster = IndexedRaster {
+                        schema: RASTER_SCHEMA.to_owned(),
+                        width: part.width,
+                        height: part.height,
+                        palette: rig.palette.clone(),
+                        pixels: part.pixels.clone(),
+                        pivot: Some(part.pivot),
+                        metadata: BTreeMap::new(),
+                    };
+                    Ok(RigPartPng {
+                        id: part.id.clone(),
+                        native_png: render(&raster, 1)?.native_png,
+                    })
+                })
+                .collect::<Result<Vec<_>, pixelate_core::CoreError>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
     let rig = snapshot.rig.map(|rig| RigView {
         parts: rig
             .parts
@@ -181,6 +213,7 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
             rig,
         },
         native_png,
+        rig_part_pngs,
     })
 }
 

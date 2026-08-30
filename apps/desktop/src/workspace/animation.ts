@@ -18,6 +18,7 @@ export function createAnimation(context: AnimationContext) {
   const loop = ref(true);
   const timelineOpen = ref(false);
   const thumbnails = ref<Record<string, string>>({});
+  const playheadFrameId = ref("");
   let timer: ReturnType<typeof setTimeout> | undefined;
   let playbackGeneration = 0;
   let thumbnailGeneration = 0;
@@ -27,10 +28,12 @@ export function createAnimation(context: AnimationContext) {
       ? context.view.value.metadata.frames
       : [],
   );
-  const selectedFrameId = computed(() =>
-    context.view.value?.metadata.asset === context.assetId.value
-      ? context.view.value.metadata.selected_frame_id
-      : "",
+  const selectedFrameId = computed(
+    () =>
+      playheadFrameId.value ||
+      (context.view.value?.metadata.asset === context.assetId.value
+        ? context.view.value.metadata.selected_frame_id
+        : ""),
   );
   const selectedIndex = computed(() =>
     frames.value.findIndex((frame) => frame.id === selectedFrameId.value),
@@ -64,15 +67,22 @@ export function createAnimation(context: AnimationContext) {
 
   function pause() {
     playing.value = false;
+    playheadFrameId.value = "";
     playbackGeneration += 1;
     if (timer) clearTimeout(timer);
     timer = undefined;
   }
 
-  function play() {
+  async function play() {
     if (frames.value.length < 2 || playing.value) return;
     playing.value = true;
-    schedule(playbackGeneration);
+    const generation = playbackGeneration;
+    if (frames.value.some((frame) => !thumbnails.value[frame.id]))
+      await loadThumbnails();
+    if (!playing.value || generation !== playbackGeneration) return;
+    playheadFrameId.value =
+      context.view.value?.metadata.selected_frame_id ?? frames.value[0].id;
+    schedule(generation);
   }
 
   function schedule(generation: number) {
@@ -84,14 +94,16 @@ export function createAnimation(context: AnimationContext) {
     );
   }
 
-  async function advancePlayback(generation: number) {
+  function advancePlayback(generation: number) {
     if (!playing.value || generation !== playbackGeneration) return;
     const next = selectedIndex.value + 1;
     if (next >= frames.value.length && !loop.value) {
+      const finalId = frames.value.at(-1)!.id;
       pause();
+      void loadFrame(finalId);
       return;
     }
-    await loadFrame(frames.value[next % frames.value.length].id, generation);
+    playheadFrameId.value = frames.value[next % frames.value.length].id;
     schedule(generation);
   }
 
@@ -203,6 +215,9 @@ export function createAnimation(context: AnimationContext) {
     selectedFrameId,
     selectedIndex,
     thumbnails,
+    playbackImage: computed(
+      () => thumbnails.value[playheadFrameId.value] ?? "",
+    ),
     select,
     pause,
     play,

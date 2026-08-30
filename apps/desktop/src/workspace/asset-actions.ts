@@ -1,6 +1,10 @@
 import type { ComputedRef, Ref } from "vue";
 import * as api from "../api";
-import { chooseExportFile, chooseReferenceImage } from "../services/dialogs";
+import {
+  chooseExportFile,
+  chooseReferenceImage,
+  confirmReplaceAnimationWithPixelization,
+} from "../services/dialogs";
 import type {
   AssetBrowser,
   ConversionPreviewResponse,
@@ -90,6 +94,13 @@ export function createAssetActions(context: AssetActionContext) {
 
   async function reconvert() {
     if (!context.canConvert.value) return;
+    if (
+      context.animation.frames.value.length > 1 &&
+      !(await confirmReplaceAnimationWithPixelization(
+        context.animation.frames.value.length,
+      ))
+    )
+      return;
     await context.canvasLoading.run("Pixelizing source…", async () => {
       context.editor.resetHistory();
       if (!context.conversion.settings.value)

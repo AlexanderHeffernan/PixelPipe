@@ -185,6 +185,7 @@ export interface FrameMetadata {
 export interface RevisionViewResponse {
   metadata: RevisionViewMetadata;
   native_png_base64: string;
+  rig_part_pngs?: Record<string, string>;
 }
 
 export interface ConversionPreviewResponse {

@@ -19,7 +19,7 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             "Use only Pixelate CLI commands to mutate .pixelate project state; never edit manifests or revisions directly.",
             "Every asset is one ordered clip with one or more stable-ID frames sharing a canvas, palette, transparency index, and pivot. A static sprite is a one-frame clip.",
             "For a subject that can be assembled from rigid or rotating pieces, prefer the generic rig workflow. Ask the image model for one separated-parts source sheet, never an animation spritesheet: each reusable part appears exactly once, fully visible, non-overlapping, on one flat background.",
-            "A Pixelate rig is generic. Do not assume humanoid anatomy or invent semantic joints. Define only reusable indexed parts, arbitrary nodes, pivots, depth, and explicit manual poses.",
+            "A Pixelate rig is generic. Do not assume humanoid anatomy or invent semantic joints. Build a connected parent hierarchy that follows the visible articulation: place pivots at visible joints, set each moving segment's parent_id to the segment it bends from, and leave parent_id null only for genuine independent roots. Disconnected nodes cannot show useful joint links or constrained reach in the desktop.",
             "For an animation that cannot be represented by reusable parts, such as smoke or an explosion, generate one reviewed still per pose and import each accepted pose in explicit order. Never ask an image generator for temporal frames arranged as a spritesheet.",
             "For multi-frame drawing and fill, pass the stable --frame ID reported by revision inspect. Shared recolour and canvas placement intentionally affect every frame.",
             "Do not inspect internal project files or guess commands. Use 'pixelate asset list --root .' for discovery and 'pixelate --help' only if a listed command fails.",
@@ -50,7 +50,7 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             { "action": "plan_manual_poses", "instruction": "Plan only the important manual poses and final-to-first closure. Pixelate can deterministically insert the requested number of derived in-between frames." },
             { "action": "generate_parts_source", "instruction": "For the rig route, generate one normal high-resolution separated-parts sheet. It is source art, not a sprite or animation sheet: parts must be fully visible, non-overlapping, and consistently lit." },
             { "action": "pixelize_parts_source", "instruction": "Import and pixelize the parts sheet through the normal static workflow. Inspect the indexed result and record exact rectangles and pivots for each reusable part." },
-            { "action": "write_rig_definition", "instruction": "Write pixelate.rig-definition/v1 JSON using the schema example returned in rig_definition_example. Coordinates and transforms use integer thousandths: 1000 x_millis is one pixel; 90000 rotation_millidegrees is 90 degrees; scale 1000 is 100%. Each manual pose must contain every node exactly once." },
+            { "action": "write_rig_definition", "instruction": "Write pixelate.rig-definition/v1 JSON using the schema example returned in rig_definition_example. Build connected chains rather than a flat list: each child parent_id names the joint it bends from, child x/y is its fixed local reach from that parent, and pivots sit on the visible connection points. Coordinates and transforms use integer thousandths: 1000 x_millis is one pixel; 90000 rotation_millidegrees is 90 degrees; scale 1000 is 100%. Each manual pose must contain every node exactly once." },
             { "action": "create_rig", "command": "pixelate rig create --root . --asset <asset-id> --parent <head-revision> --definition <rig-definition.json> --actor agent" },
             { "action": "inspect_and_preview", "instruction": "Inspect the structured rig, then inspect the enlarged contact sheet and desktop playback. The human can select parts directly over the pixel art and correct position, rotation, scale, depth, visibility, or part assignment.", "command": "pixelate revision inspect --root . --asset <asset-id>" },
             { "action": "revise_rig", "instruction": "Write one tagged mutation from rig_mutation_examples and commit it. Always use the latest parent revision.", "command": "pixelate rig mutate --root . --asset <asset-id> --parent <head-revision> --mutation <mutation.json> --actor agent" },
@@ -101,11 +101,23 @@ fn rig_definition_example() -> serde_json::Value {
         "schema": "pixelate.rig-definition/v1",
         "width": 32,
         "height": 32,
-        "parts": [{ "id": "part-a", "source": [0, 0, 8, 12], "pivot": [4, 2] }],
-        "nodes": [{ "id": "node-a", "parent_id": null }],
+        "parts": [
+            { "id": "upper-part", "source": [0, 0, 8, 12], "pivot": [4, 2] },
+            { "id": "lower-part", "source": [8, 0, 7, 10], "pivot": [3, 1] }
+        ],
+        "nodes": [
+            { "id": "upper-joint", "parent_id": null },
+            { "id": "lower-joint", "parent_id": "upper-joint" }
+        ],
         "poses": [
-            { "id": "pose-01", "name": "Pose 1", "nodes": [{ "node_id": "node-a", "part_id": "part-a", "x_millis": 16000, "y_millis": 16000, "rotation_millidegrees": 0, "scale_x_millis": 1000, "scale_y_millis": 1000, "depth": 0, "visible": true }] },
-            { "id": "pose-02", "name": "Pose 2", "nodes": [{ "node_id": "node-a", "part_id": "part-a", "x_millis": 18000, "y_millis": 16000, "rotation_millidegrees": 15000, "scale_x_millis": 1000, "scale_y_millis": 1000, "depth": 0, "visible": true }] }
+            { "id": "pose-01", "name": "Pose 1", "nodes": [
+                { "node_id": "upper-joint", "part_id": "upper-part", "x_millis": 16000, "y_millis": 12000, "rotation_millidegrees": 0, "scale_x_millis": 1000, "scale_y_millis": 1000, "depth": 0, "visible": true },
+                { "node_id": "lower-joint", "part_id": "lower-part", "x_millis": 0, "y_millis": 9000, "rotation_millidegrees": 0, "scale_x_millis": 1000, "scale_y_millis": 1000, "depth": 1, "visible": true }
+            ] },
+            { "id": "pose-02", "name": "Pose 2", "nodes": [
+                { "node_id": "upper-joint", "part_id": "upper-part", "x_millis": 16000, "y_millis": 12000, "rotation_millidegrees": 15000, "scale_x_millis": 1000, "scale_y_millis": 1000, "depth": 0, "visible": true },
+                { "node_id": "lower-joint", "part_id": "lower-part", "x_millis": 0, "y_millis": 9000, "rotation_millidegrees": -30000, "scale_x_millis": 1000, "scale_y_millis": 1000, "depth": 1, "visible": true }
+            ] }
         ],
         "frame_duration_ms": 80,
         "interpolation": { "inbetweens": 2, "looped": true },
