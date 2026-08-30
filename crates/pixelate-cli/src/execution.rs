@@ -14,6 +14,7 @@ use crate::edit::run_edit_revision;
 use crate::frame::run_frame;
 use crate::guide::agent_guide;
 use crate::pixelize::pixelize_command;
+use crate::rig::run_rig;
 use crate::update::update_cli;
 
 pub(crate) fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
@@ -42,6 +43,7 @@ pub(crate) fn run(cli: Cli) -> Result<serde_json::Value, Box<dyn std::error::Err
         Command::Asset { command } => run_asset(command),
         Command::Reference { command } => run_reference(command),
         Command::Frame { command } => run_frame(command),
+        Command::Rig { command } => run_rig(command),
     }
 }
 

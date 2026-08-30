@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use pixelate_core::{
-    ComponentRule, IndexedRaster, IndexedSequence, Operation, Recipe, ValidationCheck,
+    ComponentRule, IndexedRaster, IndexedSequence, Operation, PixelRig, Recipe, ValidationCheck,
     render_sequence, sha256_hex,
 };
 use pixelate_project::{AssetStyle, ProjectStore, RevisionFiles, StoredRevision};
@@ -24,6 +24,7 @@ pub(crate) struct CommitRaster {
 pub(crate) struct CommitSequence {
     pub(crate) asset: String,
     pub(crate) sequence: IndexedSequence,
+    pub(crate) rig: Option<PixelRig>,
     pub(crate) recipe: Recipe,
     pub(crate) brief: String,
     pub(crate) actor: String,
@@ -68,7 +69,9 @@ pub(crate) fn component_rule(recipe: &Recipe) -> Option<ComponentRule> {
             }),
             Operation::PatchPixels { patch, .. } => patch.structure,
             Operation::RemapPalette { remap } => remap.structure,
-            Operation::ComposeCanvas { .. } | Operation::EditFrames { .. } => None,
+            Operation::ComposeCanvas { .. }
+            | Operation::EditFrames { .. }
+            | Operation::EditRig { .. } => None,
         })
 }
 
@@ -106,6 +109,7 @@ pub(crate) fn commit_raster(
         CommitSequence {
             asset: commit.asset,
             sequence: IndexedSequence::from_raster(commit.raster),
+            rig: None,
             recipe: commit.recipe,
             brief: commit.brief,
             actor: commit.actor,
@@ -127,6 +131,7 @@ pub(crate) fn commit_sequence(
     let output_hashes = BTreeMap::from([("native.png".to_owned(), native_sha256.clone())]);
     let files = RevisionFiles {
         sequence: commit.sequence,
+        rig: commit.rig,
         recipe: commit.recipe,
         validation: rendered.validation,
         native_png: rendered.native_png,

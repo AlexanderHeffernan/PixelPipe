@@ -115,6 +115,7 @@ pub fn patch_revision_document(request: PatchRevisionDocument) -> Result<Revisio
         CommitSequence {
             asset: request.asset,
             sequence,
+            rig: None,
             recipe,
             brief,
             actor: request.actor,

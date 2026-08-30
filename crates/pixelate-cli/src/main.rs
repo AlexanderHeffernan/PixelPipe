@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 mod args;
 mod draw;
 mod edit;
@@ -6,6 +8,7 @@ mod frame;
 mod guide;
 mod pixelize;
 mod recolor;
+mod rig;
 mod update;
 
 use std::process::ExitCode;

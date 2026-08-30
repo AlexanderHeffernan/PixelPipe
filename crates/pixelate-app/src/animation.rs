@@ -371,6 +371,7 @@ fn commit_animation(
         CommitSequence {
             asset: asset.to_owned(),
             sequence,
+            rig: None,
             recipe: Recipe {
                 schema: RECIPE_SCHEMA.into(),
                 input_sha256: input_hash.clone(),

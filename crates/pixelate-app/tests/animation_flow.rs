@@ -1,14 +1,18 @@
 use std::{fs, path::Path};
 
 use pixelate_app::{
-    ConvertSelectedReference, ExportAsset, FrameMutation, FrameMutationAction, ImportImageSequence,
-    ImportReference, ImportSpritesheet, InitializeAsset, InspectRevision, OpenProject,
-    PatchRevisionDocument, SetAssetHead, convert_selected_reference, export_asset,
-    import_image_sequence, import_reference, import_spritesheet, initialize_asset,
-    inspect_revision, load_revision_view, mutate_frames, open_project, patch_revision_document,
-    set_asset_head,
+    BakeRig, ConvertSelectedReference, CreateRig, ExportAsset, FrameMutation, FrameMutationAction,
+    ImportImageSequence, ImportReference, ImportSpritesheet, InitializeAsset, InspectRevision,
+    MutateRig, OpenProject, PatchRevisionDocument, RIG_DEFINITION_SCHEMA, RigDefinition,
+    RigMutation, RigPartDefinition, SetAssetHead, bake_rig, convert_selected_reference, create_rig,
+    export_asset, import_image_sequence, import_reference, import_spritesheet, initialize_asset,
+    inspect_revision, load_revision_view, mutate_frames, mutate_rig, open_project,
+    patch_revision_document, set_asset_head,
 };
-use pixelate_core::{PATCH_SCHEMA, PixelPatch, PixelPatchSet, sha256_hex, stable_json};
+use pixelate_core::{
+    PATCH_SCHEMA, PixelPatch, PixelPatchSet, RigInterpolation, RigNode, RigNodePose, RigPose,
+    sha256_hex, stable_json,
+};
 use pixelate_project::ProjectStore;
 
 #[test]
@@ -361,6 +365,129 @@ fn legacy_raster_revision_loads_without_changing_pixels_or_native_png() {
     assert_eq!(loaded.raster, snapshot.raster);
     assert_eq!(loaded.native_png, original_png);
     assert_eq!(loaded.manifest.parent, snapshot.manifest.parent);
+}
+
+#[test]
+fn generic_rig_is_hash_verified_parent_linked_interpolated_and_explicitly_baked() {
+    let (game, base) = converted_project();
+    let root = game.path().to_path_buf();
+    let definition = RigDefinition {
+        schema: RIG_DEFINITION_SCHEMA.to_owned(),
+        width: 8,
+        height: 4,
+        parts: vec![
+            RigPartDefinition {
+                id: "part-a".to_owned(),
+                source: [15, 15, 2, 2],
+                pivot: [1, 1],
+            },
+            RigPartDefinition {
+                id: "part-b".to_owned(),
+                source: [16, 16, 2, 2],
+                pivot: [1, 1],
+            },
+        ],
+        nodes: vec![
+            RigNode {
+                id: "node-a".to_owned(),
+                parent_id: None,
+            },
+            RigNode {
+                id: "node-b".to_owned(),
+                parent_id: Some("node-a".to_owned()),
+            },
+        ],
+        poses: vec![rig_pose("pose-a", 2_000), rig_pose("pose-b", 6_000)],
+        frame_duration_ms: 70,
+        interpolation: RigInterpolation {
+            inbetweens: 1,
+            looped: true,
+        },
+        pivot: Some([4, 3]),
+    };
+    let created = create_rig(CreateRig {
+        start: root.clone(),
+        asset: "hero".to_owned(),
+        parent: base,
+        source_frame_id: None,
+        definition,
+        actor: "test".to_owned(),
+    })
+    .unwrap();
+    let store = ProjectStore::discover(&root).unwrap();
+    let created_snapshot = store.revision("hero", &created.revision).unwrap();
+    assert!(created_snapshot.rig.is_some());
+    assert!(created_snapshot.path.join("rig.json").is_file());
+    assert_eq!(created_snapshot.sequence.frames.len(), 4);
+    assert_eq!(created_snapshot.sequence.frames[1].id, "__generated-0001");
+
+    let moved = mutate_rig(MutateRig {
+        start: root.clone(),
+        asset: "hero".to_owned(),
+        parent: created.revision.clone(),
+        action: RigMutation::UpdateNode {
+            pose_id: "pose-a".to_owned(),
+            node_id: "node-a".to_owned(),
+            x_millis: Some(3_000),
+            y_millis: None,
+            rotation_millidegrees: Some(45_000),
+            scale_x_millis: None,
+            scale_y_millis: None,
+            depth: Some(2),
+            visible: None,
+            part_id: None,
+        },
+        actor: "test".to_owned(),
+    })
+    .unwrap();
+    let moved_snapshot = store.revision("hero", &moved.revision).unwrap();
+    assert_eq!(
+        moved_snapshot.manifest.parent.as_deref(),
+        Some(created.revision.as_str())
+    );
+    assert_ne!(moved_snapshot.sequence, created_snapshot.sequence);
+
+    let baked = bake_rig(BakeRig {
+        start: root,
+        asset: "hero".to_owned(),
+        parent: moved.revision,
+        actor: "test".to_owned(),
+    })
+    .unwrap();
+    let baked_snapshot = store.revision("hero", &baked.revision).unwrap();
+    assert!(baked_snapshot.rig.is_none());
+    assert_eq!(baked_snapshot.sequence, moved_snapshot.sequence);
+}
+
+fn rig_pose(id: &str, x_millis: i32) -> RigPose {
+    RigPose {
+        id: id.to_owned(),
+        name: Some(id.to_owned()),
+        nodes: vec![
+            RigNodePose {
+                node_id: "node-a".to_owned(),
+                part_id: "part-a".to_owned(),
+                x_millis,
+                y_millis: 2_000,
+                rotation_millidegrees: 0,
+                scale_x_millis: 1_000,
+                scale_y_millis: 1_000,
+                depth: 0,
+                visible: true,
+            },
+            RigNodePose {
+                node_id: "node-b".to_owned(),
+                part_id: "part-b".to_owned(),
+                x_millis: 1_000,
+                y_millis: 0,
+                rotation_millidegrees: 0,
+                scale_x_millis: 1_000,
+                scale_y_millis: 1_000,
+                depth: 1,
+                visible: true,
+            },
+        ],
+    }
 }
 
 fn converted_project() -> (tempfile::TempDir, String) {

@@ -12,6 +12,10 @@ mod editing;
 mod inspection;
 mod motion;
 mod palette_derivation;
+mod rig;
+mod rig_render;
+#[cfg(test)]
+mod rig_tests;
 mod sequence;
 
 pub use color_treatment::{ColorAdjustments, ColorTreatment};
@@ -30,6 +34,7 @@ pub use motion::{
     FrameTransition, MotionWarning, MotionWarningKind, SequenceMotion, inspect_sequence_motion,
 };
 pub use palette_derivation::{derive_source_palette, derive_source_palette_batch};
+pub use rig::{PixelRig, RIG_SCHEMA, RigInterpolation, RigNode, RigNodePose, RigPart, RigPose};
 pub use sequence::{
     DEFAULT_FRAME_DURATION_MS, IndexedFrame, IndexedSequence, SEQUENCE_SCHEMA, render_sequence,
     render_sequence_preview,
@@ -92,6 +97,46 @@ pub enum Operation {
     EditFrames {
         action: FrameOperation,
     },
+    EditRig {
+        action: RigOperation,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RigOperation {
+    Create,
+    UpdateNode {
+        pose_id: String,
+        node_id: String,
+    },
+    SwapParts {
+        first_node_id: String,
+        second_node_id: String,
+    },
+    SetInterpolation {
+        inbetweens: u16,
+        looped: bool,
+    },
+    SetDuration {
+        duration_ms: u32,
+    },
+    DuplicatePose {
+        pose_id: String,
+        new_pose_id: String,
+    },
+    DeletePose {
+        pose_id: String,
+    },
+    ReorderPose {
+        pose_id: String,
+        position: usize,
+    },
+    RenamePose {
+        pose_id: String,
+        name: String,
+    },
+    Bake,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,6 +235,8 @@ pub enum CoreError {
     InvalidFrameName { frame: String },
     #[error("frame '{0}' does not exist")]
     FrameNotFound(String),
+    #[error("invalid pixel rig: {0}")]
+    InvalidRig(String),
     #[error("spritesheet dimensions {width}x{height} exceed the supported 8192px edge")]
     SheetDimensionOverflow { width: u32, height: u32 },
     #[error("preview scale must be between 1 and 64")]

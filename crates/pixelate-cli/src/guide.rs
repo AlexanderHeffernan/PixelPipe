@@ -5,6 +5,8 @@ use serde_json::json;
 
 pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let store = ProjectStore::discover(root)?;
+    let rig_definition_example = rig_definition_example();
+    let rig_mutation_examples = rig_mutation_examples();
     Ok(json!({
         "ok": true,
         "workflow": "coding_agent_sprite",
@@ -16,9 +18,9 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             "If the image has no alpha, keep one simple connected flat background and use '--background auto'. Do not remove that background yourself.",
             "Use only Pixelate CLI commands to mutate .pixelate project state; never edit manifests or revisions directly.",
             "Every asset is one ordered clip with one or more stable-ID frames sharing a canvas, palette, transparency index, and pivot. A static sprite is a one-frame clip.",
-            "Generate animation references as one still image per pose. Never ask an image generator for a spritesheet, multi-panel image, or complete animation in one image.",
-            "Plan the complete ordered motion cycle and loop closure before generation. Generate each pose using the first accepted frame as the identity anchor and the immediately previous frame as the motion anchor.",
-            "Import each accepted pose with 'pixelate frame import' in reviewed playback order. This keeps the established canvas and palette fixed. Batch and explicit-grid imports are ingestion tools for existing files, not source-generation workflows.",
+            "For a subject that can be assembled from rigid or rotating pieces, prefer the generic rig workflow. Ask the image model for one separated-parts source sheet, never an animation spritesheet: each reusable part appears exactly once, fully visible, non-overlapping, on one flat background.",
+            "A Pixelate rig is generic. Do not assume humanoid anatomy or invent semantic joints. Define only reusable indexed parts, arbitrary nodes, pivots, depth, and explicit manual poses.",
+            "For an animation that cannot be represented by reusable parts, such as smoke or an explosion, generate one reviewed still per pose and import each accepted pose in explicit order. Never ask an image generator for temporal frames arranged as a spritesheet.",
             "For multi-frame drawing and fill, pass the stable --frame ID reported by revision inspect. Shared recolour and canvas placement intentionally affect every frame.",
             "Do not inspect internal project files or guess commands. Use 'pixelate asset list --root .' for discovery and 'pixelate --help' only if a listed command fails.",
             "When downloading a generated image, always choose a new descriptive filename. 'amp files get' intentionally refuses to overwrite an existing destination.",
@@ -44,16 +46,19 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             { "action": "preview_result", "command": "pixelate revision preview --root . --asset <asset-id> --output /tmp/<asset-id>-preview.png", "success": "Visually inspect the enlarged PNG before completing the task." }
         ],
         "animation_workflow": [
-            { "action": "plan_motion", "instruction": "Write the complete ordered pose list before generating anything: contact, down, passing, up, opposite contact, and the matching return phases as appropriate. Include the final-to-first transition." },
-            { "action": "create_first_pose", "instruction": "Generate one smooth still image, convert it through the normal static workflow, and accept it as the permanent identity, scale, lighting, camera, and ground-line anchor." },
-            { "action": "create_next_pose", "instruction": "Generate exactly one smooth still. Reference both the first accepted pose for identity and the immediately previous pose for a small intentional motion step. Keep non-moving details, lighting, camera, scale, pivot, and ground line unchanged." },
-            { "action": "import_next_pose", "command": "pixelate frame import --root . --asset <asset-id> --file <next-pose.png> --position <zero-based-position>" },
-            { "action": "inspect_frames", "command": "pixelate revision inspect --root . --asset <asset-id>", "success": "frames lists stable IDs, names, and durations in playback order; motion.transitions reports exact changed, silhouette, opaque-colour, and overlap pixel counts; motion.warnings is empty." },
-            { "action": "reject_inconsistent_pose", "instruction": "Treat every motion.warning as a failed consistency gate. Regenerate the warning's to_frame_id pose, replace it with the command below, then inspect again. Do not export or describe the animation as complete while warnings remain. If intentionally broad motion cannot clear a warning, stop and ask the human to review it; never silently ignore the warning or generate a retry without importing it.", "command": "pixelate frame replace --root . --asset <asset-id> --frame <to-frame-id> --file <replacement-pose.png>" },
-            { "action": "set_timing", "instruction": "Set one uniform frame duration for the complete clip.", "command": "pixelate frame duration --root . --asset <asset-id> --duration 100" },
-            { "action": "inspect_motion", "instruction": "The preview is a nearest-neighbour horizontal contact sheet; inspect it and use desktop playback to judge cadence and final-to-first closure. A contact sheet alone does not prove smooth timing.", "command": "pixelate revision preview --root . --asset <asset-id> --output /tmp/<asset-id>-frames.png" },
+            { "action": "choose_authoring_route", "instruction": "Use a generic rig when motion can reuse independently moving visual parts. Use ordered full-frame references only for topology-changing organic effects. Do not silently combine the routes." },
+            { "action": "plan_manual_poses", "instruction": "Plan only the important manual poses and final-to-first closure. Pixelate can deterministically insert the requested number of derived in-between frames." },
+            { "action": "generate_parts_source", "instruction": "For the rig route, generate one normal high-resolution separated-parts sheet. It is source art, not a sprite or animation sheet: parts must be fully visible, non-overlapping, and consistently lit." },
+            { "action": "pixelize_parts_source", "instruction": "Import and pixelize the parts sheet through the normal static workflow. Inspect the indexed result and record exact rectangles and pivots for each reusable part." },
+            { "action": "write_rig_definition", "instruction": "Write pixelate.rig-definition/v1 JSON using the schema example returned in rig_definition_example. Coordinates and transforms use integer thousandths: 1000 x_millis is one pixel; 90000 rotation_millidegrees is 90 degrees; scale 1000 is 100%. Each manual pose must contain every node exactly once." },
+            { "action": "create_rig", "command": "pixelate rig create --root . --asset <asset-id> --parent <head-revision> --definition <rig-definition.json> --actor agent" },
+            { "action": "inspect_and_preview", "instruction": "Inspect the structured rig, then inspect the enlarged contact sheet and desktop playback. The human can select parts directly over the pixel art and correct position, rotation, scale, depth, visibility, or part assignment.", "command": "pixelate revision inspect --root . --asset <asset-id>" },
+            { "action": "revise_rig", "instruction": "Write one tagged mutation from rig_mutation_examples and commit it. Always use the latest parent revision.", "command": "pixelate rig mutate --root . --asset <asset-id> --parent <head-revision> --mutation <mutation.json> --actor agent" },
+            { "action": "bake_for_pixel_cleanup", "instruction": "Bake only after motion is accepted. Baking preserves rendered frames exactly and intentionally removes editable rig authoring data so ordinary per-frame pixel tools can refine the result.", "command": "pixelate rig bake --root . --asset <asset-id> --parent <head-revision> --actor agent" },
             { "action": "export_animation", "instruction": "Multi-frame export writes the canonical horizontal PNG sheet and companion timing/rectangle JSON.", "command": "pixelate asset export --root . --asset <asset-id> --destination <folder> --overwrite" }
         ],
+        "rig_definition_example": rig_definition_example,
+        "rig_mutation_examples": rig_mutation_examples,
         "capabilities": {
             "version": "pixelate version",
             "update_cli": "pixelate update",
@@ -81,9 +86,42 @@ pub(crate) fn agent_guide(root: &Path) -> Result<serde_json::Value, Box<dyn std:
             "reorder_frame": "pixelate frame reorder --root . --asset <asset-id> --frame <frame-id> --position <zero-based-position>",
             "set_animation_duration": "pixelate frame duration --root . --asset <asset-id> --duration <ms>",
             "rename_frame": "pixelate frame rename --root . --asset <asset-id> --frame <frame-id> --name '<pose-name>'",
+            "create_generic_rig": "pixelate rig create --root . --asset <asset-id> --parent <revision> --definition <pixelate.rig-definition-v1.json>",
+            "mutate_generic_rig": "pixelate rig mutate --root . --asset <asset-id> --parent <revision> --mutation <mutation.json>",
+            "bake_generic_rig": "pixelate rig bake --root . --asset <asset-id> --parent <revision>",
             "undo_redo": "pixelate revision set-head --root . --asset <asset-id> --revision <revision-id>",
             "export_bundle": "pixelate asset export --root . --asset <asset-id> --destination <folder> --overwrite",
             "export_image": "pixelate asset export-file --root . --asset <asset-id> --destination <name.png|name.webp> --overwrite"
         }
     }))
+}
+
+fn rig_definition_example() -> serde_json::Value {
+    json!({
+        "schema": "pixelate.rig-definition/v1",
+        "width": 32,
+        "height": 32,
+        "parts": [{ "id": "part-a", "source": [0, 0, 8, 12], "pivot": [4, 2] }],
+        "nodes": [{ "id": "node-a", "parent_id": null }],
+        "poses": [
+            { "id": "pose-01", "name": "Pose 1", "nodes": [{ "node_id": "node-a", "part_id": "part-a", "x_millis": 16000, "y_millis": 16000, "rotation_millidegrees": 0, "scale_x_millis": 1000, "scale_y_millis": 1000, "depth": 0, "visible": true }] },
+            { "id": "pose-02", "name": "Pose 2", "nodes": [{ "node_id": "node-a", "part_id": "part-a", "x_millis": 18000, "y_millis": 16000, "rotation_millidegrees": 15000, "scale_x_millis": 1000, "scale_y_millis": 1000, "depth": 0, "visible": true }] }
+        ],
+        "frame_duration_ms": 80,
+        "interpolation": { "inbetweens": 2, "looped": true },
+        "pivot": [16, 28]
+    })
+}
+
+fn rig_mutation_examples() -> serde_json::Value {
+    json!({
+        "move_rotate_or_reassign_one_node": { "type": "update_node", "pose_id": "pose-01", "node_id": "node-a", "x_millis": 17000, "y_millis": null, "rotation_millidegrees": 12000, "scale_x_millis": null, "scale_y_millis": null, "depth": 2, "visible": null, "part_id": null },
+        "swap_accidentally_reversed_parts_in_every_pose": { "type": "swap_parts", "first_node_id": "node-a", "second_node_id": "node-b" },
+        "set_interpolation": { "type": "set_interpolation", "inbetweens": 2, "looped": true },
+        "set_shared_duration": { "type": "set_duration", "duration_ms": 80 },
+        "duplicate_pose": { "type": "duplicate_pose", "pose_id": "pose-01", "new_pose_id": "pose-02", "name": "Passing pose" },
+        "delete_pose": { "type": "delete_pose", "pose_id": "pose-02" },
+        "reorder_pose": { "type": "reorder_pose", "pose_id": "pose-02", "position": 0 },
+        "rename_pose": { "type": "rename_pose", "pose_id": "pose-01", "name": "Contact" }
+    })
 }

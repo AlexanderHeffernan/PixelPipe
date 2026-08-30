@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use pixelate_core::{
-    Palette, RasterInspection, SequenceMotion, inspect_raster, inspect_sequence_motion, render,
+    Palette, RasterInspection, RigInterpolation, RigNode, RigPose, SequenceMotion, inspect_raster,
+    inspect_sequence_motion, render,
 };
 use pixelate_project::{
     AssetManifest, ProjectError, ProjectManifest, ProjectStore, RevisionManifest,
@@ -71,6 +72,25 @@ pub struct RevisionViewMetadata {
     pub validation: pixelate_core::ValidationReport,
     pub frames: Vec<FrameMetadata>,
     pub selected_frame_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rig: Option<RigView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RigView {
+    pub parts: Vec<RigPartMetadata>,
+    pub nodes: Vec<RigNode>,
+    pub poses: Vec<RigPose>,
+    pub frame_duration_ms: u32,
+    pub interpolation: RigInterpolation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RigPartMetadata {
+    pub id: String,
+    pub width: u32,
+    pub height: u32,
+    pub pivot: [i32; 2],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,6 +150,22 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
         })
         .collect();
     let native_png = render(&raster, 1)?.native_png;
+    let rig = snapshot.rig.map(|rig| RigView {
+        parts: rig
+            .parts
+            .into_iter()
+            .map(|part| RigPartMetadata {
+                id: part.id,
+                width: part.width,
+                height: part.height,
+                pivot: part.pivot,
+            })
+            .collect(),
+        nodes: rig.nodes,
+        poses: rig.poses,
+        frame_duration_ms: rig.frame_duration_ms,
+        interpolation: rig.interpolation,
+    });
     Ok(RevisionView {
         metadata: RevisionViewMetadata {
             project_root: store.root().to_path_buf(),
@@ -142,6 +178,7 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
             validation: snapshot.validation,
             frames,
             selected_frame_id,
+            rig,
         },
         native_png,
     })

@@ -13,6 +13,8 @@ mod project;
 mod reference;
 mod revision_commit;
 mod revision_preview;
+mod rig_definition;
+mod rigging;
 
 pub use composition::{
     CommitComposition, CompositionPreview, PreviewComposition, commit_composition,
@@ -40,6 +42,8 @@ pub use reference::{
 };
 pub use revision_commit::RevisionResult;
 pub use revision_preview::{PreviewRevision, RevisionPreview, preview_revision};
+pub use rig_definition::{RIG_DEFINITION_SCHEMA, RigDefinition, RigPartDefinition};
+pub use rigging::{BakeRig, CreateRig, MutateRig, RigMutation, bake_rig, create_rig, mutate_rig};
 
 pub use pixelate_core::{Palette, RasterInspection};
 pub use pixelate_project::{AssetManifest, ReferenceSelection};

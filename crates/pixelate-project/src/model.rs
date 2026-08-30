@@ -1,6 +1,8 @@
 use std::{collections::BTreeMap, io, path::PathBuf};
 
-use pixelate_core::{ConversionSettings, IndexedRaster, IndexedSequence, Recipe, ValidationReport};
+use pixelate_core::{
+    ConversionSettings, IndexedRaster, IndexedSequence, PixelRig, Recipe, ValidationReport,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -89,6 +91,7 @@ pub struct Provenance {
 #[derive(Debug)]
 pub struct RevisionFiles {
     pub sequence: IndexedSequence,
+    pub rig: Option<PixelRig>,
     pub recipe: Recipe,
     pub validation: ValidationReport,
     pub native_png: Vec<u8>,
@@ -119,6 +122,7 @@ pub struct RevisionSnapshot {
     pub path: PathBuf,
     pub manifest: RevisionManifest,
     pub sequence: IndexedSequence,
+    pub rig: Option<PixelRig>,
     /// First frame compatibility view for established single-frame use cases.
     pub raster: IndexedRaster,
     pub recipe: Recipe,
@@ -178,6 +182,8 @@ pub enum ProjectError {
     InvalidBriefUtf8,
     #[error("rendered output hash does not match bytes for '{name}'")]
     OutputHashMismatch { name: String },
+    #[error("stored rig does not render to the stored indexed sequence")]
+    RigSequenceMismatch,
     #[error("stored reference does not match its content-addressed path: {0}")]
     ReferenceHashMismatch(PathBuf),
     #[error("TOML error: {0}")]

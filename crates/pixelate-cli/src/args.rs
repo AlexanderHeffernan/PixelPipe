@@ -53,6 +53,56 @@ pub(crate) enum Command {
         #[command(subcommand)]
         command: FrameCommand,
     },
+    /// Create, adjust, or bake a generic indexed-pixel part rig.
+    Rig {
+        #[command(subcommand)]
+        command: RigCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum RigCommand {
+    /// Crop parts from an indexed revision and create its initial rig and poses.
+    Create {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: String,
+        #[arg(long)]
+        source_frame: Option<String>,
+        /// pixelate.rig-definition/v1 JSON document.
+        #[arg(long)]
+        definition: PathBuf,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    /// Apply one typed rig mutation JSON document.
+    Mutate {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: String,
+        /// A tagged RigMutation JSON object, such as update_node.
+        #[arg(long)]
+        mutation: PathBuf,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
+    /// Remove rig authoring data while preserving every rendered frame.
+    Bake {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        parent: String,
+        #[arg(long, default_value = "agent")]
+        actor: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]

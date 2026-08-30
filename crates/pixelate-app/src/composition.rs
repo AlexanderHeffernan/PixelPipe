@@ -90,6 +90,7 @@ pub fn commit_composition(request: CommitComposition) -> Result<RevisionResult, 
         CommitSequence {
             asset: request.asset,
             sequence,
+            rig: None,
             recipe,
             brief: parent.brief,
             actor: request.actor,

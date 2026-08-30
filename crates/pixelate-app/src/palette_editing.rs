@@ -115,6 +115,7 @@ pub fn remap_revision_document(request: RemapRevisionDocument) -> Result<Revisio
         CommitSequence {
             asset: request.asset,
             sequence,
+            rig: None,
             recipe,
             brief,
             actor: request.actor,
