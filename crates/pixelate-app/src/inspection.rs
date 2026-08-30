@@ -73,6 +73,8 @@ pub struct RevisionViewMetadata {
     pub frames: Vec<FrameMetadata>,
     pub selected_frame_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub rig_ancestor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rig: Option<RigView>,
 }
 
@@ -139,6 +141,8 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
     let store = ProjectStore::discover(&request.start)?;
     let revision = resolve_revision(&store, &request.asset, request.revision)?;
     let snapshot = store.revision(&request.asset, &revision)?;
+    let rig_ancestor =
+        find_rig_ancestor(&store, &request.asset, snapshot.manifest.parent.as_deref())?;
     let selected_frame_id = request
         .frame_id
         .unwrap_or_else(|| snapshot.sequence.frames[0].id.clone());
@@ -210,11 +214,28 @@ pub fn load_revision_view(request: InspectRevision) -> Result<RevisionView, AppE
             validation: snapshot.validation,
             frames,
             selected_frame_id,
+            rig_ancestor,
             rig,
         },
         native_png,
         rig_part_pngs,
     })
+}
+
+fn find_rig_ancestor(
+    store: &ProjectStore,
+    asset: &str,
+    parent: Option<&str>,
+) -> Result<Option<String>, ProjectError> {
+    let mut revision = parent.map(str::to_owned);
+    while let Some(id) = revision {
+        let snapshot = store.revision(asset, &id)?;
+        if snapshot.rig.is_some() {
+            return Ok(Some(id));
+        }
+        revision = snapshot.manifest.parent;
+    }
+    Ok(None)
 }
 
 /// Loads a revision inspection and its separate durable review history.

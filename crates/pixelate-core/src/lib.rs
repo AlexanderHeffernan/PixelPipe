@@ -12,6 +12,7 @@ mod editing;
 mod inspection;
 mod motion;
 mod palette_derivation;
+mod part_detection;
 mod rig;
 mod rig_render;
 #[cfg(test)]
@@ -34,6 +35,7 @@ pub use motion::{
     FrameTransition, MotionWarning, MotionWarningKind, SequenceMotion, inspect_sequence_motion,
 };
 pub use palette_derivation::{derive_source_palette, derive_source_palette_batch};
+pub use part_detection::{DetectedPart, detect_parts};
 pub use rig::{PixelRig, RIG_SCHEMA, RigInterpolation, RigNode, RigNodePose, RigPart, RigPose};
 pub use sequence::{
     DEFAULT_FRAME_DURATION_MS, IndexedFrame, IndexedSequence, SEQUENCE_SCHEMA, render_sequence,

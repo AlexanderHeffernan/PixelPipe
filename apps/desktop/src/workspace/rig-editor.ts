@@ -19,9 +19,11 @@ interface RigContext {
 
 export function createRigEditor(context: RigContext) {
   const active = ref(false);
-  const bakedFromRig = ref(false);
+  const guidesVisible = ref(true);
   const selectedNodeId = ref("");
   const draftNodes = ref<RigNodePose[]>();
+  const dragOriginNodes = ref<RigNodePose[]>();
+  let partCommitPending = false;
   const rig = computed(() => context.view.value?.metadata.rig);
   const currentPose = computed(() =>
     rig.value?.poses.find(
@@ -89,14 +91,23 @@ export function createRigEditor(context: RigContext) {
           : left.depth - right.depth,
       );
   });
+  const partChoices = computed(() =>
+    (rig.value?.parts ?? []).map((part) => ({
+      ...part,
+      href: context.view.value?.rig_part_pngs?.[part.id]
+        ? api.pngDataUrl(context.view.value.rig_part_pngs[part.id])
+        : "",
+    })),
+  );
 
   watch(
     () => `${context.assetId.value}:${Boolean(rig.value)}`,
     () => {
       active.value = Boolean(rig.value);
-      bakedFromRig.value = false;
+      guidesVisible.value = true;
       selectedNodeId.value = "";
       draftNodes.value = undefined;
+      dragOriginNodes.value = undefined;
     },
     { immediate: true },
   );
@@ -160,28 +171,40 @@ export function createRigEditor(context: RigContext) {
     if (!currentPose.value) return;
     selectedNodeId.value = nodeId;
     draftNodes.value = currentPose.value.nodes.map((node) => ({ ...node }));
+    dragOriginNodes.value = currentPose.value.nodes.map((node) => ({
+      ...node,
+    }));
   }
 
   function previewNodeDrag(nodeId: string, worldX: number, worldY: number) {
     const metadata = rig.value;
     const nodes = draftNodes.value;
-    if (!metadata || !nodes) return;
+    const originNodes = dragOriginNodes.value;
+    if (!metadata || !nodes || !originNodes) return;
     const node = nodes.find((candidate) => candidate.node_id === nodeId);
+    const origin = originNodes.find(
+      (candidate) => candidate.node_id === nodeId,
+    );
     const definition = metadata.nodes.find(
       (candidate) => candidate.id === nodeId,
     );
-    if (!node || !definition) return;
+    if (!node || !origin || !definition) return;
     let point = { x: worldX, y: worldY };
     if (definition.parent_id) {
-      const matrices = worldMatrices(metadata.nodes, nodes);
+      const matrices = worldMatrices(metadata.nodes, originNodes);
       point = invert(matrices.get(definition.parent_id)!, worldX, worldY);
-      const currentX = node.x_millis / 1000;
-      const currentY = node.y_millis / 1000;
-      const reach = Math.hypot(currentX, currentY);
+      const originX = origin.x_millis / 1000;
+      const originY = origin.y_millis / 1000;
+      const reach = Math.hypot(originX, originY);
       const requested = Math.hypot(point.x, point.y);
       if (reach > 0 && requested > 0) {
         point.x = (point.x / requested) * reach;
         point.y = (point.y / requested) * reach;
+        const delta =
+          Math.atan2(point.y, point.x) - Math.atan2(originY, originX);
+        node.rotation_millidegrees =
+          origin.rotation_millidegrees +
+          Math.round((delta * 180_000) / Math.PI);
       }
     }
     node.x_millis = Math.round(point.x * 1000);
@@ -190,19 +213,65 @@ export function createRigEditor(context: RigContext) {
   }
 
   function finishNodeDrag(nodeId: string) {
-    const node = draftNodes.value?.find(
-      (candidate) => candidate.node_id === nodeId,
-    );
-    draftNodes.value = undefined;
+    const draft = draftNodes.value;
+    const node = draft?.find((candidate) => candidate.node_id === nodeId);
+    dragOriginNodes.value = undefined;
     if (!node) return Promise.resolve();
-    return updateSelected({
+    const pose = currentPose.value;
+    if (!pose) return Promise.resolve();
+    return mutate({
+      type: "update_node",
+      pose_id: pose.id,
+      node_id: node.node_id,
       x_millis: node.x_millis,
       y_millis: node.y_millis,
+      rotation_millidegrees: node.rotation_millidegrees,
+    }).finally(() => {
+      if (draftNodes.value === draft) draftNodes.value = undefined;
     });
   }
 
   function cancelNodeDrag() {
     draftNodes.value = undefined;
+    dragOriginNodes.value = undefined;
+  }
+
+  function previewSelectedPart(partId: string) {
+    const pose = currentPose.value;
+    if (!pose || !selectedNodeId.value || partCommitPending) return;
+    if (!draftNodes.value)
+      draftNodes.value = pose.nodes.map((node) => ({ ...node }));
+    const node = draftNodes.value.find(
+      (candidate) => candidate.node_id === selectedNodeId.value,
+    );
+    if (node) {
+      node.part_id = partId;
+      draftNodes.value = [...draftNodes.value];
+    }
+  }
+
+  function clearPartPreview() {
+    if (!partCommitPending) draftNodes.value = undefined;
+  }
+
+  async function assignSelectedPart(partId: string) {
+    const pose = currentPose.value;
+    const nodeId = selectedNodeId.value;
+    if (!pose || !nodeId) return;
+    previewSelectedPart(partId);
+    const draft = draftNodes.value;
+    partCommitPending = true;
+    try {
+      await mutate({
+        type: "update_node",
+        pose_id: pose.id,
+        node_id: nodeId,
+        part_id: partId,
+      });
+    } finally {
+      partCommitPending = false;
+      if (draftNodes.value === draft) draftNodes.value = undefined;
+    }
   }
 
   function duplicatePose(poseId: string) {
@@ -234,14 +303,29 @@ export function createRigEditor(context: RigContext) {
         result.revision,
       );
       active.value = false;
-      bakedFromRig.value = true;
       context.notice("Rig baked; frames are ready for pixel refinement");
+    });
+  }
+
+  async function returnToRig() {
+    const root = context.project.value?.project_root;
+    const revision = context.view.value?.metadata.rig_ancestor;
+    if (!root || !revision) return;
+    await context.run(async () => {
+      await api.setAssetHead(root, context.assetId.value, revision);
+      await context.refresh();
+      context.view.value = await api.loadRevision(
+        root,
+        context.assetId.value,
+        revision,
+      );
+      context.notice("Returned to the editable rig revision");
     });
   }
 
   return {
     active,
-    bakedFromRig,
+    guidesVisible,
     rig,
     currentPose,
     selectedNodeId,
@@ -249,6 +333,7 @@ export function createRigEditor(context: RigContext) {
     manualFrames,
     handles,
     artwork,
+    partChoices,
     mutate,
     updateSelected,
     moveNode,
@@ -256,7 +341,11 @@ export function createRigEditor(context: RigContext) {
     previewNodeDrag,
     finishNodeDrag,
     cancelNodeDrag,
+    previewSelectedPart,
+    clearPartPreview,
+    assignSelectedPart,
     duplicatePose,
     bake,
+    returnToRig,
   };
 }

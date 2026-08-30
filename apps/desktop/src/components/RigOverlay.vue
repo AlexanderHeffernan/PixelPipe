@@ -50,12 +50,6 @@ function cancelDrag() {
   workspace.rig.cancelNodeDrag();
 }
 
-function deselect(event: PointerEvent) {
-  if (event.target !== event.currentTarget) return;
-  event.stopPropagation();
-  workspace.rig.selectedNodeId.value = "";
-}
-
 function points(corners: { x: number; y: number }[]) {
   return corners.map((corner) => `${corner.x},${corner.y}`).join(" ");
 }
@@ -82,6 +76,7 @@ function moveWithKeyboard(event: KeyboardEvent, nodeId: string) {
   <svg
     v-if="
       workspace.rig.active.value &&
+      workspace.rig.guidesVisible.value &&
       workspace.rig.currentPose.value &&
       !workspace.animation.playing.value
     "
@@ -92,7 +87,6 @@ function moveWithKeyboard(event: KeyboardEvent, nodeId: string) {
     @pointermove="pointerMove"
     @pointerup="pointerUp"
     @pointercancel="cancelDrag"
-    @pointerdown="deselect"
   >
     <template
       v-for="handle in workspace.rig.handles.value"

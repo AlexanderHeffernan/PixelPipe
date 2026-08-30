@@ -4,7 +4,8 @@ use pixelate_app::{
     DeleteAsset, ExportAsset, ExportAssetFile, ImportReference, InitializeAsset, InspectRevision,
     OpenProject, PreviewRevision, RenameAsset, UpdateAssetBrief, UpdateAssetSource, delete_asset,
     export_asset, export_asset_file, import_reference, initialize_asset, inspect_revision,
-    open_project, preview_revision, rename_asset, update_asset_brief, update_asset_source,
+    open_project, preview_animation, preview_revision, rename_asset, update_asset_brief,
+    update_asset_source,
 };
 use pixelate_project::ProjectStore;
 use serde_json::json;
@@ -144,7 +145,9 @@ fn run_asset(command: AssetCommand) -> Result<serde_json::Value, Box<dyn std::er
 fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match command {
         RevisionCommand::Pixelize { options } => pixelize_command(options),
-        command @ RevisionCommand::Preview { .. } => preview_command(command),
+        command @ (RevisionCommand::Preview { .. } | RevisionCommand::PreviewAnimation { .. }) => {
+            preview_command(command)
+        }
         command @ (RevisionCommand::Fill { .. }
         | RevisionCommand::Compose { .. }
         | RevisionCommand::SetHead { .. }
@@ -165,6 +168,35 @@ fn run_revision(command: RevisionCommand) -> Result<serde_json::Value, Box<dyn s
 fn preview_command(
     command: RevisionCommand,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let command = match command {
+        RevisionCommand::PreviewAnimation {
+            root,
+            asset,
+            revision,
+            scale,
+            output,
+        } => {
+            let preview = preview_animation(pixelate_app::PreviewAnimation {
+                start: root,
+                asset,
+                revision,
+                scale,
+            })?;
+            fs::write(&output, &preview.gif)?;
+            return Ok(json!({ "ok": true, "preview": {
+                "project_root": preview.project_root,
+                "asset": preview.asset,
+                "revision": preview.revision,
+                "frame_count": preview.frame_count,
+                "scale": preview.scale,
+                "width": preview.width,
+                "height": preview.height,
+                "sha256": preview.sha256,
+                "output": output,
+            }}));
+        }
+        command => command,
+    };
     let RevisionCommand::Preview {
         root,
         asset,

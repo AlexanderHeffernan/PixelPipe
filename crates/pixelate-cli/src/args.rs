@@ -4,6 +4,9 @@ use clap::{Parser, Subcommand};
 
 use crate::pixelize::PixelizeArgs;
 
+mod rig;
+pub(crate) use rig::RigCommand;
+
 #[derive(Debug, Parser)]
 #[command(
     name = "pixelate",
@@ -61,51 +64,6 @@ pub(crate) enum Command {
 }
 
 #[derive(Debug, Subcommand)]
-pub(crate) enum RigCommand {
-    /// Crop parts from an indexed revision and create its initial rig and poses.
-    Create {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        parent: String,
-        #[arg(long)]
-        source_frame: Option<String>,
-        /// pixelate.rig-definition/v1 JSON document.
-        #[arg(long)]
-        definition: PathBuf,
-        #[arg(long, default_value = "agent")]
-        actor: String,
-    },
-    /// Apply one typed rig mutation JSON document.
-    Mutate {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        parent: String,
-        /// A tagged `RigMutation` JSON object, such as `update_node`.
-        #[arg(long)]
-        mutation: PathBuf,
-        #[arg(long, default_value = "agent")]
-        actor: String,
-    },
-    /// Remove rig authoring data while preserving every rendered frame.
-    Bake {
-        #[arg(long, default_value = ".")]
-        root: PathBuf,
-        #[arg(long)]
-        asset: String,
-        #[arg(long)]
-        parent: String,
-        #[arg(long, default_value = "agent")]
-        actor: String,
-    },
-}
-
-#[derive(Debug, Subcommand)]
 pub(crate) enum ProjectCommand {
     Show {
         #[arg(long, default_value = ".")]
@@ -132,6 +90,19 @@ pub(crate) enum RevisionCommand {
         #[arg(long)]
         frame: Option<String>,
         /// Integer nearest-neighbour scale; defaults toward a 512px longest edge.
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..=64))]
+        scale: Option<u16>,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Render stored frame timing as a looping nearest-neighbour GIF.
+    PreviewAnimation {
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        asset: String,
+        #[arg(long)]
+        revision: Option<String>,
         #[arg(long, value_parser = clap::value_parser!(u16).range(1..=64))]
         scale: Option<u16>,
         #[arg(long)]

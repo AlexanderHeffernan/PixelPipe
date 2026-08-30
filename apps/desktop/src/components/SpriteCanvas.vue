@@ -4,6 +4,8 @@ import {
   PhArrowClockwise,
   PhArrowCounterClockwise,
   PhEraser,
+  PhEye,
+  PhEyeSlash,
   PhEyedropper,
   PhFilmStrip,
   PhPaintBucket,
@@ -90,6 +92,9 @@ async function pointerDown(event: PointerEvent) {
     return;
   const onCanvas = pixelCanvas.value?.contains(event.target as Node);
   if (!editable.value || !onCanvas || event.button === 1) {
+    if (workspace.rig.active.value && onCanvas) {
+      workspace.rig.selectedNodeId.value = "";
+    }
     panning.value = true;
     panStart.value = {
       x: event.clientX,
@@ -272,6 +277,21 @@ function keyDown(event: KeyboardEvent) {
         {{ Math.round(zoom * 100) }}%
       </button>
       <button aria-label="Zoom in" @click="adjustZoom(zoom + 0.25)">+</button>
+      <button
+        v-if="workspace.rig.rig.value"
+        :aria-label="
+          workspace.rig.guidesVisible.value
+            ? 'Hide rig guides'
+            : 'Show rig guides'
+        "
+        :aria-pressed="workspace.rig.guidesVisible.value"
+        @click="
+          workspace.rig.guidesVisible.value = !workspace.rig.guidesVisible.value
+        "
+      >
+        <PhEye v-if="workspace.rig.guidesVisible.value" />
+        <PhEyeSlash v-else />
+      </button>
     </div>
     <div
       ref="pixelCanvas"

@@ -1,26 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import {
-  PhArrowLeft,
-  PhArrowRight,
-  PhArrowsOutLineHorizontal,
-  PhCaretRight,
-  PhEye,
-  PhEyeSlash,
-} from "@phosphor-icons/vue";
+import { computed } from "vue";
+import { PhArrowLeft, PhArrowRight, PhCaretRight } from "@phosphor-icons/vue";
 import { useWorkspace } from "../workspace/context";
 import HintTip from "./HintTip.vue";
 
 const workspace = useWorkspace();
 const rig = workspace.rig;
-const swapTarget = ref("");
 const interpolationEnabled = computed(
   () => (rig.rig.value?.interpolation.inbetweens ?? 0) > 0,
 );
-
-watch(rig.selectedNodeId, () => {
-  swapTarget.value = "";
-});
 
 function number(event: Event) {
   return Number((event.target as HTMLInputElement).value);
@@ -30,10 +18,10 @@ function updateNode(values: Parameters<typeof rig.updateSelected>[0]) {
   void rig.updateSelected(values);
 }
 
-function toggleInterpolation(event: Event) {
+function toggleInterpolation() {
   void rig.mutate({
     type: "set_interpolation",
-    inbetweens: (event.target as HTMLInputElement).checked ? 1 : 0,
+    inbetweens: interpolationEnabled.value ? 0 : 1,
     looped: rig.rig.value?.interpolation.looped ?? false,
   });
 }
@@ -46,20 +34,11 @@ function setInbetweens(event: Event) {
   });
 }
 
-function setLoop(event: Event) {
+function setLoop() {
   void rig.mutate({
     type: "set_interpolation",
     inbetweens: rig.rig.value?.interpolation.inbetweens ?? 1,
-    looped: (event.target as HTMLInputElement).checked,
-  });
-}
-
-function swapParts() {
-  if (!swapTarget.value || !rig.selectedNodeId.value) return;
-  void rig.mutate({
-    type: "swap_parts",
-    first_node_id: rig.selectedNodeId.value,
-    second_node_id: swapTarget.value,
+    looped: !(rig.rig.value?.interpolation.looped ?? false),
   });
 }
 </script>
@@ -78,79 +57,31 @@ function swapParts() {
       <PhCaretRight class="section-chevron" aria-hidden="true" />
     </summary>
     <div v-if="rig.selectedNode.value" class="panel-content rig-inspector">
-      <p class="selected-rig-node">
-        <span>Joint</span><strong>{{ rig.selectedNode.value.node_id }}</strong>
+      <div class="selected-rig-node">
+        <span>Selected joint</span>
+        <strong>{{ rig.selectedNode.value.node_id }}</strong>
+      </div>
+      <p class="rig-part-instruction">
+        Choose its sprite. Hover or focus to preview before saving.
       </p>
-      <label class="rig-field">
-        <span>Sprite</span>
-        <select
-          aria-label="Sprite assigned to selected joint"
-          :value="rig.selectedNode.value.part_id"
-          @change="
-            updateNode({
-              part_id: ($event.target as HTMLSelectElement).value,
-            })
-          "
-        >
-          <option
-            v-for="part in rig.rig.value?.parts"
-            :key="part.id"
-            :value="part.id"
-          >
-            {{ part.id }}
-          </option>
-        </select>
-      </label>
-      <div class="rig-swap">
-        <label class="rig-field">
-          <span>Swap sprites with</span>
-          <select v-model="swapTarget" aria-label="Joint to swap sprites with">
-            <option value="">Choose another joint…</option>
-            <option
-              v-for="node in rig.rig.value?.nodes.filter(
-                (node) => node.id !== rig.selectedNodeId.value,
-              )"
-              :key="node.id"
-              :value="node.id"
-            >
-              {{ node.id }}
-            </option>
-          </select>
-        </label>
+      <div class="rig-part-grid" aria-label="Available sprites">
         <button
-          aria-label="Swap joint sprites"
-          :disabled="!swapTarget"
-          @click="swapParts"
+          v-for="part in rig.partChoices.value"
+          :key="part.id"
+          :aria-label="`Use sprite ${part.id}`"
+          :aria-pressed="rig.selectedNode.value.part_id === part.id"
+          @mouseenter="rig.previewSelectedPart(part.id)"
+          @mouseleave="rig.clearPartPreview"
+          @focus="rig.previewSelectedPart(part.id)"
+          @blur="rig.clearPartPreview"
+          @click="rig.assignSelectedPart(part.id)"
         >
-          <PhArrowsOutLineHorizontal />
+          <span class="rig-part-thumbnail checker">
+            <img :src="part.href" alt="" />
+          </span>
+          <span>{{ part.id }}</span>
         </button>
       </div>
-      <div class="rig-layer-actions" role="group" aria-label="Sprite layer">
-        <button
-          @click="updateNode({ depth: rig.selectedNode.value.depth - 1 })"
-        >
-          Send backward
-        </button>
-        <button
-          @click="updateNode({ depth: rig.selectedNode.value.depth + 1 })"
-        >
-          Bring forward
-        </button>
-      </div>
-      <button
-        class="rig-visibility"
-        :aria-label="
-          rig.selectedNode.value.visible
-            ? 'Hide selected sprite'
-            : 'Show selected sprite'
-        "
-        :aria-pressed="!rig.selectedNode.value.visible"
-        @click="updateNode({ visible: !rig.selectedNode.value.visible })"
-      >
-        <PhEye v-if="rig.selectedNode.value.visible" />
-        <PhEyeSlash v-else />
-        {{ rig.selectedNode.value.visible ? "Visible" : "Hidden" }}
-      </button>
     </div>
     <div v-else class="panel-content rig-empty-selection">
       Select a joint on the canvas to edit its sprite.
@@ -179,6 +110,16 @@ function swapParts() {
             })
           "
         /><small>°</small></label
+      >
+      <label
+        ><span>Layer</span
+        ><input
+          aria-label="Selected sprite layer"
+          type="number"
+          step="1"
+          :value="rig.selectedNode.value.depth"
+          @change="updateNode({ depth: Math.round(number($event)) })"
+        /><small>z</small></label
       >
       <label
         ><span>Width</span
@@ -214,14 +155,14 @@ function swapParts() {
       <PhCaretRight class="section-chevron" aria-hidden="true" />
     </summary>
     <div class="panel-content rig-motion-settings">
-      <label class="rig-toggle">
-        <input
-          type="checkbox"
-          :checked="interpolationEnabled"
-          @change="toggleInterpolation"
-        />
-        <span>Enable interpolation</span>
-      </label>
+      <button
+        class="rig-setting-toggle"
+        role="switch"
+        :aria-checked="interpolationEnabled"
+        @click="toggleInterpolation"
+      >
+        <span>Enable interpolation</span><i aria-hidden="true"></i>
+      </button>
       <label class="rig-field" :class="{ disabled: !interpolationEnabled }">
         <span>Frames between each pose</span>
         <input
@@ -234,15 +175,15 @@ function swapParts() {
           @change="setInbetweens"
         />
       </label>
-      <label class="rig-toggle" :class="{ disabled: !interpolationEnabled }">
-        <input
-          type="checkbox"
-          :disabled="!interpolationEnabled"
-          :checked="rig.rig.value?.interpolation.looped"
-          @change="setLoop"
-        />
-        <span>Blend the last pose back to the first</span>
-      </label>
+      <button
+        class="rig-setting-toggle"
+        role="switch"
+        :disabled="!interpolationEnabled"
+        :aria-checked="rig.rig.value?.interpolation.looped ?? false"
+        @click="setLoop"
+      >
+        <span>Blend last pose back to first</span><i aria-hidden="true"></i>
+      </button>
     </div>
   </details>
 

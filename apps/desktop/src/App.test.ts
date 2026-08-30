@@ -79,6 +79,7 @@ beforeEach(() => {
   vi.spyOn(api, "mutateFrames").mockResolvedValue(commit);
   vi.spyOn(api, "mutateRig").mockResolvedValue(commit);
   vi.spyOn(api, "bakeRig").mockResolvedValue(commit);
+  vi.spyOn(api, "setAssetHead").mockResolvedValue(project.assets[0].asset);
   vi.spyOn(api, "previewComposition").mockResolvedValue(preview);
   vi.spyOn(api, "commitComposition").mockResolvedValue(commit);
   vi.spyOn(api, "initializeAsset").mockResolvedValue(project.assets[0].asset);
@@ -375,11 +376,13 @@ describe("deterministic workstation", () => {
     };
     vi.mocked(api.bakeRig).mockImplementation(async () => {
       baked = true;
-      return commit;
+      return { ...commit, revision: "r000002" };
     });
     vi.mocked(api.loadRevision).mockImplementation(
       async (_root, _asset, revision, frame) => {
-        const loaded = structuredClone(baked ? revisionView : rigged);
+        const isRigRevision = !baked || revision === "r000001";
+        const loaded = structuredClone(isRigRevision ? rigged : revisionView);
+        if (!isRigRevision) loaded.metadata.rig_ancestor = "r000001";
         loaded.metadata.revision = revision ?? "r000001";
         loaded.metadata.selected_frame_id =
           frame ?? loaded.metadata.frames[0].id;
@@ -408,8 +411,45 @@ describe("deterministic workstation", () => {
     );
     expect(document.querySelector(".rig-selection")).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Sprite assigned to selected joint"),
-    ).toHaveValue("left-part");
+      screen.getByRole("button", { name: "Use sprite left-part" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    const replacement = screen.getByRole("button", {
+      name: "Use sprite right-part",
+    });
+    const selectedArtwork = () =>
+      document.querySelector(".rig-artwork image")?.getAttribute("href");
+    expect(selectedArtwork()).toContain("left-png");
+    await fireEvent.mouseEnter(replacement);
+    expect(selectedArtwork()).toContain("right-png");
+    expect(api.mutateRig).not.toHaveBeenCalled();
+    await fireEvent.mouseLeave(replacement);
+    expect(selectedArtwork()).toContain("left-png");
+    await fireEvent.click(replacement);
+    await waitFor(() =>
+      expect(api.mutateRig).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "r000001",
+        expect.objectContaining({
+          type: "update_node",
+          pose_id: "pose-a",
+          node_id: "left",
+          part_id: "right-part",
+        }),
+        "user",
+      ),
+    );
+    expect(screen.getAllByRole("switch")).toHaveLength(2);
+    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Hide rig guides" }),
+    );
+    expect(
+      screen.queryByLabelText("Editable pixel rig"),
+    ).not.toBeInTheDocument();
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Show rig guides" }),
+    );
     await fireEvent.pointerCancel(screen.getByLabelText("Editable pixel rig"));
     const rotation = screen.getByLabelText(
       "Selected sprite rotation in degrees",
@@ -489,6 +529,8 @@ describe("deterministic workstation", () => {
     expect(
       screen.getByText("Select a joint on the canvas to edit its sprite."),
     ).toBeVisible();
+    expect(document.querySelector(".canvas-stage")).toHaveClass("panning");
+    await fireEvent.pointerUp(document.querySelector(".canvas-stage")!);
 
     await fireEvent.click(
       screen.getByRole("button", { name: "Open frame timeline" }),
@@ -509,6 +551,18 @@ describe("deterministic workstation", () => {
       ),
     );
     expect(await screen.findByRole("button", { name: "Pencil" })).toBeVisible();
+    expect(screen.getByText("Step 3")).toBeVisible();
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Back to Rigging" }),
+    );
+    await waitFor(() =>
+      expect(api.setAssetHead).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "r000001",
+      ),
+    );
+    expect(await screen.findByText("Rig Motion")).toBeVisible();
     expect(workspaceCss).toContain(".rig-overlay g:focus-visible");
   });
 

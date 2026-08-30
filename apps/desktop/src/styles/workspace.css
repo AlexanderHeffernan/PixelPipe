@@ -200,6 +200,7 @@
   height: 100%;
   overflow: visible;
   touch-action: none;
+  pointer-events: none;
 }
 .rig-overlay line {
   stroke: rgba(255, 213, 174, 0.94);
@@ -227,6 +228,7 @@
   color: #ffd0a6;
   outline: none;
   cursor: move;
+  pointer-events: all;
 }
 .rig-overlay g > circle:first-of-type {
   fill: rgba(38, 19, 33, 0.86);

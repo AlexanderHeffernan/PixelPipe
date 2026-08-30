@@ -3,11 +3,11 @@ use std::{fs, path::Path};
 use pixelate_app::{
     BakeRig, ConvertSelectedReference, CreateRig, ExportAsset, FrameMutation, FrameMutationAction,
     ImportImageSequence, ImportReference, ImportSpritesheet, InitializeAsset, InspectRevision,
-    MutateRig, OpenProject, PatchRevisionDocument, RIG_DEFINITION_SCHEMA, RigDefinition,
-    RigMutation, RigPartDefinition, SetAssetHead, bake_rig, convert_selected_reference, create_rig,
-    export_asset, import_image_sequence, import_reference, import_spritesheet, initialize_asset,
-    inspect_revision, load_revision_view, mutate_frames, mutate_rig, open_project,
-    patch_revision_document, set_asset_head,
+    MutateRig, OpenProject, PatchRevisionDocument, PreviewAnimation, RIG_DEFINITION_SCHEMA,
+    RigDefinition, RigMutation, RigPartDefinition, SetAssetHead, bake_rig,
+    convert_selected_reference, create_rig, export_asset, import_image_sequence, import_reference,
+    import_spritesheet, initialize_asset, inspect_revision, load_revision_view, mutate_frames,
+    mutate_rig, open_project, patch_revision_document, preview_animation, set_asset_head,
 };
 use pixelate_core::{
     PATCH_SCHEMA, PixelPatch, PixelPatchSet, RigInterpolation, RigNode, RigNodePose, RigPose,
@@ -251,6 +251,20 @@ fn ordered_imports_share_one_palette_and_export_deterministic_sheet_metadata() {
         first_snapshot.sequence.frames[0].pixels,
         first_snapshot.sequence.frames[1].pixels
     );
+    let animation_request = || PreviewAnimation {
+        start: game.path().to_path_buf(),
+        asset: "hero".into(),
+        revision: Some(first.revision.clone()),
+        scale: Some(2),
+    };
+    let animation = preview_animation(animation_request()).unwrap();
+    assert_eq!(animation.frame_count, 2);
+    assert_eq!((animation.width, animation.height), (64, 64));
+    assert!(animation.gif.starts_with(b"GIF89a"));
+    assert_eq!(
+        animation.gif,
+        preview_animation(animation_request()).unwrap().gif
+    );
 
     set_asset_head(SetAssetHead {
         start: game.path().to_path_buf(),
@@ -461,15 +475,27 @@ fn generic_rig_is_hash_verified_parent_linked_interpolated_and_explicitly_baked(
     assert_ne!(moved_snapshot.sequence, created_snapshot.sequence);
 
     let baked = bake_rig(BakeRig {
-        start: root,
+        start: root.clone(),
         asset: "hero".to_owned(),
-        parent: moved.revision,
+        parent: moved.revision.clone(),
         actor: "test".to_owned(),
     })
     .unwrap();
     let baked_snapshot = store.revision("hero", &baked.revision).unwrap();
     assert!(baked_snapshot.rig.is_none());
     assert_eq!(baked_snapshot.sequence, moved_snapshot.sequence);
+    assert_baked_rig_ancestry(&root, &baked.revision, &moved.revision);
+}
+
+fn assert_baked_rig_ancestry(root: &Path, baked: &str, rig: &str) {
+    let baked_view = load_revision_view(InspectRevision {
+        start: root.to_path_buf(),
+        asset: "hero".to_owned(),
+        revision: Some(baked.to_owned()),
+        frame_id: None,
+    })
+    .unwrap();
+    assert_eq!(baked_view.metadata.rig_ancestor.as_deref(), Some(rig));
 }
 
 fn rig_pose(id: &str, x_millis: i32) -> RigPose {

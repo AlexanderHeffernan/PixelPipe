@@ -135,6 +135,7 @@ export interface RevisionViewMetadata {
   };
   frames: FrameMetadata[];
   selected_frame_id: string;
+  rig_ancestor?: string;
   rig?: RigView;
 }
 
