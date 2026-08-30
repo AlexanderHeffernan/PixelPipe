@@ -87,6 +87,26 @@ pub struct BakeRig {
     pub actor: String,
 }
 
+struct NodeUpdate {
+    x_millis: Option<i32>,
+    y_millis: Option<i32>,
+    rotation_millidegrees: Option<i32>,
+    scale_x_millis: Option<i32>,
+    scale_y_millis: Option<i32>,
+    depth: Option<i32>,
+    visible: Option<bool>,
+    part_id: Option<String>,
+}
+
+struct RigCommit {
+    asset: String,
+    parent_id: String,
+    sequence: pixelate_core::IndexedSequence,
+    rig: Option<PixelRig>,
+    operation: RigOperation,
+    actor: String,
+}
+
 /// Creates a generic pixel-part rig by cropping an indexed revision frame.
 ///
 /// # Errors
@@ -145,13 +165,15 @@ pub fn bake_rig(request: BakeRig) -> Result<RevisionResult, AppError> {
     }
     commit(
         &store,
-        &request.asset,
-        &request.parent,
         parent.clone(),
-        parent.sequence,
-        None,
-        RigOperation::Bake,
-        request.actor,
+        RigCommit {
+            asset: request.asset,
+            parent_id: request.parent,
+            sequence: parent.sequence,
+            rig: None,
+            operation: RigOperation::Bake,
+            actor: request.actor,
+        },
     )
 }
 
@@ -169,52 +191,28 @@ fn apply_mutation(rig: &mut PixelRig, action: RigMutation) -> Result<RigOperatio
             visible,
             part_id,
         } => {
-            let node = posed_node_mut(rig, &pose_id, &node_id)?;
-            if let Some(value) = x_millis {
-                node.x_millis = value;
-            }
-            if let Some(value) = y_millis {
-                node.y_millis = value;
-            }
-            if let Some(value) = rotation_millidegrees {
-                node.rotation_millidegrees = value;
-            }
-            if let Some(value) = scale_x_millis {
-                node.scale_x_millis = value;
-            }
-            if let Some(value) = scale_y_millis {
-                node.scale_y_millis = value;
-            }
-            if let Some(value) = depth {
-                node.depth = value;
-            }
-            if let Some(value) = visible {
-                node.visible = value;
-            }
-            if let Some(value) = part_id {
-                node.part_id = value;
-            }
+            update_node(
+                rig,
+                &pose_id,
+                &node_id,
+                NodeUpdate {
+                    x_millis,
+                    y_millis,
+                    rotation_millidegrees,
+                    scale_x_millis,
+                    scale_y_millis,
+                    depth,
+                    visible,
+                    part_id,
+                },
+            )?;
             RigOperation::UpdateNode { pose_id, node_id }
         }
         RigMutation::SwapParts {
             first_node_id,
             second_node_id,
         } => {
-            for pose in &mut rig.poses {
-                let first = pose
-                    .nodes
-                    .iter()
-                    .position(|node| node.node_id == first_node_id)
-                    .ok_or_else(|| invalid_id("node", &first_node_id))?;
-                let second = pose
-                    .nodes
-                    .iter()
-                    .position(|node| node.node_id == second_node_id)
-                    .ok_or_else(|| invalid_id("node", &second_node_id))?;
-                let first_part = pose.nodes[first].part_id.clone();
-                pose.nodes[first].part_id = pose.nodes[second].part_id.clone();
-                pose.nodes[second].part_id = first_part;
-            }
+            swap_parts(rig, &first_node_id, &second_node_id)?;
             RigOperation::SwapParts {
                 first_node_id,
                 second_node_id,
@@ -286,42 +284,41 @@ fn commit_rig(
     let sequence = rig.render_sequence()?;
     commit(
         store,
-        asset,
-        parent_id,
         parent,
-        sequence,
-        Some(rig),
-        operation,
-        actor,
+        RigCommit {
+            asset: asset.to_owned(),
+            parent_id: parent_id.to_owned(),
+            sequence,
+            rig: Some(rig),
+            operation,
+            actor,
+        },
     )
 }
 
 fn commit(
     store: &ProjectStore,
-    asset: &str,
-    parent_id: &str,
     parent: RevisionSnapshot,
-    sequence: pixelate_core::IndexedSequence,
-    rig: Option<PixelRig>,
-    operation: RigOperation,
-    actor: String,
+    request: RigCommit,
 ) -> Result<RevisionResult, AppError> {
     let input_hash = sha256_hex(&stable_json(&parent.sequence)?);
-    let palette_hash = sha256_hex(&stable_json(&sequence.palette)?);
+    let palette_hash = sha256_hex(&stable_json(&request.sequence.palette)?);
     commit_sequence(
         store,
         CommitSequence {
-            asset: asset.to_owned(),
-            sequence,
-            rig,
+            asset: request.asset,
+            sequence: request.sequence,
+            rig: request.rig,
             recipe: Recipe {
                 schema: RECIPE_SCHEMA.to_owned(),
                 input_sha256: input_hash.clone(),
                 palette_sha256: palette_hash.clone(),
-                operations: vec![Operation::EditRig { action: operation }],
+                operations: vec![Operation::EditRig {
+                    action: request.operation,
+                }],
             },
             brief: parent.brief,
-            actor,
+            actor: request.actor,
             input_hashes: BTreeMap::from([
                 ("palette".to_owned(), palette_hash),
                 ("parent_pixels".to_owned(), input_hash),
@@ -331,10 +328,75 @@ fn commit(
                 passed: true,
                 detail: "generic rig rendered deterministically".to_owned(),
             }],
-            parent: Some(parent_id.to_owned()),
+            parent: Some(request.parent_id),
             style: None,
         },
     )
+}
+
+fn update_node(
+    rig: &mut PixelRig,
+    pose_id: &str,
+    node_id: &str,
+    update: NodeUpdate,
+) -> Result<(), AppError> {
+    let node = posed_node_mut(rig, pose_id, node_id)?;
+    if let Some(value) = update.x_millis {
+        node.x_millis = value;
+    }
+    if let Some(value) = update.y_millis {
+        node.y_millis = value;
+    }
+    if let Some(value) = update.rotation_millidegrees {
+        node.rotation_millidegrees = value;
+    }
+    if let Some(value) = update.scale_x_millis {
+        node.scale_x_millis = value;
+    }
+    if let Some(value) = update.scale_y_millis {
+        node.scale_y_millis = value;
+    }
+    if let Some(value) = update.depth {
+        node.depth = value;
+    }
+    if let Some(value) = update.visible {
+        node.visible = value;
+    }
+    if let Some(value) = update.part_id {
+        node.part_id = value;
+    }
+    Ok(())
+}
+
+fn swap_parts(rig: &mut PixelRig, first_id: &str, second_id: &str) -> Result<(), AppError> {
+    for pose in &mut rig.poses {
+        let first = pose
+            .nodes
+            .iter()
+            .position(|node| node.node_id == first_id)
+            .ok_or_else(|| invalid_id("node", first_id))?;
+        let second = pose
+            .nodes
+            .iter()
+            .position(|node| node.node_id == second_id)
+            .ok_or_else(|| invalid_id("node", second_id))?;
+        swap_node_parts(&mut pose.nodes, first, second);
+    }
+    Ok(())
+}
+
+fn swap_node_parts(nodes: &mut [pixelate_core::RigNodePose], first: usize, second: usize) {
+    if first == second {
+        return;
+    }
+    let (lower, upper) = if first < second {
+        let (lower, upper) = nodes.split_at_mut(second);
+        (&mut lower[first], &mut upper[0])
+    } else {
+        let (lower, upper) = nodes.split_at_mut(first);
+        (&mut upper[0], &mut lower[second])
+    };
+    std::mem::swap(&mut lower.part_id, &mut upper.part_id);
 }
 
 fn posed_node_mut<'a>(

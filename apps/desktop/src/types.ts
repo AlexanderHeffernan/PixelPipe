@@ -135,6 +135,45 @@ export interface RevisionViewMetadata {
   };
   frames: FrameMetadata[];
   selected_frame_id: string;
+  rig?: RigView;
+}
+
+export interface RigView {
+  parts: RigPart[];
+  nodes: RigNode[];
+  poses: RigPose[];
+  frame_duration_ms: number;
+  interpolation: { inbetweens: number; looped: boolean };
+}
+
+export interface RigPart {
+  id: string;
+  width: number;
+  height: number;
+  pivot: [number, number];
+}
+
+export interface RigNode {
+  id: string;
+  parent_id?: string;
+}
+
+export interface RigPose {
+  id: string;
+  name?: string;
+  nodes: RigNodePose[];
+}
+
+export interface RigNodePose {
+  node_id: string;
+  part_id: string;
+  x_millis: number;
+  y_millis: number;
+  rotation_millidegrees: number;
+  scale_x_millis: number;
+  scale_y_millis: number;
+  depth: number;
+  visible: boolean;
 }
 
 export interface FrameMetadata {

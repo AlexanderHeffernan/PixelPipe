@@ -86,7 +86,7 @@ pub(crate) enum RigCommand {
         asset: String,
         #[arg(long)]
         parent: String,
-        /// A tagged RigMutation JSON object, such as update_node.
+        /// A tagged `RigMutation` JSON object, such as `update_node`.
         #[arg(long)]
         mutation: PathBuf,
         #[arg(long, default_value = "agent")]

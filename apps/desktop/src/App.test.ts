@@ -12,6 +12,7 @@ import * as api from "./api";
 import { preview, project, revisionView, settings } from "./test-fixtures";
 
 const timelineCss = readFileSync("src/styles/timeline.css", "utf8");
+const workspaceCss = readFileSync("src/styles/workspace.css", "utf8");
 
 const dialogs = vi.hoisted(() => ({
   project: "/game",
@@ -72,6 +73,8 @@ beforeEach(() => {
   vi.spyOn(api, "loadRevision").mockResolvedValue(revisionView);
   vi.spyOn(api, "convertSelectedReference").mockResolvedValue(commit);
   vi.spyOn(api, "mutateFrames").mockResolvedValue(commit);
+  vi.spyOn(api, "mutateRig").mockResolvedValue(commit);
+  vi.spyOn(api, "bakeRig").mockResolvedValue(commit);
   vi.spyOn(api, "previewComposition").mockResolvedValue(preview);
   vi.spyOn(api, "commitComposition").mockResolvedValue(commit);
   vi.spyOn(api, "initializeAsset").mockResolvedValue(project.assets[0].asset);
@@ -284,6 +287,165 @@ describe("deterministic workstation", () => {
         "user",
       ),
     );
+  });
+
+  it("edits a generic rig over the pixels and hides automatic frames", async () => {
+    let baked = false;
+    const rigged = structuredClone(revisionView);
+    rigged.metadata.frames = [
+      { id: "pose-a", name: "Contact", duration_ms: 80 },
+      { id: "__generated-0001", duration_ms: 80 },
+      { id: "pose-b", name: "Passing", duration_ms: 80 },
+    ];
+    rigged.metadata.selected_frame_id = "pose-a";
+    rigged.metadata.rig = {
+      parts: [
+        { id: "left-part", width: 4, height: 8, pivot: [2, 1] },
+        { id: "right-part", width: 4, height: 8, pivot: [2, 1] },
+      ],
+      nodes: [{ id: "left" }, { id: "right", parent_id: "left" }],
+      poses: [
+        {
+          id: "pose-a",
+          name: "Contact",
+          nodes: [
+            {
+              node_id: "left",
+              part_id: "left-part",
+              x_millis: 10000,
+              y_millis: 12000,
+              rotation_millidegrees: 0,
+              scale_x_millis: 1000,
+              scale_y_millis: 1000,
+              depth: 0,
+              visible: true,
+            },
+            {
+              node_id: "right",
+              part_id: "right-part",
+              x_millis: 4000,
+              y_millis: 0,
+              rotation_millidegrees: 0,
+              scale_x_millis: 1000,
+              scale_y_millis: 1000,
+              depth: 1,
+              visible: true,
+            },
+          ],
+        },
+        {
+          id: "pose-b",
+          name: "Passing",
+          nodes: [
+            {
+              node_id: "left",
+              part_id: "left-part",
+              x_millis: 14000,
+              y_millis: 12000,
+              rotation_millidegrees: 15000,
+              scale_x_millis: 1000,
+              scale_y_millis: 1000,
+              depth: 0,
+              visible: true,
+            },
+            {
+              node_id: "right",
+              part_id: "right-part",
+              x_millis: 4000,
+              y_millis: 0,
+              rotation_millidegrees: -15000,
+              scale_x_millis: 1000,
+              scale_y_millis: 1000,
+              depth: 1,
+              visible: true,
+            },
+          ],
+        },
+      ],
+      frame_duration_ms: 80,
+      interpolation: { inbetweens: 1, looped: false },
+    };
+    vi.mocked(api.bakeRig).mockImplementation(async () => {
+      baked = true;
+      return commit;
+    });
+    vi.mocked(api.loadRevision).mockImplementation(
+      async (_root, _asset, revision, frame) => {
+        const loaded = structuredClone(baked ? revisionView : rigged);
+        loaded.metadata.revision = revision ?? "r000001";
+        loaded.metadata.selected_frame_id =
+          frame ?? loaded.metadata.frames[0].id;
+        return loaded;
+      },
+    );
+
+    await openWorkstation();
+    await enterCanvas();
+    expect(screen.getByLabelText("Editable pixel rig")).toBeVisible();
+    expect(
+      screen.getAllByRole("button", { name: /Move rig node/ }),
+    ).toHaveLength(2);
+    expect(
+      screen.queryByRole("button", { name: "Pencil" }),
+    ).not.toBeInTheDocument();
+
+    const rotation = screen.getByLabelText("Node rotation in degrees");
+    await fireEvent.update(rotation, "25");
+    await fireEvent.change(rotation);
+    await waitFor(() =>
+      expect(api.mutateRig).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "r000001",
+        {
+          type: "update_node",
+          pose_id: "pose-a",
+          node_id: "left",
+          rotation_millidegrees: 25000,
+        },
+        "user",
+      ),
+    );
+    await fireEvent.keyDown(
+      screen.getByRole("button", { name: "Move rig node left" }),
+      { key: "ArrowRight" },
+    );
+    await waitFor(() =>
+      expect(api.mutateRig).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "r000001",
+        expect.objectContaining({
+          type: "update_node",
+          pose_id: "pose-a",
+          node_id: "left",
+          x_millis: 11000,
+          y_millis: 12000,
+        }),
+        "user",
+      ),
+    );
+
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Open frame timeline" }),
+    );
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText(/1 automatic/)).toBeVisible();
+    expect(screen.queryByText("__generated-0001")).not.toBeInTheDocument();
+
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Bake rig for pixel editing" }),
+    );
+    await waitFor(() =>
+      expect(api.bakeRig).toHaveBeenCalledWith(
+        "/game",
+        "field-medic",
+        "r000001",
+        "user",
+      ),
+    );
+    expect(await screen.findByRole("button", { name: "Pencil" })).toBeVisible();
+    expect(workspaceCss).toContain(".rig-overlay g:focus-visible");
   });
 
   it("persists and drag-resizes the open timeline outside project data", async () => {

@@ -132,6 +132,26 @@ replace the warning's destination frame with `frame replace`, inspect again, and
 do not call the animation complete until warnings are cleared or reviewed by the
 human as intentional broad motion.
 
+For motion that can reuse separated pixel-art parts, Pixelate also supports a
+generic rigging route. Ask the image model for one source sheet of separated
+parts—not a temporal animation spritesheet—then pixelize it. An agent can crop
+explicit rectangles into reusable parts and define arbitrary parent-linked nodes
+and manual poses with `rig create`. Use `rig mutate` to position, rotate, scale,
+reorder by depth, hide, or reassign parts; swap assignments; adjust manual poses;
+and choose a shared duration plus optional deterministic in-between frames. The
+model is deliberately generic: it has no humanoid anatomy, IK, weapons, or named
+attachments.
+
+The desktop overlays the rig handles directly on the indexed sprite. Select a
+manual pose in the timeline, drag a node to reposition it, use the rig controls
+for rotation, scale, depth, visibility, part assignment, interpolation, and
+timing, then play the complete rendered sequence. Automatic frames are derived
+from adjacent manual poses and do not appear as editable timeline cards. Use
+`rig bake` only when the motion is ready for ordinary frame-by-frame pixel touch
+up; baking preserves the rendered sequence exactly and ends rig editing for that
+revision. Run `pixelate guide --root .` for the versioned definition and mutation
+JSON examples intended for agents.
+
 ### Visual verification
 
 Agents should run `revision preview` after every conversion or edit and inspect

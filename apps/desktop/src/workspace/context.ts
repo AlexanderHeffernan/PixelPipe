@@ -10,6 +10,7 @@ import { createCanvasLoading } from "./canvas-loading";
 import { createPixelEditor } from "./pixel-editor";
 import { createProjectSession } from "./project-session";
 import { createProjectSync, type ExternalAssetChange } from "./project-sync";
+import { createRigEditor } from "./rig-editor";
 
 type WorkspaceMode = "convert" | "edit";
 export function createWorkspace() {
@@ -170,6 +171,15 @@ export function createWorkspace() {
     notice: showNotice,
     onMutation: editor.clearRedo,
   });
+  const rig = createRigEditor({
+    project,
+    assetId,
+    view,
+    refresh,
+    run,
+    notice: showNotice,
+    onMutation: editor.clearRedo,
+  });
   const assetActions = createAssetActions({
     project,
     assetId,
@@ -273,6 +283,7 @@ export function createWorkspace() {
     exportCurrent: assetActions.exportCurrent,
     editor,
     animation,
+    rig,
     composition,
     importAssets,
     importReference: assetActions.replaceSource,

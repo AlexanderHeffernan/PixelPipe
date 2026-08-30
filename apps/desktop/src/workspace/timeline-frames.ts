@@ -1,8 +1,14 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, type Ref } from "vue";
-import type { createAnimation } from "./animation";
+import type { FrameMutationAction } from "../api";
+import type { FrameMetadata } from "../types";
+
+export interface TimelineFrameActions {
+  frames: Ref<FrameMetadata[]>;
+  mutate: (action: FrameMutationAction, preferredId?: string) => Promise<void>;
+}
 
 export function useTimelineFrames(
-  animation: ReturnType<typeof createAnimation>,
+  animation: TimelineFrameActions,
   strip: Ref<HTMLElement | undefined>,
 ) {
   const contextFrameId = ref("");

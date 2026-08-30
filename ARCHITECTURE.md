@@ -50,6 +50,7 @@ game-root/
         pixels.json
         provenance.json
         recipe.json
+        rig.json          # optional generic pixel-part rig
         validation.json
 ```
 
@@ -67,6 +68,17 @@ their pixels, palette order, native PNG, hashes, and ancestry. New revisions sto
 the complete sequence payload; unchanged frame content is not speculatively split.
 Optional human-readable frame names travel with stable IDs and are stored by the
 same whole-sequence immutable revision operations.
+
+An optional `pixelate.rig/v1` payload stores reusable shared-palette pixel parts,
+an arbitrary parent-linked node hierarchy, complete manual poses, and fixed-point
+transform values. It has no anatomy, IK, attachment, or character semantics.
+Project persistence hashes the payload and verifies that deterministic rig
+rendering exactly reproduces `pixels.json`. Manual poses remain the editable
+timeline source; configured in-betweens are derived deterministically and remain
+hidden from direct editing. Every rig mutation commits the complete rendered
+sequence and rig as one immutable revision. Explicit bake removes `rig.json`
+without changing rendered pixels, after which ordinary frame and pixel editing
+continues.
 
 Multi-reference conversion derives one shared palette across the explicitly
 ordered batch before converting any frame. Multi-frame canonical export is an
@@ -93,6 +105,7 @@ Every desktop capability must use the same application use case as a CLI route.
 | Inspection and vision-friendly preview | `revision inspect`, `preview` |
 | Pixel and palette editing | `revision draw`, `fill`, `recolor`, `remap` |
 | Frame editing and ordered import | `frame add`, `duplicate`, `import`, `replace`, `import-sequence`, `import-sheet`, `delete`, `reorder`, `duration`, `rename` |
+| Generic pixel-part rigging | `rig create`, `mutate`, `bake` |
 | History navigation | `revision set-head` |
 | Bundle or named image export | `asset export`, `export-file` |
 | Installed version | `version` |
@@ -111,5 +124,5 @@ signed `.app` in place.
 
 - Agent launchers, provider SDKs, or repository-selected commands.
 - A generic image pipeline, resource/profile system, or plugin marketplace.
-- Named clips, animation graphs, directions, skeletal animation, tweening, or video import.
+- Named clips, animation graphs, directions, anatomy-specific rigs, IK, or video import.
 - Automatic source selection, conversion commit, visual acceptance, or export.

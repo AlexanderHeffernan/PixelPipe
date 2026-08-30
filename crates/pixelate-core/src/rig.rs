@@ -89,6 +89,35 @@ impl PixelRig {
     /// Returns [`CoreError`] when an identity, reference, hierarchy, part,
     /// transform, palette, canvas, pose, or timing invariant is invalid.
     pub fn validate(&self) -> Result<ValidationReport, CoreError> {
+        self.validate_header()?;
+        let part_ids = self.validate_parts()?;
+        let node_ids = self.validate_nodes()?;
+        self.validate_poses(&part_ids, &node_ids)?;
+
+        Ok(ValidationReport {
+            schema: crate::VALIDATION_SCHEMA.to_owned(),
+            valid: true,
+            checks: vec![
+                ValidationCheck {
+                    name: "rig_parts".to_owned(),
+                    passed: true,
+                    detail: format!("{} indexed parts", self.parts.len()),
+                },
+                ValidationCheck {
+                    name: "rig_nodes".to_owned(),
+                    passed: true,
+                    detail: format!("{} generic nodes", self.nodes.len()),
+                },
+                ValidationCheck {
+                    name: "rig_poses".to_owned(),
+                    passed: true,
+                    detail: format!("{} manual poses", self.poses.len()),
+                },
+            ],
+        })
+    }
+
+    fn validate_header(&self) -> Result<(), CoreError> {
         if self.schema != RIG_SCHEMA {
             return Err(CoreError::Schema {
                 expected: RIG_SCHEMA,
@@ -110,7 +139,10 @@ impl PixelRig {
         if self.interpolation.inbetweens > 120 {
             return Err(invalid("at most 120 in-between frames are supported"));
         }
+        Ok(())
+    }
 
+    fn validate_parts(&self) -> Result<BTreeSet<&str>, CoreError> {
         let part_ids = unique_ids(self.parts.iter().map(|part| part.id.as_str()), "part")?;
         for part in &self.parts {
             IndexedRaster {
@@ -129,7 +161,10 @@ impl PixelRig {
                 ));
             }
         }
+        Ok(part_ids)
+    }
 
+    fn validate_nodes(&self) -> Result<BTreeSet<&str>, CoreError> {
         let node_ids = unique_ids(self.nodes.iter().map(|node| node.id.as_str()), "node")?;
         for node in &self.nodes {
             if node
@@ -141,7 +176,14 @@ impl PixelRig {
             }
             validate_parent_chain(&node.id, &self.nodes)?;
         }
+        Ok(node_ids)
+    }
 
+    fn validate_poses(
+        &self,
+        part_ids: &BTreeSet<&str>,
+        node_ids: &BTreeSet<&str>,
+    ) -> Result<(), CoreError> {
         unique_ids(self.poses.iter().map(|pose| pose.id.as_str()), "pose")?;
         for pose in &self.poses {
             if pose.id.starts_with(GENERATED_PREFIX) {
@@ -158,7 +200,7 @@ impl PixelRig {
                 pose.nodes.iter().map(|node| node.node_id.as_str()),
                 "posed node",
             )?;
-            if posed != node_ids {
+            if &posed != node_ids {
                 return Err(invalid(
                     "every pose must contain every rig node exactly once",
                 ));
@@ -185,28 +227,7 @@ impl PixelRig {
                 }
             }
         }
-
-        Ok(ValidationReport {
-            schema: crate::VALIDATION_SCHEMA.to_owned(),
-            valid: true,
-            checks: vec![
-                ValidationCheck {
-                    name: "rig_parts".to_owned(),
-                    passed: true,
-                    detail: format!("{} indexed parts", self.parts.len()),
-                },
-                ValidationCheck {
-                    name: "rig_nodes".to_owned(),
-                    passed: true,
-                    detail: format!("{} generic nodes", self.nodes.len()),
-                },
-                ValidationCheck {
-                    name: "rig_poses".to_owned(),
-                    passed: true,
-                    detail: format!("{} manual poses", self.poses.len()),
-                },
-            ],
-        })
+        Ok(())
     }
 
     /// Deterministically renders manual poses and configured derived in-betweens.

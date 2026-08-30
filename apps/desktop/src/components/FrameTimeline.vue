@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import {
   PhCaretDown,
   PhCaretLeft,
@@ -20,6 +20,44 @@ const animation = workspace.animation;
 const open = animation.timelineOpen;
 const strip = ref<HTMLElement>();
 const overflowOpen = ref(false);
+const timelineFrames = computed(() =>
+  workspace.rig.rig.value
+    ? workspace.rig.manualFrames.value
+    : animation.frames.value,
+);
+const timelineActions = {
+  frames: timelineFrames,
+  async mutate(
+    action: import("../api").FrameMutationAction,
+    preferredId?: string,
+  ) {
+    if (!workspace.rig.rig.value) return animation.mutate(action, preferredId);
+    if (action.type === "set_all_durations")
+      return workspace.rig.mutate({
+        type: "set_duration",
+        duration_ms: action.duration_ms,
+      });
+    if (action.type === "reorder")
+      return workspace.rig.mutate(
+        {
+          type: "reorder_pose",
+          pose_id: action.frame_id,
+          position: action.position,
+        },
+        preferredId,
+      );
+    if (action.type === "rename")
+      return workspace.rig.mutate(
+        { type: "rename_pose", pose_id: action.frame_id, name: action.name },
+        preferredId,
+      );
+    if (action.type === "delete")
+      return workspace.rig.mutate({
+        type: "delete_pose",
+        pose_id: action.frame_id,
+      });
+  },
+};
 const {
   contextFrameId,
   editingFrameId,
@@ -33,7 +71,7 @@ const {
   finishRename,
   deleteFrame,
   pointerDown,
-} = useTimelineFrames(animation, strip);
+} = useTimelineFrames(timelineActions, strip);
 const {
   resizing,
   height,
@@ -82,10 +120,16 @@ function closeTimeline() {
 }
 
 function addFrame() {
-  void animation.addFrameFromImage();
+  if (workspace.rig.rig.value)
+    void workspace.rig.duplicatePose(animation.selectedFrameId.value);
+  else void animation.addFrameFromImage();
 }
 
 function duplicate() {
+  if (workspace.rig.rig.value) {
+    void workspace.rig.duplicatePose(animation.selectedFrameId.value);
+    return;
+  }
   void animation.mutate({
     type: "duplicate",
     frame_id: animation.selectedFrameId.value,
@@ -94,6 +138,13 @@ function duplicate() {
 }
 
 function remove() {
+  if (workspace.rig.rig.value) {
+    void workspace.rig.mutate({
+      type: "delete_pose",
+      pose_id: animation.selectedFrameId.value,
+    });
+    return;
+  }
   void animation.mutate({
     type: "delete",
     frame_id: animation.selectedFrameId.value,
@@ -128,7 +179,10 @@ function remove() {
       <button aria-label="Open frame timeline" @click="open = true">
         <PhFilmStrip />
         <span>Animation</span>
-        <small>{{ animation.frames.value.length }} frames</small>
+        <small>
+          {{ timelineFrames.length }}
+          {{ workspace.rig.rig.value ? "poses" : "frames" }}
+        </small>
       </button>
     </div>
 
@@ -149,7 +203,15 @@ function remove() {
       <header class="timeline-heading">
         <span>
           <PhFilmStrip /> Animation
-          <small>{{ animation.frames.value.length }} frames</small>
+          <small>
+            {{ timelineFrames.length }}
+            {{ workspace.rig.rig.value ? "poses" : "frames" }}
+            <template v-if="workspace.rig.rig.value?.interpolation.inbetweens">
+              ·
+              {{ animation.frames.value.length - timelineFrames.length }}
+              automatic
+            </template>
+          </small>
         </span>
         <button aria-label="Close frame timeline" @click="closeTimeline">
           <PhCaretDown />
@@ -197,7 +259,14 @@ function remove() {
         </label>
 
         <div class="timeline-actions">
-          <button aria-label="Add frame from image" @click="addFrame">
+          <button
+            :aria-label="
+              workspace.rig.rig.value
+                ? 'Duplicate pose'
+                : 'Add frame from image'
+            "
+            @click="addFrame"
+          >
             <PhPlus />
           </button>
           <button aria-label="Duplicate selected frame" @click="duplicate">
@@ -240,7 +309,7 @@ function remove() {
 
       <ol ref="strip" class="frame-strip" aria-label="Ordered frames">
         <li
-          v-for="(frame, index) in animation.frames.value"
+          v-for="(frame, index) in timelineFrames"
           :key="frame.id"
           :data-frame-index="index"
           :class="{
@@ -248,8 +317,8 @@ function remove() {
             'drop-before': draggedFrameId && dropPosition === index,
             'drop-after':
               draggedFrameId &&
-              dropPosition === animation.frames.value.length &&
-              index === animation.frames.value.length - 1,
+              dropPosition === timelineFrames.length &&
+              index === timelineFrames.length - 1,
           }"
           @pointerdown="pointerDown($event, frame.id)"
           @contextmenu="openFrameMenu($event, frame.id)"

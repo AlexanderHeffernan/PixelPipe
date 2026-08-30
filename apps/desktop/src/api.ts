@@ -279,3 +279,51 @@ export const mutateFrames = (
   invoke<RevisionResult>("mutate_frames", {
     request: { start, asset, parent, action, actor },
   });
+
+export type RigMutationAction =
+  | {
+      type: "update_node";
+      pose_id: string;
+      node_id: string;
+      x_millis?: number;
+      y_millis?: number;
+      rotation_millidegrees?: number;
+      scale_x_millis?: number;
+      scale_y_millis?: number;
+      depth?: number;
+      visible?: boolean;
+      part_id?: string;
+    }
+  | { type: "swap_parts"; first_node_id: string; second_node_id: string }
+  | { type: "set_interpolation"; inbetweens: number; looped: boolean }
+  | { type: "set_duration"; duration_ms: number }
+  | {
+      type: "duplicate_pose";
+      pose_id: string;
+      new_pose_id: string;
+      name?: string;
+    }
+  | { type: "delete_pose"; pose_id: string }
+  | { type: "reorder_pose"; pose_id: string; position: number }
+  | { type: "rename_pose"; pose_id: string; name: string };
+
+export const mutateRig = (
+  start: string,
+  asset: string,
+  parent: string,
+  action: RigMutationAction,
+  actor: string,
+) =>
+  invoke<RevisionResult>("mutate_rig", {
+    request: { start, asset, parent, action, actor },
+  });
+
+export const bakeRig = (
+  start: string,
+  asset: string,
+  parent: string,
+  actor: string,
+) =>
+  invoke<RevisionResult>("bake_rig", {
+    request: { start, asset, parent, actor },
+  });
